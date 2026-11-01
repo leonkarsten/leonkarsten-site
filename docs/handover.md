@@ -1,0 +1,98 @@
+# leonkarsten.com — handover
+
+Last updated: 2026-11-01. Keep this file current: it is the shared state between
+Claude (chat), Claude Code and Leon.
+
+## What it is
+
+Leon's personal "workshop" site: browser tools, retro games, writing (dated posts) and guides
+(reference material, shown by last-updated). Deliberately mixed; no single theme.
+Nothing personal: interests, facts, instructions, coaching, experiences only.
+
+## Current state
+
+- **Live:** https://leonkarsten.com — deploys on every push to `main` via
+  `.github/workflows/deploy.yml` (GitHub Actions → Pages). First deploy 2026-11-01.
+- **Repo:** `github.com/leonkarsten/leonkarsten-site`, public, on Leon's personal account
+  `leonkarsten` (separate from his business GitHub account; keep it that way).
+- **Local:** `C:\Users\leon\Documents\leonkarsten-site`. Node 24.
+- **DNS:** registrar and DNS host is domains.co.za (nameservers `ns*.tld-ns.com/.net`).
+  Root → GitHub's four A records; `www` → CNAME `leonkarsten.github.io`. No AAAA, no MX.
+  Verified correct from public resolvers.
+- **HTTPS:** GitHub's custom-domain check was still showing a stale failure on the evening of
+  2026-11-01 despite correct DNS, which blocks certificate issuance. Expected to clear on its own.
+  Once Settings → Pages shows the check green, tick **Enforce HTTPS**. Until then Chrome refuses
+  the site on machines that visited the old Wix site (HSTS memory); Edge allows click-through.
+- **Previous occupant:** the domain served Leon's wife's Wix site. Wix is disconnected and
+  cancelled; nothing to migrate.
+- **Sankey Studio** is imported at `public/apps/sankey-studio/index.html` (single-file Vite build,
+  ~1.5 MB). Source repo: `C:\Users\leon\Documents\sankey-studio`.
+- **Content:** one draft post and one draft guide, both `draft: true` placeholders. Games
+  collection is empty. About page has a bracketed contact placeholder.
+
+## Architecture
+
+```
+src/
+  pages/           index, tools/ (index + [slug] info pages), games/, writing/ (index + [id]),
+                   guides/ (index + [id]), about, rss.xml.ts, 404
+  layouts/Base.astro          <head>, fonts, grain overlay, Nav, Footer; takes theme + section
+  components/      Nav, Footer, Ribbon (hero + worn filter), SectionCard, PageHead, EntryList
+  content/
+    writing/*.md   title, summary, date, tags, draft
+    guides/*.md    title, summary, updated, tags, draft
+    tools/*.json   name, slug, summary, app (path under /public), repo?, version?, updated?, tags
+    games/*.json   same schema
+  content.config.ts
+  styles/global.css           all design tokens; print theme on :root, night on [data-theme='night']
+public/
+  apps/<slug>/     built tools (the app itself; /tools/<slug>/ is the *about* page)
+  play/<slug>/     built games
+  CNAME            leonkarsten.com
+scripts/import-sankey-studio.ps1   copies sankey-studio/dist/index.html in; -Build rebuilds first
+```
+
+Routes: `/tools/<slug>/` describes a tool, `/apps/<slug>/` runs it. Same split for games
+(`/games/` lists, `/play/<slug>/` runs). This split exists because a page and a public file at
+the same path collide in Astro.
+
+## Design decisions (settled — don't relitigate without Leon)
+
+- Direction A: warm 70s/80s print retro as the base; the Games section flips to a synthwave
+  night theme. "Retro in the accents, modern in the bones."
+- Palette from the stripe references: navy `#1b3a5c`, teal `#3c8d9e`, light teal `#7db9c1`,
+  cream `#f6e3bb`, peach `#f7c78e`, mustard `#f2c35b`, orange `#f2994a`, red `#e8542f`,
+  on paper `#f6ecd8`. Night: purple `#130b30` with cyan/violet/pink/peach/yellow.
+- Each section owns a colour: Tools teal, Games orange, Writing red, Guides mustard.
+- Type: Righteous (display, headings only) + Inter (everything else). Google Fonts.
+- Hero: the seven-band ribbon *is* the hero, full-bleed, text over it. Worn-print texture is an
+  SVG filter (flecks + scratches, no displacement). Leon rejected a version with warped edges.
+- Paper grain overlay at 9% (5% on night).
+- Mockups are on the Claude Design canvas "leonkarsten.com mockups" (two artboards: Home, Games).
+
+## Open tasks, in rough priority
+
+1. **HTTPS:** check GitHub Pages settings; tick Enforce HTTPS when available. If still failing
+   after 24 h with DNS correct, remove/re-add the domain, then GitHub support.
+2. **Contact method** on `/about/` (replace the bracketed placeholder). Leon to decide:
+   email alias, form service, or link.
+3. **First real post and guide.** Edit the placeholders in `src/content/writing/` and
+   `src/content/guides/`, set `draft: false` when Leon approves. The guide should be drafted from
+   the Sankey Studio README.
+4. **Sankey Studio retro themes** — brief at `sankey-studio/docs/retro-theme-brief.md` (in the
+   Sankey repo, not this one). After that ships, rerun `scripts/import-sankey-studio.ps1 -Build`
+   here and push.
+5. **First game.** Build in its own repo, copy the self-contained output to `public/play/<slug>/`,
+   add `src/content/games/<slug>.json`. The Games page currently shows a "being wheeled in" notice.
+6. Optional: raise DNS TTLs from 600 to 3600 once everything is stable; add a privacy-respecting
+   page counter (Plausible or GoatCounter), never Google Analytics.
+
+## Things that bit us (so they don't again)
+
+- GitHub workflow files can't be written through the remote file bridge; they were delivered as
+  `scripts/deploy.yml.txt` and moved by hand. Already in place now.
+- `npm ci` fails without `package-lock.json`. It's committed; keep it.
+- Windows had the business GitHub account's credentials cached; `cmdkey /delete:git:https://github.com`
+  then re-auth as `leonkarsten`.
+- domains.co.za's DNS panel was a dead letter while the nameservers pointed at Wix. Always check
+  `Resolve-DnsName <domain> -Type NS -Server 8.8.8.8` before editing records.
