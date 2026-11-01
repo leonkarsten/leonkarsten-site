@@ -1,0 +1,8 @@
+{
+  "name": "Last Line",
+  "slug": "last-line",
+  "summary": "Dots and boxes. Draw the fourth side of a box and it is yours, and you go again. Play the CPU or a friend on one screen.",
+  "app": "/play/last-line/",
+  "image": "/play/last-line/card.png",
+  "tags": ["dots and boxes", "1 or 2 players"]
+}
