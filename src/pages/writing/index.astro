@@ -1,0 +1,20 @@
+---
+import { getCollection } from 'astro:content';
+import Base from '../../layouts/Base.astro';
+import PageHead from '../../components/PageHead.astro';
+import EntryList from '../../components/EntryList.astro';
+
+const posts = (await getCollection('writing', ({ data }) => !data.draft)).sort(
+  (a, b) => b.data.date.valueOf() - a.data.date.valueOf()
+);
+const entries = posts.map((p) => ({ href: `/writing/${p.id}/`, title: p.data.title, summary: p.data.summary, date: p.data.date, tags: p.data.tags }));
+---
+
+<Base title="Writing" section="writing" description="Views, experiences and the occasional opinion, in date order.">
+  <PageHead eyebrow="Writing" color="var(--c-writing)" title="Views, experiences, the occasional opinion">
+    Newest first. Dates are shown so you can tell how old an opinion is.
+  </PageHead>
+  <section class="wrap">
+    <EntryList entries={entries} empty="Nothing published yet. The first posts are on their way." />
+  </section>
+</Base>

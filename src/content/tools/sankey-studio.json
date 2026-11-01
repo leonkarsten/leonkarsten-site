@@ -1,0 +1,7 @@
+{
+  "name": "Sankey Studio",
+  "slug": "sankey-studio",
+  "summary": "Turn a spreadsheet of flows into a clean Sankey diagram. Import from Excel, tune layout and palette, export a crisp image. Everything runs in your browser.",
+  "app": "/apps/sankey-studio/",
+  "tags": ["data", "excel", "visualisation"]
+}

@@ -1,0 +1,20 @@
+---
+import { getCollection } from 'astro:content';
+import Base from '../../layouts/Base.astro';
+import PageHead from '../../components/PageHead.astro';
+import EntryList from '../../components/EntryList.astro';
+
+const guides = (await getCollection('guides', ({ data }) => !data.draft)).sort(
+  (a, b) => b.data.updated.valueOf() - a.data.updated.valueOf()
+);
+const entries = guides.map((g) => ({ href: `/guides/${g.id}/`, title: g.data.title, summary: g.data.summary, date: g.data.updated, tags: g.data.tags, datePrefix: 'Updated ' }));
+---
+
+<Base title="Guides" section="guides" description="Instructions, coaching notes and nice-to-knows. Reference material, kept current.">
+  <PageHead eyebrow="Guides" color="var(--mustard-ink)" title="Instructions, coaching notes, nice-to-knows">
+    Reference material rather than diary entries: each guide shows when it was last updated, and gets revised rather than re-posted.
+  </PageHead>
+  <section class="wrap">
+    <EntryList entries={entries} empty="No guides published yet." />
+  </section>
+</Base>

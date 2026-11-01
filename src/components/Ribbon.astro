@@ -1,0 +1,57 @@
+---
+/**
+ * The signature stripe ribbon: seven bands sweeping across the hero,
+ * with a light "worn print" texture (flecks + scratches) applied in SVG,
+ * so it stays crisp at any size and costs no image download.
+ *
+ * Wear is controlled by the two tableValues lists in the filter:
+ * more leading zeros = sparser marks.
+ */
+const path = 'M -120 470 C 240 470 400 300 640 330 C 880 360 1000 120 1400 40';
+const bands = [
+  { color: 'var(--red)', dy: -144 },
+  { color: 'var(--orange)', dy: -96 },
+  { color: 'var(--peach)', dy: -48 },
+  { color: 'var(--cream)', dy: 0 },
+  { color: 'var(--teal-light)', dy: 48 },
+  { color: 'var(--teal)', dy: 96 },
+  { color: 'var(--navy)', dy: 144 },
+];
+---
+
+<svg
+  class="ribbon"
+  viewBox="0 0 1280 720"
+  preserveAspectRatio="xMidYMid slice"
+  aria-hidden="true"
+>
+  <defs>
+    <filter id="worn" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
+      <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="3" result="dots"></feTurbulence>
+      <feColorMatrix in="dots" type="luminanceToAlpha" result="dotsA"></feColorMatrix>
+      <feComponentTransfer in="dotsA" result="specks">
+        <feFuncA type="table" tableValues="0 0 0 0 0 0 0 0 0 0 0.6 1"></feFuncA>
+      </feComponentTransfer>
+      <feTurbulence type="fractalNoise" baseFrequency="0.015 0.55" numOctaves="1" seed="19" result="streak"></feTurbulence>
+      <feColorMatrix in="streak" type="luminanceToAlpha" result="streakA"></feColorMatrix>
+      <feComponentTransfer in="streakA" result="scratches">
+        <feFuncA type="table" tableValues="0 0 0 0 0 0 0 0 0 0 0 0.5 1"></feFuncA>
+      </feComponentTransfer>
+      <feComposite in="specks" in2="scratches" operator="over" result="wear"></feComposite>
+      <feComposite in="SourceGraphic" in2="wear" operator="out"></feComposite>
+    </filter>
+  </defs>
+  <g filter="url(#worn)" fill="none" stroke-width="50" stroke-linecap="butt">
+    {bands.map((b) => <path d={path} stroke={b.color} transform={`translate(0 ${b.dy})`} />)}
+  </g>
+</svg>
+
+<style>
+  .ribbon {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+</style>

@@ -1,0 +1,45 @@
+---
+interface Props {
+  href: string;
+  title: string;
+  color: string;
+  note?: string;
+  noteColor?: string;
+}
+const { href, title, color, note, noteColor = color } = Astro.props;
+---
+
+<a class="card section-card" href={href}>
+  <div class="bar" style={`background: ${color}`}></div>
+  <div class="body">
+    <p class="title">{title}</p>
+    <p class="desc"><slot /></p>
+    {note && <p class="note" style={`color: ${noteColor}`}>{note}</p>}
+  </div>
+</a>
+
+<style>
+  .bar { height: 8px; }
+  .body {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px 22px 24px;
+  }
+  .title {
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: 24px;
+    color: var(--navy);
+  }
+  .desc {
+    margin: 0;
+    font-size: 15px;
+    color: var(--ink-soft);
+  }
+  .note {
+    margin: 6px 0 0;
+    font-size: 13px;
+    font-weight: 600;
+  }
+</style>

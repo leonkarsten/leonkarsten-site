@@ -1,0 +1,28 @@
+---
+import Base from '../layouts/Base.astro';
+---
+
+<Base title="Not found" description="That page doesn't exist.">
+  <section class="wrap nf">
+    <p class="eyebrow">404</p>
+    <h1>Nothing on this shelf.</h1>
+    <p>The page you were after has moved, never existed, or is still in the workshop.</p>
+    <div class="actions">
+      <a class="btn" href="/">Back to the front</a>
+      <a class="btn btn--ghost" href="/games/">Play a game instead</a>
+    </div>
+  </section>
+</Base>
+
+<style>
+  .nf {
+    padding-top: 96px;
+    padding-bottom: 120px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+  h1 { font-size: clamp(40px, 6vw, 64px); }
+  p { margin: 0; max-width: 480px; color: var(--ink-soft); }
+  .actions { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 8px; }
+</style>

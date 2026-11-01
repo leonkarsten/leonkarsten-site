@@ -1,0 +1,55 @@
+---
+import { getCollection } from 'astro:content';
+import Base from '../../layouts/Base.astro';
+import PageHead from '../../components/PageHead.astro';
+
+export async function getStaticPaths() {
+  const tools = await getCollection('tools');
+  return tools.map((t) => ({ params: { slug: t.data.slug }, props: { tool: t } }));
+}
+
+const { tool } = Astro.props;
+const guides = (await getCollection('guides', ({ data }) => !data.draft && data.tags.includes(tool.data.slug)));
+---
+
+<Base title={tool.data.name} section="tools" description={tool.data.summary}>
+  <PageHead eyebrow="Tool" color="var(--c-tools)" title={tool.data.name}>{tool.data.summary}</PageHead>
+
+  <section class="wrap body">
+    <div class="actions">
+      <a class="btn" href={tool.data.app}>Open {tool.data.name}</a>
+      {tool.data.repo && <a class="btn btn--ghost" href={tool.data.repo}>Source code</a>}
+    </div>
+
+    <div class="prose">
+      <h2>Privacy</h2>
+      <p>
+        {tool.data.name} runs entirely in your browser. Files you open are read by your own machine
+        and are never uploaded anywhere. Close the tab and nothing is left behind.
+      </p>
+
+      <h2>Guides</h2>
+      {
+        guides.length === 0 ? (
+          <p>No guides yet for this tool.</p>
+        ) : (
+          <ul>
+            {guides.map((g) => (
+              <li><a href={`/guides/${g.id}/`}>{g.data.title}</a> — {g.data.summary}</li>
+            ))}
+          </ul>
+        )
+      }
+    </div>
+  </section>
+</Base>
+
+<style>
+  .body {
+    padding-bottom: 72px;
+    display: flex;
+    flex-direction: column;
+    gap: 36px;
+  }
+  .actions { display: flex; gap: 12px; flex-wrap: wrap; }
+</style>

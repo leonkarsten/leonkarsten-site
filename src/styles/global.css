@@ -1,0 +1,298 @@
+/* ---------------------------------------------------------------
+   leonkarsten.com — design tokens and base styles
+   Warm print retro (default) with a synthwave "night" theme for Games.
+   --------------------------------------------------------------- */
+
+:root {
+  /* paper + ink */
+  --paper: #f6ecd8;
+  --paper-2: #fbf5e8;
+  --line: #e4d7be;
+  --ink: #2a241f;
+  --ink-soft: #4a413a;
+  --ink-muted: #6b6055;
+  --ink-faint: #857a6e;
+
+  /* the stripes */
+  --navy: #1b3a5c;
+  --navy-deep: #0f2740;
+  --teal: #3c8d9e;
+  --teal-light: #7db9c1;
+  --cream: #f6e3bb;
+  --peach: #f7c78e;
+  --mustard: #f2c35b;
+  --mustard-ink: #a8791a;
+  --orange: #f2994a;
+  --orange-ink: #c9601e;
+  --red: #e8542f;
+
+  /* section colours */
+  --c-tools: var(--teal);
+  --c-games: var(--orange);
+  --c-writing: var(--red);
+  --c-guides: var(--mustard);
+
+  --link: #1e5a7a;
+  --link-hover: #0f3b52;
+
+  --font-display: 'Righteous', 'Trebuchet MS', sans-serif;
+  --font-body: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  --radius: 14px;
+  --radius-sm: 10px;
+  --measure: 1120px;
+
+  --stripe-rule: linear-gradient(
+    90deg,
+    var(--navy) 0 20%,
+    var(--teal) 20% 40%,
+    var(--mustard) 40% 60%,
+    var(--orange) 60% 80%,
+    var(--red) 80% 100%
+  );
+}
+
+/* Night theme — used by the Games section */
+[data-theme='night'] {
+  --paper: #130b30;
+  --paper-2: #1c1346;
+  --line: #3a2c7a;
+  --ink: #ede6ff;
+  --ink-soft: #d9cfff;
+  --ink-muted: #c9bdf0;
+  --ink-faint: #a99bd6;
+
+  --navy: #5eeaf5;
+  --navy-deep: #0e0826;
+  --teal: #8f7bff;
+  --teal-light: #5eeaf5;
+  --mustard: #ffc857;
+  --mustard-ink: #ffc857;
+  --orange: #ff8a5b;
+  --orange-ink: #ff8a5b;
+  --red: #ff5fb8;
+
+  --link: #5eeaf5;
+  --link-hover: #a9f5fa;
+
+  --stripe-rule: linear-gradient(
+    90deg,
+    #5eeaf5 0 20%,
+    #8f7bff 20% 40%,
+    #ff5fb8 40% 60%,
+    #ff8a5b 60% 80%,
+    #ffc857 80% 100%
+  );
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 17px;
+  line-height: 1.55;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+main {
+  flex: 1 0 auto;
+}
+
+a {
+  color: var(--link);
+  text-decoration: none;
+}
+a:hover {
+  color: var(--link-hover);
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-display);
+  font-weight: 400;
+  line-height: 1.05;
+  margin: 0;
+  color: var(--navy);
+}
+
+img,
+svg {
+  max-width: 100%;
+}
+
+/* layout helpers */
+.wrap {
+  width: 100%;
+  max-width: var(--measure);
+  margin: 0 auto;
+  padding-left: 16px;
+  padding-right: 16px;
+}
+
+.stripe-rule {
+  height: 6px;
+  background: var(--stripe-rule);
+}
+.stripe-rule--rounded {
+  border-radius: 3px;
+}
+
+.eyebrow {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--red);
+}
+
+.tag {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 4px 10px;
+  border-radius: 999px;
+  color: var(--paper-2);
+  background: var(--navy);
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  min-height: 48px;
+  padding: 0 24px;
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  font-size: 16px;
+  background: var(--navy);
+  color: var(--paper);
+  border: 2px solid var(--navy);
+}
+.btn:hover {
+  color: var(--paper);
+  background: var(--navy-deep);
+  border-color: var(--navy-deep);
+}
+.btn--ghost {
+  background: color-mix(in srgb, var(--paper) 85%, transparent);
+  color: var(--navy);
+}
+.btn--ghost:hover {
+  background: var(--paper-2);
+  color: var(--navy);
+  border-color: var(--navy);
+}
+[data-theme='night'] .btn {
+  color: var(--paper);
+}
+[data-theme='night'] .btn--ghost {
+  color: var(--navy);
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  color: var(--ink);
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+.card:hover {
+  transform: translateY(-3px);
+  color: var(--ink);
+}
+[data-theme='night'] .card:hover {
+  border-color: #ff5fb8;
+}
+
+/* paper grain overlay */
+.grain {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  pointer-events: none;
+  opacity: 0.09;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='160' height='160' filter='url(%23n)'/></svg>");
+}
+[data-theme='night'] .grain {
+  opacity: 0.05;
+}
+
+/* long-form content (posts, guides) */
+.prose {
+  max-width: 720px;
+  font-size: 18px;
+}
+.prose h2 {
+  font-size: 32px;
+  margin-top: 2.2em;
+  margin-bottom: 0.6em;
+}
+.prose h3 {
+  font-size: 24px;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+}
+.prose p,
+.prose ul,
+.prose ol {
+  margin: 0 0 1.2em;
+}
+.prose code {
+  font-size: 0.92em;
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+}
+.prose pre {
+  padding: 16px 18px;
+  border-radius: var(--radius-sm);
+  overflow-x: auto;
+  border: 1px solid var(--line);
+}
+.prose pre code {
+  border: 0;
+  padding: 0;
+  background: none;
+}
+.prose img {
+  border-radius: var(--radius-sm);
+}
+.prose blockquote {
+  margin: 1.4em 0;
+  padding-left: 18px;
+  border-left: 4px solid var(--mustard);
+  color: var(--ink-soft);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .card,
+  .card:hover {
+    transition: none;
+    transform: none;
+  }
+}

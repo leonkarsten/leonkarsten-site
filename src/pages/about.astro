@@ -1,0 +1,41 @@
+---
+import Base from '../layouts/Base.astro';
+import PageHead from '../components/PageHead.astro';
+---
+
+<Base title="About" section="about" description="What this site is, what it isn't, and how to get in touch.">
+  <PageHead eyebrow="About" title="A workshop, not a portfolio">
+    This site is a place to put things I've made and things I've learned, so that other people can use them.
+  </PageHead>
+
+  <section class="wrap body">
+    <div class="prose">
+      <h2>What you'll find</h2>
+      <p>
+        Browser tools that do one job well. Retro games rebuilt for a modern browser. Notes on
+        things I'm interested in, and guides for things I've had to figure out more than once.
+        There is no single theme, and that is deliberate.
+      </p>
+
+      <h2>What you won't</h2>
+      <p>
+        Photos, family, or personal details. This is about interests, facts, instructions and
+        experiences, nothing more.
+      </p>
+
+      <h2>How it's built</h2>
+      <p>
+        The site is static and hosted on GitHub Pages. The tools and games are built with a great deal of help
+        from Claude Code, and run entirely in your browser. The only thing counted is page views;
+        there are no accounts and nothing you do here is uploaded anywhere.
+      </p>
+
+      <h2 id="contact">Contact</h2>
+      <p>[Add a contact method here — an email alias, a form service, or a link.]</p>
+    </div>
+  </section>
+</Base>
+
+<style>
+  .body { padding-bottom: 72px; }
+</style>

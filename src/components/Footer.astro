@@ -1,0 +1,42 @@
+---
+const year = new Date().getFullYear();
+---
+
+<footer class="site-footer">
+  <div class="stripe-rule" aria-hidden="true"></div>
+  <div class="wrap inner">
+    <p>© {year} Leon Karsten · Made in South Africa with a lot of help from Claude Code</p>
+    <ul>
+      <li><a href="/about/">About</a></li>
+      <li><a href="/about/#contact">Contact</a></li>
+      <li><a href="/rss.xml">RSS</a></li>
+    </ul>
+  </div>
+</footer>
+
+<style>
+  .site-footer {
+    margin-top: auto;
+    border-top: 1px solid var(--line);
+  }
+  .inner {
+    padding-top: 32px;
+    padding-bottom: 40px;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 16px;
+    font-size: 14px;
+    color: var(--ink-muted);
+  }
+  p {
+    margin: 0;
+  }
+  ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    gap: 20px;
+  }
+</style>

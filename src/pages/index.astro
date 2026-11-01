@@ -1,0 +1,282 @@
+---
+import { getCollection } from 'astro:content';
+import Base from '../layouts/Base.astro';
+import Ribbon from '../components/Ribbon.astro';
+import SectionCard from '../components/SectionCard.astro';
+
+const tools = await getCollection('tools');
+const games = await getCollection('games');
+const writing = (await getCollection('writing', ({ data }) => !data.draft)).sort(
+  (a, b) => b.data.date.valueOf() - a.data.date.valueOf()
+);
+const guides = (await getCollection('guides', ({ data }) => !data.draft)).sort(
+  (a, b) => b.data.updated.valueOf() - a.data.updated.valueOf()
+);
+const featured = tools.find((t) => t.data.slug === 'sankey-studio') ?? tools[0];
+
+const fmt = (d: Date) => d.toLocaleDateString('en-ZA', { year: 'numeric', month: 'short', day: 'numeric' });
+
+// Latest across writing + guides, newest three
+const latest = [
+  ...writing.map((p) => ({ kind: 'Writing', color: 'var(--c-writing)', title: p.data.title, summary: p.data.summary, date: p.data.date, href: `/writing/${p.id}/` })),
+  ...guides.map((g) => ({ kind: 'Guide', color: 'var(--mustard-ink)', title: g.data.title, summary: g.data.summary, date: g.data.updated, href: `/guides/${g.id}/` })),
+]
+  .sort((a, b) => b.date.valueOf() - a.date.valueOf())
+  .slice(0, 3);
+
+const count = (n: number, one: string, many: string) => (n === 1 ? `1 ${one}` : `${n} ${many}`);
+---
+
+<Base title="leon karsten">
+  <section class="hero">
+    <Ribbon />
+    <div class="wrap hero-inner">
+      <p class="eyebrow">A personal workshop</p>
+      <h1>Things I like,<br />built to be used.</h1>
+      <p class="lede">
+        Browser tools, retro games, notes and how-tos. No single theme — just a growing collection
+        of interests, each one made with care and free to use.
+      </p>
+      <div class="actions">
+        <a class="btn" href="/tools/">Browse the tools</a>
+        <a class="btn btn--ghost" href="/games/">Play a game</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="wrap sections">
+    <SectionCard href="/tools/" color="var(--c-tools)" title="Tools" note={`${count(tools.length, 'tool', 'tools')}, more coming →`}>
+      Small browser apps that do one job well. Runs on your machine, nothing uploaded.
+    </SectionCard>
+    <SectionCard href="/games/" color="var(--c-games)" noteColor="var(--orange-ink)" title="Games" note="Enter the arcade →">
+      Retro arcade remakes, playable in the browser. Keyboard recommended, coffee optional.
+    </SectionCard>
+    <SectionCard href="/writing/" color="var(--c-writing)" title="Writing" note="Read the latest →">
+      Views, experiences and the occasional opinion. Dated, so you can tell what's old.
+    </SectionCard>
+    <SectionCard href="/guides/" color="var(--c-guides)" noteColor="var(--mustard-ink)" title="Guides" note="Open the shelf →">
+      Instructions, coaching notes and nice-to-knows. Reference material, kept current.
+    </SectionCard>
+  </section>
+
+  {
+    featured && (
+      <section class="featured">
+        <div class="wrap featured-inner">
+          <div class="featured-copy">
+            <span class="tag" style="background: var(--teal)">Featured tool</span>
+            <h2>{featured.data.name}</h2>
+            <p>{featured.data.summary}</p>
+            <div class="actions">
+              <a class="btn btn--gold" href={featured.data.app}>Open {featured.data.name}</a>
+              <a class="btn btn--outline" href={`/tools/${featured.data.slug}/`}>How it works</a>
+            </div>
+          </div>
+          <a class="featured-art" href={featured.data.app} aria-label={`Open ${featured.data.name}`}>
+            <svg viewBox="0 0 400 240" aria-hidden="true">
+              <g fill="none" stroke-linecap="butt" opacity=".95">
+                <path d="M40 50 C 160 50 180 60 320 60" stroke="#3c8d9e" stroke-width="30" />
+                <path d="M40 110 C 160 110 180 100 320 100" stroke="#f2994a" stroke-width="20" />
+                <path d="M40 110 C 160 110 180 170 320 170" stroke="#e8542f" stroke-width="18" />
+                <path d="M40 170 C 160 170 180 210 320 210" stroke="#f2c35b" stroke-width="24" />
+              </g>
+              <g fill="#1b3a5c">
+                <rect x="26" y="30" width="14" height="160" rx="2" />
+                <rect x="320" y="42" width="14" height="36" rx="2" />
+                <rect x="320" y="88" width="14" height="24" rx="2" />
+                <rect x="320" y="158" width="14" height="22" rx="2" />
+                <rect x="320" y="196" width="14" height="28" rx="2" />
+              </g>
+            </svg>
+          </a>
+        </div>
+      </section>
+    )
+  }
+
+  <section class="wrap latest">
+    <div class="latest-head">
+      <h2>Latest</h2>
+      <a href="/writing/">Everything, by date →</a>
+    </div>
+    {
+      latest.length === 0 ? (
+        <p class="empty">Nothing published yet. The first posts and guides are on their way.</p>
+      ) : (
+        <div class="latest-grid">
+          {latest.map((item) => (
+            <a class="card latest-card" href={item.href}>
+              <span class="tag" style={`background: ${item.color}`}>{item.kind}</span>
+              <p class="latest-title">{item.title}</p>
+              <p class="latest-summary">{item.summary}</p>
+              <p class="latest-date">{fmt(item.date)}</p>
+            </a>
+          ))}
+        </div>
+      )
+    }
+  </section>
+</Base>
+
+<style>
+  .hero {
+    position: relative;
+    min-height: 720px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .hero-inner {
+    position: relative;
+    z-index: 1;
+    padding-top: 72px;
+    padding-bottom: 300px;
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+  }
+  .hero h1 {
+    font-size: clamp(44px, 7vw, 72px);
+    max-width: 640px;
+  }
+  .lede {
+    margin: 0;
+    font-size: 19px;
+    max-width: 500px;
+    color: var(--ink-soft);
+  }
+  .actions {
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+    margin-top: 6px;
+  }
+
+  .sections {
+    padding-top: 16px;
+    padding-bottom: 64px;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 20px;
+  }
+  @media (max-width: 900px) {
+    .sections { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  @media (max-width: 480px) {
+    .sections { grid-template-columns: 1fr; }
+  }
+
+  .featured {
+    background: var(--navy);
+    color: var(--paper);
+  }
+  .featured-inner {
+    padding-top: 64px;
+    padding-bottom: 64px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 40px;
+  }
+  .featured-copy {
+    flex: 1 1 380px;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+  .featured-copy .tag { align-self: flex-start; }
+  .featured h2 {
+    color: var(--paper);
+    font-size: clamp(32px, 4vw, 44px);
+  }
+  .featured p {
+    margin: 0;
+    color: #d7e2ea;
+    max-width: 480px;
+  }
+  .btn--gold {
+    background: var(--mustard);
+    border-color: var(--mustard);
+    color: var(--navy);
+    font-weight: 700;
+  }
+  .btn--gold:hover {
+    background: #ffd36e;
+    border-color: #ffd36e;
+    color: var(--navy);
+  }
+  .btn--outline {
+    background: transparent;
+    border-color: var(--teal-light);
+    color: var(--paper);
+  }
+  .btn--outline:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: var(--paper);
+    color: var(--paper);
+  }
+  .featured-art {
+    flex: 1 1 420px;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    aspect-ratio: 16 / 10;
+    border-radius: var(--radius);
+    background: var(--paper);
+    border: 6px solid var(--navy-deep);
+  }
+  .featured-art svg { width: 88%; }
+
+  .latest {
+    padding-top: 64px;
+    padding-bottom: 64px;
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+  }
+  .latest-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .latest h2 { font-size: 36px; }
+  .latest-head a { font-weight: 600; font-size: 15px; }
+  .latest-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 20px;
+  }
+  @media (max-width: 800px) {
+    .latest-grid { grid-template-columns: 1fr; }
+  }
+  .latest-card {
+    padding: 22px;
+    gap: 10px;
+  }
+  .latest-card .tag { align-self: flex-start; }
+  .latest-title {
+    margin: 0;
+    font-size: 19px;
+    font-weight: 700;
+    line-height: 1.3;
+    color: var(--navy);
+  }
+  .latest-summary {
+    margin: 0;
+    font-size: 14px;
+    color: var(--ink-soft);
+  }
+  .latest-date {
+    margin: auto 0 0;
+    font-size: 13px;
+    color: var(--ink-faint);
+  }
+  .empty {
+    margin: 0;
+    color: var(--ink-muted);
+  }
+</style>

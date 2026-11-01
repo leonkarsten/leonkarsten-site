@@ -1,0 +1,57 @@
+---
+import '../styles/global.css';
+import Nav from '../components/Nav.astro';
+import Footer from '../components/Footer.astro';
+
+interface Props {
+  title: string;
+  description?: string;
+  /** 'print' (default, warm cream) or 'night' (synthwave, used by Games) */
+  theme?: 'print' | 'night';
+  /** which nav item is current */
+  section?: 'tools' | 'games' | 'writing' | 'guides' | 'about';
+}
+
+const {
+  title,
+  description = 'Browser tools, retro games, notes and how-tos. A personal workshop by Leon Karsten.',
+  theme = 'print',
+  section,
+} = Astro.props;
+
+const siteName = 'leon karsten';
+const fullTitle = title === siteName ? siteName : `${title} · ${siteName}`;
+const canonical = new URL(Astro.url.pathname, Astro.site);
+---
+
+<!doctype html>
+<html lang="en" data-theme={theme}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{fullTitle}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonical} />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <meta property="og:title" content={fullTitle} />
+    <meta property="og:description" content={description} />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content={canonical} />
+    <meta name="theme-color" content={theme === 'night' ? '#130b30' : '#f6ecd8'} />
+    <link rel="alternate" type="application/rss+xml" title="leon karsten — writing" href="/rss.xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Righteous&family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <div class="grain" aria-hidden="true"></div>
+    <Nav current={section} />
+    <main>
+      <slot />
+    </main>
+    <Footer />
+  </body>
+</html>

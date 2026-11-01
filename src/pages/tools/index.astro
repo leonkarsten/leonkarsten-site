@@ -1,0 +1,66 @@
+---
+import { getCollection } from 'astro:content';
+import Base from '../../layouts/Base.astro';
+import PageHead from '../../components/PageHead.astro';
+
+const tools = (await getCollection('tools')).sort((a, b) => a.data.name.localeCompare(b.data.name));
+---
+
+<Base title="Tools" section="tools" description="Small browser apps that do one job well. Nothing is uploaded; everything runs on your machine.">
+  <PageHead eyebrow="Tools" color="var(--c-tools)" title="Small apps that do one job well">
+    Each tool runs entirely in your browser. Your files stay on your machine, there's nothing to sign up for, and you can bookmark any of them and come back whenever.
+  </PageHead>
+
+  <section class="wrap list">
+    {
+      tools.map((t) => (
+        <article class="card tool">
+          <div class="bar" />
+          <div class="body">
+            <h2>{t.data.name}</h2>
+            <p class="summary">{t.data.summary}</p>
+            <div class="meta">
+              {t.data.tags.map((tag) => <span class="chip">{tag}</span>)}
+            </div>
+            <div class="actions">
+              <a class="btn" href={t.data.app}>Open {t.data.name}</a>
+              <a class="btn btn--ghost" href={`/tools/${t.data.slug}/`}>About this tool</a>
+            </div>
+          </div>
+        </article>
+      ))
+    }
+  </section>
+</Base>
+
+<style>
+  .list {
+    padding-top: 8px;
+    padding-bottom: 72px;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 20px;
+  }
+  @media (max-width: 760px) { .list { grid-template-columns: 1fr; } }
+  .tool { gap: 0; }
+  .tool:hover { transform: none; }
+  .bar { height: 8px; background: var(--c-tools); }
+  .body {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 16px 24px 26px;
+  }
+  h2 { font-size: 28px; }
+  .summary { margin: 0; color: var(--ink-soft); }
+  .meta { display: flex; gap: 8px; flex-wrap: wrap; }
+  .chip {
+    font-size: 12px;
+    font-weight: 600;
+    padding: 3px 9px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    color: var(--ink-muted);
+  }
+  .actions { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 6px; }
+</style>
