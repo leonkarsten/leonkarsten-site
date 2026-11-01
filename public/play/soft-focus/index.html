@@ -1,0 +1,1229 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Soft Focus</title>
+<meta name="description" content="A hidden shape in a field of dots. Guess it between yourselves, then reveal it.">
+<meta name="theme-color" content="#000000">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2016%2016'%20shape-rendering='crispEdges'%3E%3Crect%20width='16'%20height='16'%20fill='%233a1858'/%3E%3Crect%20x='1'%20y='2'%20width='1'%20height='1'%20fill='%23ff5fb8'/%3E%3Crect%20x='5'%20y='4'%20width='1'%20height='1'%20fill='%23ff5fb8'/%3E%3Crect%20x='9'%20y='2'%20width='1'%20height='1'%20fill='%23ff5fb8'/%3E%3Crect%20x='13'%20y='5'%20width='1'%20height='1'%20fill='%23ff5fb8'/%3E%3Crect%20x='3'%20y='9'%20width='1'%20height='1'%20fill='%238f7bff'/%3E%3Crect%20x='7'%20y='11'%20width='1'%20height='1'%20fill='%238f7bff'/%3E%3Crect%20x='11'%20y='9'%20width='1'%20height='1'%20fill='%238f7bff'/%3E%3Crect%20x='14'%20y='13'%20width='1'%20height='1'%20fill='%238f7bff'/%3E%3C/svg%3E">
+<style>
+:root {
+  --void: #000;
+  --chrome: #8f8fb0;
+  --chrome-hi: #5eeaf5;
+  --edge: #2a2a40;
+  --start: #e8302f;
+  --ui: ui-monospace, 'Cascadia Mono', Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; height: 100%; background: var(--void); color: var(--chrome); }
+body {
+  font-family: var(--ui);
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  height: 100dvh;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: 'bar' 'stage' 'pad';
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.bar {
+  grid-area: bar;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+}
+.bar a, .bar button {
+  font: 700 12px/1 var(--ui);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--chrome);
+  background: none;
+  border: 1px solid transparent;
+  padding: 9px 10px;
+  text-decoration: none;
+  cursor: pointer;
+  border-radius: 0;
+}
+.bar a:hover, .bar button:hover, .bar a:focus-visible, .bar button:focus-visible {
+  color: var(--chrome-hi);
+  border-color: var(--edge);
+  outline: none;
+}
+.bar button[aria-pressed='true'] { color: var(--chrome-hi); }
+.toggles { display: flex; gap: 2px; }
+
+.stage {
+  grid-area: stage;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  padding: 8px 16px;
+}
+/* A faint edge, so an unexplored black playfield still has a size. */
+.screen { position: relative; line-height: 0; touch-action: none; box-shadow: 0 0 0 1px #1c1c2c; }
+.screen canvas {
+  display: block;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+/* The CRT switch. Off by default: sharp pixels are the honest picture, the
+   tube is a costume. Scanlines are one per game pixel row (--px is set by
+   the screen fit), so they never beat against the art. */
+.screen.crt { border-radius: 3% / 4%; overflow: hidden; box-shadow: 0 0 0 4px #0b0b14, 0 0 36px rgba(94, 234, 245, 0.12); }
+.screen.crt canvas { filter: saturate(1.25) brightness(1.12) contrast(1.05) blur(calc(var(--px) * 0.18)); }
+.screen.crt::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background:
+    radial-gradient(ellipse at center, rgba(0, 0, 0, 0) 58%, rgba(0, 0, 0, 0.6) 100%),
+    repeating-linear-gradient(to bottom,
+      rgba(0, 0, 0, 0) 0, rgba(0, 0, 0, 0) calc(var(--px) * 0.55),
+      rgba(0, 0, 0, 0.38) calc(var(--px) * 0.55), rgba(0, 0, 0, 0.38) var(--px));
+  box-shadow: inset 0 0 48px rgba(0, 0, 0, 0.75);
+}
+
+/* Touch controls: shown on touch screens only. */
+.pad {
+  grid-area: pad;
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  max-width: 380px;
+  margin: 0 auto;
+  padding: 4px 20px 16px;
+}
+body.touch .pad { display: flex; }
+.dpad {
+  display: grid;
+  grid-template-columns: repeat(3, 54px);
+  grid-template-rows: repeat(3, 50px);
+  gap: 3px;
+}
+.dpad button, .start {
+  font: 700 18px/1 var(--ui);
+  color: var(--chrome);
+  background: #12121e;
+  border: 2px solid var(--edge);
+  border-radius: 6px;
+  padding: 0;
+  touch-action: none;
+  cursor: pointer;
+}
+.dpad button:active { background: #24243a; color: var(--chrome-hi); }
+.dpad .up { grid-area: 1 / 2; }
+.dpad .left { grid-area: 2 / 1; }
+.dpad .right { grid-area: 2 / 3; }
+.dpad .down { grid-area: 3 / 2; }
+.start {
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  background: var(--start);
+  border: 4px solid #7a1414;
+  color: #fff;
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  box-shadow: inset 0 -6px 0 rgba(0, 0, 0, 0.25);
+}
+.start:active { transform: translateY(2px); box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.25); }
+
+/* A phone on its side: d-pad left of the screen, START right of it. A game
+   with no d-pad (its keys are on the screen) moves the bar to a column
+   instead, so an upright screen gets the full height. */
+@media (orientation: landscape) and (max-height: 520px) {
+  body.no-pad {
+    grid-template-rows: minmax(0, 1fr);
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas: 'bar stage';
+  }
+  body.no-pad .bar { flex-direction: column; justify-content: flex-start; align-items: flex-start; }
+  body.no-pad .toggles { flex-direction: column; }
+  .stage { padding: 4px 8px; }
+  body.touch:not(.no-pad) {
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas: 'bar bar bar' 'dpad stage start';
+  }
+  body.touch:not(.no-pad) .pad { display: contents; }
+  body.touch .dpad { grid-area: dpad; align-self: center; margin-left: 12px; }
+  body.touch .start { grid-area: start; align-self: center; margin-right: 16px; }
+}
+
+/* Two-button pairs, for games with two things to turn (Sorted's loops). */
+.pair { display: grid; grid-template-columns: repeat(2, 54px); grid-template-rows: 54px auto; gap: 3px; justify-items: center; }
+.pair button {
+  width: 54px; height: 54px;
+  font: 700 18px/1 var(--ui); color: var(--chrome);
+  background: #12121e; border: 2px solid var(--edge); border-radius: 6px;
+  padding: 0; touch-action: none; cursor: pointer;
+}
+.pair button:active { background: #24243a; color: var(--chrome-hi); }
+.pair span { grid-column: 1 / 3; font: 700 10px/1 var(--ui); letter-spacing: 0.14em; color: var(--chrome); }
+@media (orientation: landscape) and (max-height: 520px) {
+  body.touch:not(.no-pad) .pad.loops { display: flex; flex-direction: column; gap: 12px; grid-area: start; align-self: center; margin-right: 12px; padding: 0; }
+  body.touch:not(.no-pad) .pad.loops .start { margin: 0; }
+}
+</style>
+</head>
+<body class="no-pad">
+
+<header class="bar">
+  <a href="/games/">&larr; Games</a>
+  <div class="toggles">
+    <button type="button" data-action="crt" aria-pressed="false">CRT off</button>
+    <button type="button" data-action="mute" aria-pressed="true">Sound on</button>
+  </div>
+</header>
+
+<main class="stage" id="stage">
+  <div class="screen" id="screen">
+    <canvas id="c" role="img" aria-label="Soft Focus: a random-dot picture with a shape hidden in it. Space or N for a new picture, R to reveal the answer."></canvas>
+  </div>
+</main>
+
+<script>
+(() => {
+'use strict';
+// ---- engine/font.js
+// 5x7 bitmap font, one string per glyph, rows separated by spaces. Drawn with
+// fillRect so it stays on the pixel grid at any scale; there is no web font.
+const GLYPHS = {
+  A: '.###. #...# #...# ##### #...# #...# #...#',
+  B: '####. #...# #...# ####. #...# #...# ####.',
+  C: '.###. #...# #.... #.... #.... #...# .###.',
+  D: '####. #...# #...# #...# #...# #...# ####.',
+  E: '##### #.... #.... ####. #.... #.... #####',
+  F: '##### #.... #.... ####. #.... #.... #....',
+  G: '.###. #...# #.... #.### #...# #...# .####',
+  H: '#...# #...# #...# ##### #...# #...# #...#',
+  I: '.###. ..#.. ..#.. ..#.. ..#.. ..#.. .###.',
+  J: '..### ...#. ...#. ...#. ...#. #..#. .##..',
+  K: '#...# #..#. #.#.. ##... #.#.. #..#. #...#',
+  L: '#.... #.... #.... #.... #.... #.... #####',
+  M: '#...# ##.## #.#.# #.#.# #...# #...# #...#',
+  N: '#...# #...# ##..# #.#.# #..## #...# #...#',
+  O: '.###. #...# #...# #...# #...# #...# .###.',
+  P: '####. #...# #...# ####. #.... #.... #....',
+  Q: '.###. #...# #...# #...# #.#.# #..#. .##.#',
+  R: '####. #...# #...# ####. #.#.. #..#. #...#',
+  S: '.###. #...# #.... .###. ....# #...# .###.',
+  T: '##### ..#.. ..#.. ..#.. ..#.. ..#.. ..#..',
+  U: '#...# #...# #...# #...# #...# #...# .###.',
+  V: '#...# #...# #...# #...# #...# .#.#. ..#..',
+  W: '#...# #...# #...# #.#.# #.#.# #.#.# .#.#.',
+  X: '#...# #...# .#.#. ..#.. .#.#. #...# #...#',
+  Y: '#...# #...# .#.#. ..#.. ..#.. ..#.. ..#..',
+  Z: '##### ....# ...#. ..#.. .#... #.... #####',
+  0: '.###. #...# #..## #.#.# ##..# #...# .###.',
+  1: '..#.. .##.. ..#.. ..#.. ..#.. ..#.. .###.',
+  2: '.###. #...# ....# ...#. ..#.. .#... #####',
+  3: '##### ...#. ..#.. ...#. ....# #...# .###.',
+  4: '...#. ..##. .#.#. #..#. ##### ...#. ...#.',
+  5: '##### #.... ####. ....# ....# #...# .###.',
+  6: '..##. .#... #.... ####. #...# #...# .###.',
+  7: '##### ....# ...#. ..#.. .#... .#... .#...',
+  8: '.###. #...# #...# .###. #...# #...# .###.',
+  9: '.###. #...# #...# .#### ....# ...#. .##..',
+  ' ': '..... ..... ..... ..... ..... ..... .....',
+  '.': '..... ..... ..... ..... ..... .##.. .##..',
+  ',': '..... ..... ..... ..... .##.. ..#.. .#...',
+  '!': '..#.. ..#.. ..#.. ..#.. ..#.. ..... ..#..',
+  '?': '.###. #...# ....# ...#. ..#.. ..... ..#..',
+  '-': '..... ..... ..... .###. ..... ..... .....',
+  '+': '..... ..#.. ..#.. ##### ..#.. ..#.. .....',
+  '=': '..... ..... ##### ..... ##### ..... .....',
+  ':': '..... .##.. .##.. ..... .##.. .##.. .....',
+  '/': '....# ...#. ...#. ..#.. .#... .#... #....',
+  "'": '..#.. ..#.. .#... ..... ..... ..... .....',
+  '<': '...#. ..#.. .#... #.... .#... ..#.. ...#.',
+  '>': '.#... ..#.. ...#. ....# ...#. ..#.. .#...',
+  '*': '..... #...# .#.#. ..#.. .#.#. #...# .....',
+  '%': '##..# ##.#. ...#. ..#.. .#... .#.## #..##',
+};
+const FONT_CHARS = Object.keys(GLYPHS).join('');
+
+const FONT_BITS = {};
+for (const [ch, rows] of Object.entries(GLYPHS)) FONT_BITS[ch] = rows.split(' ');
+
+const GLYPH_W = 5, GLYPH_H = 7, ADVANCE = 6;
+
+function textWidth(str, scale = 1) {
+  return str.length ? (str.length * ADVANCE - 1) * scale : 0;
+}
+
+// `color` is one colour, or an array of seven (one per glyph row) for the
+// striped logos arcade title screens used.
+function text(ctx, str, x, y, color, opts = {}) {
+  const scale = opts.scale || 1;
+  const s = String(str).toUpperCase();
+  let left = x;
+  if (opts.align === 'center') left = x - Math.floor(textWidth(s, scale) / 2);
+  else if (opts.align === 'right') left = x - textWidth(s, scale);
+  for (let i = 0; i < s.length; i++) {
+    const rows = FONT_BITS[s[i]] || FONT_BITS['?'];
+    const gx = left + i * ADVANCE * scale;
+    for (let r = 0; r < GLYPH_H; r++) {
+      ctx.fillStyle = Array.isArray(color) ? color[r] : color;
+      const row = rows[r];
+      for (let c = 0; c < GLYPH_W; c++) {
+        if (row[c] === '#') ctx.fillRect(gx + c * scale, y + r * scale, scale, scale);
+      }
+    }
+  }
+}
+
+// ---- engine/screen.js
+// The arcade screen: a small fixed-resolution canvas, scaled up in whole
+// DEVICE pixels so every game pixel is the same size and stays sharp. A 336px
+// screen on a 3x phone is drawn at exactly 3 device pixels per game pixel,
+// never 3.35, which is what makes uneven, shimmering pixels.
+function makeScreen({ canvas, stage, frame, w, h, crtKey }) {
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+
+  function fit() {
+    const dpr = window.devicePixelRatio || 1;
+    // clientWidth/Height include the stage's padding; the screen gets only
+    // what is inside it.
+    const cs = getComputedStyle(stage);
+    const aw = stage.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    const ah = stage.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+    const s = Math.max(1, Math.floor(Math.min((aw * dpr) / w, (ah * dpr) / h)));
+    canvas.style.width = (s * w) / dpr + 'px';
+    canvas.style.height = (s * h) / dpr + 'px';
+    frame.style.setProperty('--px', s / dpr + 'px');
+  }
+  addEventListener('resize', fit);
+  if (window.visualViewport) visualViewport.addEventListener('resize', fit);
+  fit();
+
+  let crt = false;
+  try { crt = localStorage.getItem(crtKey) === '1'; } catch { crt = false; }
+  function setCrt(on) {
+    crt = on;
+    frame.classList.toggle('crt', on);
+    try { localStorage.setItem(crtKey, on ? '1' : '0'); } catch {}
+  }
+  setCrt(crt);
+
+  return {
+    ctx, w, h, fit,
+    get crt() { return crt; },
+    toggleCrt() { setCrt(!crt); return crt; },
+  };
+}
+
+// ---- engine/sound.js
+// Chip sound: square, triangle and noise voices made in the browser. No audio
+// files. Browsers only allow sound after a tap or key, so `wake()` is called
+// from every input handler and does nothing until then.
+function makeSound(muteKey) {
+  let ac = null, out = null;
+  let muted = false;
+  try { muted = localStorage.getItem(muteKey) === '1'; } catch { muted = false; }
+
+  function wake() {
+    if (ac) { if (ac.state === 'suspended') ac.resume(); return; }
+    const Ctor = window.AudioContext || window.webkitAudioContext;
+    if (!Ctor) return;
+    ac = new Ctor();
+    out = ac.createGain();
+    out.gain.value = muted ? 0 : 1;
+    out.connect(ac.destination);
+  }
+
+  // One note. `at` is seconds from now, `to` slides the pitch.
+  function note(freq, dur, { type = 'square', vol = 0.05, at = 0, to = null } = {}) {
+    if (!ac) return;
+    const t = ac.currentTime + at;
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(freq, t);
+    if (to) o.frequency.exponentialRampToValueAtTime(to, t + dur);
+    g.gain.setValueAtTime(vol, t);
+    g.gain.setValueAtTime(vol, t + dur * 0.7);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(out);
+    o.start(t); o.stop(t + dur + 0.02);
+  }
+
+  // A run of notes: [[freq, dur], ...], each after the last; 0 is a rest.
+  function tune(notes, opts = {}) {
+    let at = opts.at || 0;
+    for (const [f, d] of notes) {
+      if (f) note(f, d * 0.92, { ...opts, at });
+      at += d;
+    }
+  }
+
+  function noise(dur, { vol = 0.2, cutoff = 900, at = 0 } = {}) {
+    if (!ac) return;
+    const len = Math.floor(ac.sampleRate * dur);
+    const buf = ac.createBuffer(1, len, ac.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len) ** 2;
+    const s = ac.createBufferSource(); s.buffer = buf;
+    const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = cutoff;
+    const g = ac.createGain(); g.gain.value = vol;
+    s.connect(f); f.connect(g); g.connect(out);
+    s.start(ac.currentTime + at);
+  }
+
+  // A held sound (an engine): filtered noise that runs for the whole session
+  // and is gated by its gain. Starting a source every frame is what makes
+  // engine sound crackle. Returns set(on); safe to call before wake().
+  function drone({ cutoff = 420, vol = 0.16 } = {}) {
+    let gain = null;
+    return on => {
+      if (!ac) return;
+      if (!gain) {
+        const len = ac.sampleRate * 2;
+        const buf = ac.createBuffer(1, len, ac.sampleRate);
+        const d = buf.getChannelData(0);
+        for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+        const s = ac.createBufferSource(); s.buffer = buf; s.loop = true;
+        const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = cutoff;
+        gain = ac.createGain(); gain.gain.value = 0;
+        s.connect(f); f.connect(gain); gain.connect(out);
+        s.start();
+      }
+      gain.gain.setTargetAtTime(on ? vol : 0, ac.currentTime, 0.03);
+    };
+  }
+
+  function setMuted(on) {
+    muted = on;
+    if (out) out.gain.value = on ? 0 : 1;
+    try { localStorage.setItem(muteKey, on ? '1' : '0'); } catch {}
+  }
+
+  return {
+    wake, note, tune, noise, drone,
+    get muted() { return muted; },
+    toggleMute() { setMuted(!muted); return muted; },
+  };
+}
+
+// ---- engine/input.js
+// Keyboard and touch in one place. `held` is what a game polls each tick;
+// `onDir` fires once per press (menus, initials); `onAction` carries the
+// buttons: start, pause, back, crt, mute.
+//
+// A word game passes `onLetter`: then every letter key is a letter (WASD stop
+// being directions, P/C/M stop being shortcuts; those stay on the buttons) and
+// only the arrows move. `onKey(code)` gets any other key and returns true if
+// it used it. `onPoint(x, y)` receives taps on the screen in GAME
+// pixels; returning true means the game used the tap, otherwise it is START.
+function makeInput({ screen, onAction, onDir, onAny, onLetter = null, onPoint = null, onKey = null }) {
+  // `fire` is Space, Enter or the START button while held, for games that
+  // hold a trigger down; every other game ignores it.
+  const held = { up: false, down: false, left: false, right: false, fire: false };
+  const KEYS = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
+  const ACTIONS = { Space: 'start', Enter: 'start', Escape: 'back' };
+  if (!onLetter) {
+    Object.assign(KEYS, { KeyW: 'up', KeyS: 'down', KeyA: 'left', KeyD: 'right' });
+    Object.assign(ACTIONS, { KeyP: 'pause', KeyC: 'crt', KeyM: 'mute' });
+  }
+
+  let touch = matchMedia('(pointer: coarse)').matches;
+  const markTouch = on => {
+    touch = on;
+    document.body.classList.toggle('touch', on);
+  };
+  markTouch(touch);
+  addEventListener('touchstart', () => { if (!touch) markTouch(true); }, { passive: true });
+
+  addEventListener('keydown', e => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const dir = KEYS[e.code];
+    if (dir) {
+      e.preventDefault();
+      onAny();
+      if (!e.repeat) onDir(dir);
+      held[dir] = true;
+      return;
+    }
+    const action = ACTIONS[e.code];
+    if (action) {
+      if (action === 'start') held.fire = true;
+      // Space and Enter on a focused button or link belong to that control.
+      if ((e.code === 'Space' || e.code === 'Enter') && e.target.closest && e.target.closest('button, a')) return;
+      e.preventDefault();
+      onAny();
+      if (!e.repeat) onAction(action);
+      return;
+    }
+    // e.key, not e.code: the letter printed on the key, whatever the layout.
+    // Digits come through the same door, for games that number their keys.
+    if (onLetter && /^[a-z0-9]$/i.test(e.key)) {
+      e.preventDefault();
+      onAny();
+      if (!e.repeat) onLetter(e.key.toUpperCase());
+    }
+    // Anything else a game asked for by code (Z for undo, R for restart).
+    else if (onKey && !e.repeat && onKey(e.code)) { e.preventDefault(); onAny(); }
+  });
+  addEventListener('keyup', e => {
+    const dir = KEYS[e.code];
+    if (dir) held[dir] = false;
+    if (ACTIONS[e.code] === 'start') held.fire = false;
+  });
+  addEventListener('blur', () => { held.up = held.down = held.left = held.right = held.fire = false; });
+
+  for (const b of document.querySelectorAll('[data-dir]')) {
+    const dir = b.dataset.dir;
+    const down = e => {
+      e.preventDefault();
+      onAny();
+      held.up = held.down = held.left = held.right = false;
+      held[dir] = true;
+      onDir(dir);
+    };
+    const up = () => { held[dir] = false; };
+    b.addEventListener('pointerdown', down);
+    b.addEventListener('pointerup', up);
+    b.addEventListener('pointerleave', up);
+    b.addEventListener('pointercancel', up);
+    b.addEventListener('contextmenu', e => e.preventDefault());
+  }
+  // Buttons that send a letter (Sorted's left loop is A and D).
+  for (const b of document.querySelectorAll('[data-letter]')) {
+    b.addEventListener('pointerdown', e => { e.preventDefault(); onAny(); if (onLetter) onLetter(b.dataset.letter); });
+    b.addEventListener('contextmenu', e => e.preventDefault());
+  }
+  for (const b of document.querySelectorAll('[data-action]')) {
+    const action = b.dataset.action;
+    // pointerdown for the START button, so it answers as fast as the d-pad;
+    // click for the toggles, so keyboard users can press them too.
+    if (b.classList.contains('start')) {
+      b.addEventListener('pointerdown', e => { e.preventDefault(); onAny(); held.fire = true; onAction(action); });
+      for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(ev, () => { held.fire = false; });
+    } else {
+      b.addEventListener('click', () => { onAny(); onAction(action); });
+    }
+  }
+  screen.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    onAny();
+    if (onPoint) {
+      const r = screen.getBoundingClientRect();
+      const x = ((e.clientX - r.left) * screen.width) / r.width;
+      const y = ((e.clientY - r.top) * screen.height) / r.height;
+      if (onPoint(x, y)) return;
+    }
+    onAction('start');
+  });
+
+  return { held, get touch() { return touch; } };
+}
+
+// ---- games/soft-focus/shapes.js
+// Soft Focus' shapes, copied unchanged from the Qlaim cabinet. Each one draws
+// a filled silhouette into a depth canvas: white is nearest, black is the far
+// wall. They are drawn as paths rather than described as maths, because a
+// recognisable outline is the whole point of the game.
+const SHAPES = [
+  ['A HEART', (c, w, h, s) => {
+    c.beginPath()
+    c.moveTo(w / 2, h * 0.78)
+    c.bezierCurveTo(w / 2 - s * 1.1, h * 0.5, w / 2 - s * 0.95, h * 0.16, w / 2, h * 0.34)
+    c.bezierCurveTo(w / 2 + s * 0.95, h * 0.16, w / 2 + s * 1.1, h * 0.5, w / 2, h * 0.78)
+    c.fill()
+  }],
+  ['A STAR', (c, w, h, s) => {
+    c.beginPath()
+    for (let i = 0; i < 10; i++) {
+      const a = -Math.PI / 2 + (i * Math.PI) / 5
+      const r = i % 2 ? s * 0.42 : s
+      const x = w / 2 + Math.cos(a) * r
+      const y = h / 2 + Math.sin(a) * r
+      i ? c.lineTo(x, y) : c.moveTo(x, y)
+    }
+    c.closePath(); c.fill()
+  }],
+  ['A FISH', (c, w, h, s) => {
+    c.beginPath()
+    c.moveTo(w / 2 + s, h / 2)
+    c.quadraticCurveTo(w / 2, h / 2 - s * 0.62, w / 2 - s * 0.55, h / 2)
+    c.quadraticCurveTo(w / 2, h / 2 + s * 0.62, w / 2 + s, h / 2)
+    c.fill()
+    c.beginPath()
+    c.moveTo(w / 2 - s * 0.5, h / 2)
+    c.lineTo(w / 2 - s, h / 2 - s * 0.45)
+    c.lineTo(w / 2 - s, h / 2 + s * 0.45)
+    c.closePath(); c.fill()
+  }],
+  ['A TREE', (c, w, h, s) => {
+    c.beginPath()
+    c.moveTo(w / 2, h / 2 - s)
+    c.lineTo(w / 2 + s * 0.62, h / 2 + s * 0.12)
+    c.lineTo(w / 2 + s * 0.34, h / 2 + s * 0.12)
+    c.lineTo(w / 2 + s * 0.8, h / 2 + s * 0.6)
+    c.lineTo(w / 2 - s * 0.8, h / 2 + s * 0.6)
+    c.lineTo(w / 2 - s * 0.34, h / 2 + s * 0.12)
+    c.lineTo(w / 2 - s * 0.62, h / 2 + s * 0.12)
+    c.closePath(); c.fill()
+    c.fillRect(w / 2 - s * 0.12, h / 2 + s * 0.6, s * 0.24, s * 0.34)
+  }],
+  ['A HOUSE', (c, w, h, s) => {
+    c.beginPath()
+    c.moveTo(w / 2, h / 2 - s * 0.9)
+    c.lineTo(w / 2 + s * 0.95, h / 2 - s * 0.05)
+    c.lineTo(w / 2 - s * 0.95, h / 2 - s * 0.05)
+    c.closePath(); c.fill()
+    c.fillRect(w / 2 - s * 0.7, h / 2 - s * 0.05, s * 1.4, s * 0.92)
+  }],
+  ['A CAT', (c, w, h, s) => {
+    c.beginPath()
+    c.arc(w / 2, h / 2 + s * 0.1, s * 0.72, 0, Math.PI * 2)
+    c.fill()
+    for (const side of [-1, 1]) {
+      c.beginPath()
+      c.moveTo(w / 2 + side * s * 0.62, h / 2 - s * 0.42)
+      c.lineTo(w / 2 + side * s * 0.78, h / 2 - s * 1.02)
+      c.lineTo(w / 2 + side * s * 0.16, h / 2 - s * 0.62)
+      c.closePath(); c.fill()
+    }
+  }],
+  ['A ROCKET', (c, w, h, s) => {
+    c.beginPath()
+    c.moveTo(w / 2, h / 2 - s)
+    c.quadraticCurveTo(w / 2 + s * 0.42, h / 2 - s * 0.1, w / 2 + s * 0.34, h / 2 + s * 0.62)
+    c.lineTo(w / 2 - s * 0.34, h / 2 + s * 0.62)
+    c.quadraticCurveTo(w / 2 - s * 0.42, h / 2 - s * 0.1, w / 2, h / 2 - s)
+    c.fill()
+    for (const side of [-1, 1]) {
+      c.beginPath()
+      c.moveTo(w / 2 + side * s * 0.32, h / 2 + s * 0.14)
+      c.lineTo(w / 2 + side * s * 0.78, h / 2 + s * 0.74)
+      c.lineTo(w / 2 + side * s * 0.32, h / 2 + s * 0.62)
+      c.closePath(); c.fill()
+    }
+  }],
+  ['A BUTTERFLY', (c, w, h, s) => {
+    for (const side of [-1, 1]) {
+      c.beginPath()
+      c.moveTo(w / 2, h / 2)
+      c.bezierCurveTo(w / 2 + side * s * 1.2, h / 2 - s * 0.95, w / 2 + side * s * 1.05, h / 2 - s * 0.1, w / 2, h / 2)
+      c.bezierCurveTo(w / 2 + side * s * 0.95, h / 2 + s * 0.2, w / 2 + side * s * 0.8, h / 2 + s * 0.9, w / 2, h / 2)
+      c.fill()
+    }
+    c.fillRect(w / 2 - s * 0.06, h / 2 - s * 0.55, s * 0.12, s * 1.2)
+  }],
+  ['A MOON', (c, w, h, s) => {
+    c.beginPath()
+    c.arc(w / 2 + s * 0.15, h / 2, s * 0.85, 0, Math.PI * 2)
+    c.fill()
+    c.save()
+    c.globalCompositeOperation = 'destination-out'
+    c.beginPath()
+    c.arc(w / 2 + s * 0.62, h / 2 - s * 0.18, s * 0.78, 0, Math.PI * 2)
+    c.fill()
+    c.restore()
+  }],
+  ['A FLOWER', (c, w, h, s) => {
+    for (let i = 0; i < 6; i++) {
+      const a = (i * Math.PI) / 3
+      c.beginPath()
+      c.ellipse(w / 2 + Math.cos(a) * s * 0.5, h / 2 + Math.sin(a) * s * 0.5, s * 0.34, s * 0.22, a, 0, Math.PI * 2)
+      c.fill()
+    }
+    c.beginPath()
+    c.arc(w / 2, h / 2, s * 0.24, 0, Math.PI * 2)
+    c.fill()
+  }],
+  ['A SAILBOAT', (c, w, h, s) => {
+    c.beginPath()
+    c.moveTo(w / 2 - s * 0.9, h / 2 + s * 0.45)
+    c.lineTo(w / 2 + s * 0.9, h / 2 + s * 0.45)
+    c.lineTo(w / 2 + s * 0.55, h / 2 + s * 0.85)
+    c.lineTo(w / 2 - s * 0.55, h / 2 + s * 0.85)
+    c.closePath(); c.fill()
+    c.beginPath()
+    c.moveTo(w / 2 + s * 0.05, h / 2 - s * 0.95)
+    c.lineTo(w / 2 + s * 0.05, h / 2 + s * 0.35)
+    c.lineTo(w / 2 + s * 0.75, h / 2 + s * 0.35)
+    c.closePath(); c.fill()
+    c.beginPath()
+    c.moveTo(w / 2 - s * 0.1, h / 2 - s * 0.7)
+    c.lineTo(w / 2 - s * 0.1, h / 2 + s * 0.35)
+    c.lineTo(w / 2 - s * 0.62, h / 2 + s * 0.35)
+    c.closePath(); c.fill()
+  }],
+  ['AN UMBRELLA', (c, w, h, s) => {
+    c.beginPath()
+    c.arc(w / 2, h / 2 + s * 0.05, s * 0.9, Math.PI, 0)
+    c.fill()
+    c.fillRect(w / 2 - s * 0.06, h / 2 + s * 0.05, s * 0.12, s * 0.75)
+    c.beginPath()
+    c.arc(w / 2 - s * 0.2, h / 2 + s * 0.8, s * 0.2, 0, Math.PI)
+    c.fill()
+  }],
+  ['A CROWN', (c, w, h, s) => {
+    c.beginPath()
+    c.moveTo(w / 2 - s * 0.9, h / 2 + s * 0.55)
+    c.lineTo(w / 2 - s * 0.9, h / 2 - s * 0.55)
+    c.lineTo(w / 2 - s * 0.45, h / 2 - s * 0.05)
+    c.lineTo(w / 2, h / 2 - s * 0.75)
+    c.lineTo(w / 2 + s * 0.45, h / 2 - s * 0.05)
+    c.lineTo(w / 2 + s * 0.9, h / 2 - s * 0.55)
+    c.lineTo(w / 2 + s * 0.9, h / 2 + s * 0.55)
+    c.closePath(); c.fill()
+  }],
+  ['A MUSHROOM', (c, w, h, s) => {
+    c.beginPath()
+    c.arc(w / 2, h / 2 + s * 0.05, s * 0.85, Math.PI, 0)
+    c.fill()
+    c.beginPath()
+    c.moveTo(w / 2 - s * 0.3, h / 2 + s * 0.05)
+    c.quadraticCurveTo(w / 2 - s * 0.2, h / 2 + s * 0.8, w / 2 - s * 0.36, h / 2 + s * 0.9)
+    c.lineTo(w / 2 + s * 0.36, h / 2 + s * 0.9)
+    c.quadraticCurveTo(w / 2 + s * 0.2, h / 2 + s * 0.8, w / 2 + s * 0.3, h / 2 + s * 0.05)
+    c.closePath(); c.fill()
+  }],
+  ['AN ELEPHANT', (c, w, h, s) => {
+    c.beginPath()
+    c.ellipse(w / 2 + s * 0.1, h / 2, s * 0.78, s * 0.6, 0, 0, Math.PI * 2)
+    c.fill()
+    c.beginPath()
+    c.ellipse(w / 2 - s * 0.7, h / 2 - s * 0.1, s * 0.42, s * 0.45, 0, 0, Math.PI * 2)
+    c.fill()
+    c.beginPath()
+    c.moveTo(w / 2 - s * 0.95, h / 2 + s * 0.1)
+    c.quadraticCurveTo(w / 2 - s * 1.35, h / 2 + s * 0.6, w / 2 - s * 0.95, h / 2 + s * 0.95)
+    c.lineTo(w / 2 - s * 0.72, h / 2 + s * 0.88)
+    c.quadraticCurveTo(w / 2 - s * 1.0, h / 2 + s * 0.55, w / 2 - s * 0.72, h / 2 + s * 0.2)
+    c.closePath(); c.fill()
+    for (const dx of [-0.2, 0.45]) {
+      c.fillRect(w / 2 + s * dx, h / 2 + s * 0.45, s * 0.26, s * 0.5)
+    }
+  }],
+  ['THE SUN', (c, w, h, s) => {
+    c.beginPath(); c.arc(w / 2, h / 2, s * 0.52, 0, Math.PI * 2); c.fill()
+    for (let i = 0; i < 12; i++) {
+      c.save(); c.translate(w / 2, h / 2); c.rotate((i * Math.PI) / 6)
+      c.fillRect(s * 0.66, -s * 0.06, s * 0.34, s * 0.12)
+      c.restore()
+    }
+  }],
+  ['A BIRD', (c, w, h, s) => {
+    c.beginPath(); c.ellipse(w / 2, h / 2 + s * 0.1, s * 0.6, s * 0.38, -0.2, 0, Math.PI * 2); c.fill()
+    c.beginPath(); c.arc(w / 2 + s * 0.62, h / 2 - s * 0.3, s * 0.24, 0, Math.PI * 2); c.fill()
+    c.beginPath()
+    c.moveTo(w / 2 + s * 0.84, h / 2 - s * 0.32)
+    c.lineTo(w / 2 + s * 1.15, h / 2 - s * 0.22)
+    c.lineTo(w / 2 + s * 0.84, h / 2 - s * 0.12)
+    c.closePath(); c.fill()
+    c.beginPath()
+    c.moveTo(w / 2 - s * 0.5, h / 2 + s * 0.05)
+    c.lineTo(w / 2 - s * 1.05, h / 2 - s * 0.35)
+    c.lineTo(w / 2 - s * 1.0, h / 2 + s * 0.3)
+    c.closePath(); c.fill()
+  }],
+  ['A DUCK', (c, w, h, s) => {
+    c.beginPath(); c.ellipse(w / 2, h / 2 + s * 0.35, s * 0.75, s * 0.38, 0, 0, Math.PI * 2); c.fill()
+    c.beginPath()
+    c.moveTo(w / 2 - s * 0.1, h / 2 + s * 0.3)
+    c.quadraticCurveTo(w / 2 - s * 0.2, h / 2 - s * 0.35, w / 2 + s * 0.3, h / 2 - s * 0.55)
+    c.quadraticCurveTo(w / 2 + s * 0.5, h / 2 - s * 0.2, w / 2 + s * 0.3, h / 2 + s * 0.2)
+    c.closePath(); c.fill()
+    c.beginPath()
+    c.moveTo(w / 2 + s * 0.42, h / 2 - s * 0.5)
+    c.lineTo(w / 2 + s * 0.9, h / 2 - s * 0.4)
+    c.lineTo(w / 2 + s * 0.42, h / 2 - s * 0.28)
+    c.closePath(); c.fill()
+  }],
+  ['AN APPLE', (c, w, h, s) => {
+    for (const side of [-1, 1]) {
+      c.beginPath()
+      c.ellipse(w / 2 + side * s * 0.3, h / 2 + s * 0.12, s * 0.52, s * 0.62, 0, 0, Math.PI * 2)
+      c.fill()
+    }
+    c.fillRect(w / 2 - s * 0.05, h / 2 - s * 0.85, s * 0.1, s * 0.35)
+    c.beginPath()
+    c.ellipse(w / 2 + s * 0.28, h / 2 - s * 0.72, s * 0.3, s * 0.14, -0.5, 0, Math.PI * 2)
+    c.fill()
+  }],
+  ['AN ICE CREAM', (c, w, h, s) => {
+    c.beginPath()
+    c.moveTo(w / 2 - s * 0.42, h / 2 - s * 0.05)
+    c.lineTo(w / 2 + s * 0.42, h / 2 - s * 0.05)
+    c.lineTo(w / 2, h / 2 + s * 0.95)
+    c.closePath(); c.fill()
+    c.beginPath(); c.arc(w / 2 - s * 0.2, h / 2 - s * 0.28, s * 0.3, 0, Math.PI * 2); c.fill()
+    c.beginPath(); c.arc(w / 2 + s * 0.2, h / 2 - s * 0.28, s * 0.3, 0, Math.PI * 2); c.fill()
+    c.beginPath(); c.arc(w / 2, h / 2 - s * 0.58, s * 0.32, 0, Math.PI * 2); c.fill()
+  }],
+  ['AN ANCHOR', (c, w, h, s) => {
+    c.fillRect(w / 2 - s * 0.07, h / 2 - s * 0.6, s * 0.14, s * 1.35)
+    c.fillRect(w / 2 - s * 0.42, h / 2 - s * 0.32, s * 0.84, s * 0.14)
+    c.beginPath(); c.arc(w / 2, h / 2 - s * 0.7, s * 0.2, 0, Math.PI * 2); c.fill()
+    c.save(); c.globalCompositeOperation = 'destination-out'
+    c.beginPath(); c.arc(w / 2, h / 2 - s * 0.7, s * 0.09, 0, Math.PI * 2); c.fill()
+    c.restore()
+    c.beginPath()
+    c.arc(w / 2, h / 2 + s * 0.28, s * 0.66, 0.25 * Math.PI, 0.75 * Math.PI)
+    c.lineTo(w / 2, h / 2 + s * 0.6)
+    c.closePath(); c.fill()
+  }],
+  ['A BALLOON', (c, w, h, s) => {
+    c.beginPath(); c.ellipse(w / 2, h / 2 - s * 0.25, s * 0.55, s * 0.68, 0, 0, Math.PI * 2); c.fill()
+    c.beginPath()
+    c.moveTo(w / 2 - s * 0.12, h / 2 + s * 0.4)
+    c.lineTo(w / 2 + s * 0.12, h / 2 + s * 0.4)
+    c.lineTo(w / 2, h / 2 + s * 0.55)
+    c.closePath(); c.fill()
+    c.fillRect(w / 2 - s * 0.03, h / 2 + s * 0.5, s * 0.06, s * 0.5)
+  }],
+  ['A LADYBIRD', (c, w, h, s) => {
+    c.beginPath(); c.ellipse(w / 2, h / 2 + s * 0.1, s * 0.7, s * 0.8, 0, 0, Math.PI * 2); c.fill()
+    c.beginPath(); c.arc(w / 2, h / 2 - s * 0.66, s * 0.3, 0, Math.PI * 2); c.fill()
+    c.save(); c.globalCompositeOperation = 'destination-out'
+    c.fillRect(w / 2 - s * 0.035, h / 2 - s * 0.6, s * 0.07, s * 1.4)
+    for (const spot of [[-0.34, -0.1], [0.34, -0.1], [-0.3, 0.42], [0.3, 0.42]]) {
+      c.beginPath(); c.arc(w / 2 + s * spot[0], h / 2 + s * spot[1], s * 0.14, 0, Math.PI * 2); c.fill()
+    }
+    c.restore()
+  }],
+  ['A WHALE', (c, w, h, s) => {
+    c.beginPath(); c.ellipse(w / 2, h / 2 + s * 0.1, s * 0.9, s * 0.45, 0, 0, Math.PI * 2); c.fill()
+    c.beginPath()
+    c.moveTo(w / 2 - s * 0.8, h / 2 + s * 0.1)
+    c.lineTo(w / 2 - s * 1.25, h / 2 - s * 0.35)
+    c.lineTo(w / 2 - s * 1.2, h / 2 + s * 0.5)
+    c.closePath(); c.fill()
+    c.beginPath()
+    c.moveTo(w / 2 + s * 0.4, h / 2 - s * 0.32)
+    c.quadraticCurveTo(w / 2 + s * 0.3, h / 2 - s * 0.95, w / 2 + s * 0.62, h / 2 - s * 1.0)
+    c.quadraticCurveTo(w / 2 + s * 0.45, h / 2 - s * 0.7, w / 2 + s * 0.56, h / 2 - s * 0.34)
+    c.closePath(); c.fill()
+  }],
+  ['A CACTUS', (c, w, h, s) => {
+    c.fillRect(w / 2 - s * 0.18, h / 2 - s * 0.85, s * 0.36, s * 1.7)
+    c.fillRect(w / 2 - s * 0.62, h / 2 - s * 0.3, s * 0.24, s * 0.62)
+    c.fillRect(w / 2 - s * 0.62, h / 2 - s * 0.3, s * 0.5, s * 0.2)
+    c.fillRect(w / 2 + s * 0.38, h / 2 - s * 0.05, s * 0.24, s * 0.5)
+    c.fillRect(w / 2 + s * 0.12, h / 2 - s * 0.05, s * 0.5, s * 0.2)
+  }],
+  ['A LIGHTNING BOLT', (c, w, h, s) => {
+    c.beginPath()
+    c.moveTo(w / 2 + s * 0.35, h / 2 - s)
+    c.lineTo(w / 2 - s * 0.45, h / 2 + s * 0.12)
+    c.lineTo(w / 2 + s * 0.02, h / 2 + s * 0.12)
+    c.lineTo(w / 2 - s * 0.3, h / 2 + s)
+    c.lineTo(w / 2 + s * 0.5, h / 2 - s * 0.15)
+    c.lineTo(w / 2 + s * 0.02, h / 2 - s * 0.15)
+    c.closePath(); c.fill()
+  }],
+  ['A MUG', (c, w, h, s) => {
+    c.beginPath()
+    c.moveTo(w / 2 - s * 0.55, h / 2 - s * 0.4)
+    c.lineTo(w / 2 + s * 0.55, h / 2 - s * 0.4)
+    c.lineTo(w / 2 + s * 0.4, h / 2 + s * 0.55)
+    c.lineTo(w / 2 - s * 0.4, h / 2 + s * 0.55)
+    c.closePath(); c.fill()
+    c.lineWidth = s * 0.14
+    c.strokeStyle = '#fff'
+    c.beginPath(); c.arc(w / 2 + s * 0.62, h / 2, s * 0.3, -1.2, 1.2); c.stroke()
+    c.fillRect(w / 2 - s * 0.7, h / 2 + s * 0.55, s * 1.4, s * 0.14)
+  }],
+  ['A SPIDER', (c, w, h, s) => {
+    c.beginPath(); c.arc(w / 2, h / 2 + s * 0.12, s * 0.4, 0, Math.PI * 2); c.fill()
+    c.beginPath(); c.arc(w / 2, h / 2 - s * 0.36, s * 0.24, 0, Math.PI * 2); c.fill()
+    c.lineWidth = s * 0.09
+    c.strokeStyle = '#fff'
+    for (const side of [-1, 1]) {
+      for (let i = 0; i < 4; i++) {
+        const y = h / 2 - s * 0.14 + i * s * 0.22
+        c.beginPath()
+        c.moveTo(w / 2 + side * s * 0.3, y)
+        c.lineTo(w / 2 + side * s * 0.78, y - s * 0.3 + i * s * 0.1)
+        c.lineTo(w / 2 + side * s * 1.0, y + s * 0.22)
+        c.stroke()
+      }
+    }
+  }],
+  ['A CAR', (c, w, h, s) => {
+    c.beginPath()
+    c.moveTo(w / 2 - s * 1.0, h / 2 + s * 0.3)
+    c.lineTo(w / 2 - s * 0.95, h / 2 - s * 0.05)
+    c.lineTo(w / 2 - s * 0.45, h / 2 - s * 0.1)
+    c.lineTo(w / 2 - s * 0.2, h / 2 - s * 0.55)
+    c.lineTo(w / 2 + s * 0.4, h / 2 - s * 0.55)
+    c.lineTo(w / 2 + s * 0.62, h / 2 - s * 0.1)
+    c.lineTo(w / 2 + s * 1.0, h / 2 - s * 0.02)
+    c.lineTo(w / 2 + s * 1.0, h / 2 + s * 0.3)
+    c.closePath(); c.fill()
+    for (const dx of [-0.6, 0.55]) {
+      c.beginPath(); c.arc(w / 2 + s * dx, h / 2 + s * 0.35, s * 0.24, 0, Math.PI * 2); c.fill()
+    }
+  }],
+  ['A BELL', (c, w, h, s) => {
+    c.beginPath()
+    c.moveTo(w / 2 - s * 0.7, h / 2 + s * 0.45)
+    c.quadraticCurveTo(w / 2 - s * 0.6, h / 2 - s * 0.75, w / 2, h / 2 - s * 0.8)
+    c.quadraticCurveTo(w / 2 + s * 0.6, h / 2 - s * 0.75, w / 2 + s * 0.7, h / 2 + s * 0.45)
+    c.closePath(); c.fill()
+    c.fillRect(w / 2 - s * 0.85, h / 2 + s * 0.45, s * 1.7, s * 0.16)
+    c.beginPath(); c.arc(w / 2, h / 2 + s * 0.72, s * 0.16, 0, Math.PI * 2); c.fill()
+  }],
+  ['A SNAIL', (c, w, h, s) => {
+    c.beginPath()
+    c.moveTo(w / 2 - s * 0.95, h / 2 + s * 0.55)
+    c.quadraticCurveTo(w / 2 - s * 0.2, h / 2 + s * 0.8, w / 2 + s * 0.5, h / 2 + s * 0.5)
+    c.lineTo(w / 2 + s * 0.5, h / 2 + s * 0.66)
+    c.lineTo(w / 2 - s * 0.95, h / 2 + s * 0.7)
+    c.closePath(); c.fill()
+    c.strokeStyle = '#fff'
+    c.lineWidth = s * 0.2
+    c.beginPath()
+    for (let a = 0; a < Math.PI * 5; a += 0.12) {
+      const r = s * 0.09 + a * s * 0.072
+      const x = w / 2 + s * 0.1 + Math.cos(a) * r
+      const y = h / 2 + s * 0.02 + Math.sin(a) * r
+      if (a === 0) c.moveTo(x, y); else c.lineTo(x, y)
+    }
+    c.stroke()
+    c.lineWidth = s * 0.08
+    for (const dx of [0, 0.12]) {
+      c.beginPath()
+      c.moveTo(w / 2 - s * 0.82, h / 2 + s * 0.5)
+      c.lineTo(w / 2 - s * (0.95 + dx), h / 2 + s * 0.02)
+      c.stroke()
+    }
+  }],
+  ['A KEY', (c, w, h, s) => {
+    c.beginPath()
+    c.arc(w / 2 - s * 0.6, h / 2, s * 0.42, 0, Math.PI * 2)
+    c.fill()
+    c.save()
+    c.globalCompositeOperation = 'destination-out'
+    c.beginPath()
+    c.arc(w / 2 - s * 0.6, h / 2, s * 0.17, 0, Math.PI * 2)
+    c.fill()
+    c.restore()
+    c.fillRect(w / 2 - s * 0.24, h / 2 - s * 0.12, s * 1.1, s * 0.24)
+    c.fillRect(w / 2 + s * 0.6, h / 2 + s * 0.1, s * 0.12, s * 0.3)
+    c.fillRect(w / 2 + s * 0.82, h / 2 + s * 0.1, s * 0.12, s * 0.3)
+  }],
+]
+
+// ---- games/soft-focus/stereo.js
+// The autostereogram, with no drawing, so the tests can decode it. The same
+// algorithm as the Qlaim cabinet (Thimbleby, Inglis and Witten): each row is
+// walked once, linking the pixel the left eye sees to the one the right eye
+// sees for the same point in space; the links are then filled with random
+// dots. Depth becomes horizontal separation, and the brain does the rest.
+//
+// The repeat here is in GAME pixels. At three device pixels a game pixel on
+// a desktop, 70 is about 2.2 inches on screen: wide enough to see depth, and
+// still under the distance between a pair of eyes, which is the limit.
+const MU = 0.36;
+const EYE = 70;
+
+function separation(z, e = EYE) {
+  return Math.round(((1 - MU * z) * e) / (2 - MU * z));
+}
+
+// depth: Float32Array of width*height in 0..1 (1 nearest). Returns a
+// Uint8Array of colour indexes 0..colours-1.
+function build(depth, width, height, colours, rand = Math.random, e = EYE) {
+  const out = new Uint8Array(width * height);
+  const same = new Int32Array(width);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) same[x] = x;
+    for (let x = 0; x < width; x++) {
+      const z = depth[y * width + x];
+      const sep = separation(z, e);
+      let left = x - (sep >> 1), right = left + sep;
+      if (left < 0 || right >= width) continue;
+      let visible = true, t = 1, zt = 0;
+      do {
+        zt = z + (2 * (2 - MU * z) * t) / (MU * e);
+        const l = x - t, r = x + t;
+        visible = (l < 0 || depth[y * width + l] < zt) && (r >= width || depth[y * width + r] < zt);
+        t++;
+      } while (visible && zt < 1);
+      if (!visible) continue;
+      let l = same[left];
+      while (l !== left && l !== right) {
+        if (l < right) { left = l; l = same[left]; }
+        else { same[left] = right; left = right; l = same[left]; right = l; }
+      }
+      same[left] = right;
+    }
+    for (let x = width - 1; x >= 0; x--) {
+      out[y * width + x] = same[x] === x ? (rand() * colours) | 0 : out[y * width + same[x]];
+    }
+  }
+  return out;
+}
+
+// What fraction of the pairs the depth asks to match really do match: how a
+// test (or a sceptic) can tell that the dots encode the picture.
+function agreement(depth, colours, width, height, e = EYE) {
+  let pairs = 0, matched = 0;
+  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+    const sep = separation(depth[y * width + x], e);
+    const left = x - (sep >> 1), right = left + sep;
+    if (left < 0 || right >= width) continue;
+    pairs++;
+    if (colours[y * width + left] === colours[y * width + right]) matched++;
+  }
+  return pairs ? matched / pairs : 0;
+}
+
+// ---- games/soft-focus/game.js
+// The picture is 320x200 game pixels between a 20px title bar and a 24px
+// strip for the two buttons.
+const W = 320, PIC_H = 200, TOP = 20, H = TOP + PIC_H + 24;
+const TICK_MS = 1000 / 60;
+const BAG_KEY = 'lk.softfocus.bag';
+
+const INK = {
+  red: '#ff3b3b', white: '#ffffff', yellow: '#ffd23f', orange: '#ff8a1e', green: '#3fd46b',
+  cyan: '#5eeaf5', grey: '#8f8fb0', dim: '#4a4a6a',
+};
+const LOGO_INK = ['#ffffff', '#ffd8f0', '#ff5fb8', '#ff5fb8', '#8f7bff', '#8f7bff', '#5b2a86'];
+// Four-colour dot sets in the arcade's palette.
+const PALETTES = [
+  ['#5eeaf5', '#14206e', '#2b4cff', '#000000'],
+  ['#ff8a1e', '#3a1858', '#ff5fb8', '#000000'],
+  ['#3fd46b', '#0f3a1e', '#ffd23f', '#000000'],
+  ['#e8f8ff', '#24243a', '#8f7bff', '#000000'],
+];
+
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const canvas = document.getElementById('c');
+const screen = makeScreen({ canvas, stage: document.getElementById('stage'), frame: document.getElementById('screen'), w: W, h: H, crtKey: 'lk.arcade.crt' });
+const ctx = screen.ctx;
+const sound = makeSound('lk.arcade.mute');
+
+let mode = 'attract', page = 'title', pageT = 0, clock = 0;
+let shape = 0, picture = null, outline = null, revealed = false;
+
+// A shuffle bag, as in the Qlaim cabinet: every shape once before any twice.
+let bag = [];
+try { const saved = JSON.parse(localStorage.getItem(BAG_KEY) || 'null'); if (Array.isArray(saved)) bag = saved.filter(i => Number.isInteger(i) && i >= 0 && i < SHAPES.length); } catch {}
+function takeShape() {
+  if (!bag.length) {
+    bag = SHAPES.map((_, i) => i);
+    for (let i = bag.length - 1; i > 0; i--) { const j = (Math.random() * (i + 1)) | 0; [bag[i], bag[j]] = [bag[j], bag[i]]; }
+  }
+  const i = bag.pop();
+  try { localStorage.setItem(BAG_KEY, JSON.stringify(bag)); } catch {}
+  return i;
+}
+
+// The shape drawn white on black into a canvas the size of the picture, read
+// back as depth: white is near.
+function depthFor(i) {
+  const c = document.createElement('canvas');
+  c.width = W; c.height = PIC_H;
+  const g = c.getContext('2d');
+  g.fillStyle = '#000'; g.fillRect(0, 0, W, PIC_H);
+  g.fillStyle = '#fff'; g.strokeStyle = '#fff';
+  SHAPES[i][1](g, W, PIC_H, PIC_H * 0.4);
+  const px = g.getImageData(0, 0, W, PIC_H).data;
+  const depth = new Float32Array(W * PIC_H);
+  for (let k = 0; k < depth.length; k++) depth[k] = (px[k * 4] / 255) * 0.75;
+  return depth;
+}
+
+function render(i) {
+  const depth = depthFor(i);
+  const pal = PALETTES[(Math.random() * PALETTES.length) | 0];
+  const dots = build(depth, W, PIC_H, pal.length);
+  const c = document.createElement('canvas');
+  c.width = W; c.height = PIC_H;
+  const g = c.getContext('2d');
+  const img = g.createImageData(W, PIC_H);
+  const rgb = pal.map(h => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)]);
+  for (let k = 0; k < dots.length; k++) { const [r, gg, b] = rgb[dots[k]]; img.data[k * 4] = r; img.data[k * 4 + 1] = gg; img.data[k * 4 + 2] = b; img.data[k * 4 + 3] = 255; }
+  g.putImageData(img, 0, 0);
+  // The outline, for the reveal: every near pixel with a far neighbour.
+  const o = document.createElement('canvas');
+  o.width = W; o.height = PIC_H;
+  const og = o.getContext('2d');
+  og.fillStyle = INK.yellow;
+  for (let y = 1; y < PIC_H - 1; y++) for (let x = 1; x < W - 1; x++) {
+    const k = y * W + x;
+    if (depth[k] > 0.3 && (depth[k - 1] < 0.3 || depth[k + 1] < 0.3 || depth[k - W] < 0.3 || depth[k + W] < 0.3)) og.fillRect(x, y, 1, 1);
+  }
+  picture = c; outline = o;
+}
+
+function newPicture() {
+  shape = takeShape();
+  render(shape);
+  revealed = false;
+  mode = 'playing';
+  sound.note(660, 0.08, { type: 'triangle', vol: 0.06 });
+}
+
+function reveal() {
+  if (mode !== 'playing' || revealed) return;
+  revealed = true;
+  sound.tune([[523, 0.1], [659, 0.1], [784, 0.2]], { type: 'triangle', vol: 0.08 });
+}
+
+function toAttract(p) { mode = 'attract'; page = p; pageT = 0; }
+
+// ---------------------------------------------------------------- input
+
+const NEW_BTN = { x: 8, y: TOP + PIC_H + 3, w: 140, h: 18 };
+const REVEAL_BTN = { x: W - 148, y: TOP + PIC_H + 3, w: 140, h: 18 };
+const inside = (b, x, y) => x >= b.x && x < b.x + b.w && y >= b.y && y < b.y + b.h;
+
+function onAction(action) {
+  if (action === 'crt') { screen.toggleCrt(); syncToggles(); return; }
+  if (action === 'mute') { sound.toggleMute(); syncToggles(); return; }
+  if (action === 'back') { toAttract('title'); return; }
+  newPicture();
+}
+
+function onKey(code) {
+  if (code === 'KeyR' && mode === 'playing') { reveal(); return true; }
+  if (code === 'KeyN') { newPicture(); return true; }
+  return false;
+}
+
+function onPoint(x, y) {
+  if (mode !== 'playing') return false;
+  if (inside(NEW_BTN, x, y)) newPicture();
+  else if (inside(REVEAL_BTN, x, y)) reveal();
+  return true;
+}
+
+const input = makeInput({ screen: canvas, onAction, onDir: () => {}, onKey, onPoint, onAny: () => sound.wake() });
+
+const crtBtn = document.querySelector('[data-action="crt"]');
+const muteBtn = document.querySelector('[data-action="mute"]');
+function syncToggles() {
+  crtBtn.textContent = 'CRT ' + (screen.crt ? 'on' : 'off');
+  crtBtn.setAttribute('aria-pressed', String(screen.crt));
+  muteBtn.textContent = 'Sound ' + (sound.muted ? 'off' : 'on');
+  muteBtn.setAttribute('aria-pressed', String(!sound.muted));
+}
+syncToggles();
+
+// ---------------------------------------------------------------- drawing
+
+const blinkOn = (rate = 32) => reduceMotion || ((clock / rate) | 0) % 2 === 0;
+
+function button(b, label, on) {
+  ctx.fillStyle = on ? '#1c2870' : '#14141f'; ctx.fillRect(b.x, b.y, b.w, b.h);
+  ctx.fillStyle = INK.dim;
+  ctx.fillRect(b.x, b.y, b.w, 1); ctx.fillRect(b.x, b.y + b.h - 1, b.w, 1); ctx.fillRect(b.x, b.y, 1, b.h); ctx.fillRect(b.x + b.w - 1, b.y, 1, b.h);
+  text(ctx, label, b.x + b.w / 2, b.y + 6, INK.white, { align: 'center' });
+}
+
+function drawTitle() {
+  text(ctx, 'SOFT FOCUS', W / 2 + 2, 26, '#1c2870', { align: 'center', scale: 4 });
+  text(ctx, 'SOFT FOCUS', W / 2, 24, LOGO_INK, { align: 'center', scale: 4 });
+  text(ctx, 'A HIDDEN SHAPE IN A FIELD OF DOTS', W / 2, 62, INK.white, { align: 'center' });
+  text(ctx, 'GUESS IT BETWEEN YOURSELVES, THEN REVEAL IT', W / 2, 74, INK.grey, { align: 'center' });
+  // a strip of dots, so the title looks like the game
+  for (let y = 92; y < 150; y++) for (let x = 20; x < 300; x++) {
+    const v = (x * 7919 + y * 104729 + ((x / 35) | 0) * 13) % 97;
+    ctx.fillStyle = v < 24 ? '#ff5fb8' : v < 48 ? '#8f7bff' : v < 72 ? '#3a1858' : '#000';
+    ctx.fillRect(x, y, 1, 1);
+  }
+  if (blinkOn()) text(ctx, input.touch ? 'TAP FOR A PICTURE' : 'PRESS SPACE FOR A PICTURE', W / 2, 170, INK.yellow, { align: 'center' });
+  text(ctx, 'LEON KARSTEN 2026', W / 2, 228, INK.dim, { align: 'center' });
+}
+
+function drawHowTo() {
+  text(ctx, 'HOW TO SEE IT', W / 2, 26, INK.cyan, { align: 'center' });
+  const rows = [
+    ['1  SIT AN ARM\'S LENGTH AWAY AND LOOK', INK.white], ['   THROUGH THE PICTURE, AT SOMETHING', INK.white], ['   BEHIND THE SCREEN.', INK.white],
+    ['2  LET YOUR EYES GO LAZY. TRYING TO', INK.white], ['   FOCUS IS WHAT STOPS IT WORKING.', INK.white],
+    ['3  THE DOTS DRIFT, DOUBLE, THEN LOCK,', INK.white], ['   AND A SHAPE LIFTS OUT OF THE PAGE.', INK.white],
+    ['4  HOLD STILL. IT GETS CLEARER.', INK.white],
+  ];
+  rows.forEach(([s, ink], i) => text(ctx, s, 24, 44 + i * 12, ink));
+  text(ctx, 'ABOUT ONE PERSON IN TEN NEVER CAN.', W / 2, 152, INK.grey, { align: 'center' });
+  text(ctx, 'THAT IS NOT A FAILING. REVEAL IS THERE.', W / 2, 164, INK.grey, { align: 'center' });
+  if (blinkOn()) text(ctx, input.touch ? 'TAP FOR A PICTURE' : 'PRESS SPACE FOR A PICTURE', W / 2, 192, INK.yellow, { align: 'center' });
+}
+
+function draw() {
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, W, H);
+  if (mode === 'attract') { if (page === 'title') drawTitle(); else drawHowTo(); return; }
+  ctx.drawImage(picture, 0, TOP);
+  if (revealed) {
+    ctx.drawImage(outline, 0, TOP);
+    const name = SHAPES[shape][0];
+    ctx.fillStyle = '#000'; ctx.fillRect(W / 2 - name.length * 3 - 6, 3, name.length * 6 + 12, 14);
+    text(ctx, 'IT WAS ' + name, W / 2, 6, INK.yellow, { align: 'center' });
+  } else text(ctx, 'LOOK THROUGH THE PICTURE', W / 2, 6, INK.grey, { align: 'center' });
+  if (input.touch) { button(NEW_BTN, 'NEW PICTURE', false); button(REVEAL_BTN, 'REVEAL', !revealed); }
+  else text(ctx, 'SPACE OR N  NEW PICTURE      R  REVEAL', W / 2, TOP + PIC_H + 9, INK.grey, { align: 'center' });
+}
+
+// ---------------------------------------------------------------- card art
+
+function drawCard() {
+  const c = document.createElement('canvas');
+  c.width = 320; c.height = 240;
+  const g = c.getContext('2d');
+  render(1); // a star: the one most people find first
+  g.fillStyle = '#000'; g.fillRect(0, 0, 320, 240);
+  g.drawImage(picture, 0, 40);
+  g.fillStyle = '#000'; g.fillRect(0, 0, 320, 40);
+  text(g, 'SOFT FOCUS', 162, 10, '#1c2870', { align: 'center', scale: 4 });
+  text(g, 'SOFT FOCUS', 160, 8, LOGO_INK, { align: 'center', scale: 4 });
+  return c;
+}
+
+// ---------------------------------------------------------------- loop
+
+const PAGES = { title: 'howto', howto: 'title' };
+function tick() {
+  clock++;
+  if (mode === 'attract' && ++pageT > 600) { page = PAGES[page]; pageT = 0; }
+}
+
+let acc = 0, lastT = 0;
+function frame(now) {
+  requestAnimationFrame(frame);
+  if (!lastT) lastT = now;
+  acc += Math.min(100, now - lastT);
+  lastT = now;
+  while (acc >= TICK_MS) { tick(); acc -= TICK_MS; }
+  draw();
+}
+requestAnimationFrame(frame);
+
+window.__softfocus = {
+  get mode() { return mode; },
+  get page() { return page; },
+  get revealed() { return revealed; },
+  get shape() { return SHAPES[shape][0]; },
+  get bagLeft() { return bag.length; },
+  attract(p) { toAttract(p); },
+};
+window.__arcade = { card: drawCard };
+})();
+</script>
+</body>
+</html>

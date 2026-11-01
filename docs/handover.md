@@ -40,7 +40,8 @@ Nothing personal: interests, facts, instructions, coaching, experiences only.
   bead puzzle) and **Two Hills** (`/play/two-hills/`, artillery, CPU opponent added) and **No Crossing**
   (`/play/no-crossing/`, light-trail duel, CPU opponent added) and **Last Line** (`/play/last-line/`,
   dots and boxes, CPU opponent added) and **Kings Row** (`/play/kings-row/`, checkers, CPU opponent
-  added) and **Wings Level** (`/play/wings-level/`, tilt maze; real tilt needs a phone to test), all twelve
+  added) and **Wings Level** (`/play/wings-level/`, tilt maze; real tilt needs a phone to test) and **Soft Focus**
+  (`/play/soft-focus/`, hidden-picture dots), all thirteen
   built overnight 1-2 Nov while Leon slept. Leon has
   seen Lamplight live; neither has been played through on his iPhone yet. Card pictures: each game draws its own 4:3 card (`npm run cards` in the arcade repo
   saves `cards/<slug>.png`); the import copies it to `public/play/<slug>/card.png` and the
@@ -100,9 +101,22 @@ the same path collide in Astro.
 4. **Sankey Studio retro themes** — brief at `sankey-studio/docs/retro-theme-brief.md` (in the
    Sankey repo, not this one). After that ships, rerun `scripts/import-sankey-studio.ps1 -Build`
    here and push.
-5. **Games.** Lamplight is live. Next: Leon plays it on his iPhone and decides on the CRT switch;
-   the next game (a paddle or ladder game was
-   suggested). The "How these are made" box links to Writing, which has no build notes yet.
+5. **Games.** Fifteen are live (Lamplight, Launch Window, then thirteen built overnight 1-2 Nov).
+   Next, for Leon:
+   - Play them on his iPhone with sound on; decide on the CRT switch. Nobody has heard the sound.
+   - **Wings Level** real tilt and **Soft Focus** (whether eyes fuse the pixel stereogram) can only
+     be checked by a person; the checks cover the d-pad/keys path and that the dots encode the shape.
+   - **House Call** has ONE RULE CHANGED from Qlaim: egg sacs hang at head height, because at the
+     Qlaim height no spray could reach them (proved in the arcade repo's `test-house.mjs`). The
+     Qlaim cabinet still has the bug.
+   - **Not ported, deliberately:** Red Doors (Leon's notes: "plays like Elevator Action"), Rock
+     Field (Asteroids' exact rock scores 20/50/100, saucer, hyperspace, heartbeat, extra life at
+     10,000) and Sky March (Space Invaders' 11x5, 30/20/10, mystery ship, bunkers, four-note
+     march). They are recreations of specific games rather than games in a genre; Leon to decide.
+   - Two Hills, No Crossing, Last Line and Kings Row gained CPU opponents; the Qlaim two-phone
+     mode needs Qlaim's server and was not carried over.
+   - The arcade repo (`Documents/leonkarsten-arcade`) has no GitHub remote yet.
+   The "How these are made" box links to Writing, which has no build notes yet.
 6. Optional: raise DNS TTLs from 600 to 3600 once everything is stable; add a privacy-respecting
    page counter (Plausible or GoatCounter), never Google Analytics.
 
