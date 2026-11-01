@@ -425,9 +425,10 @@ function makeSound(muteKey) {
 //
 // A word game passes `onLetter`: then every letter key is a letter (WASD stop
 // being directions, P/C/M stop being shortcuts; those stay on the buttons) and
-// only the arrows move. `onPoint(x, y)` receives taps on the screen in GAME
+// only the arrows move. `onKey(code)` gets any other key and returns true if
+// it used it. `onPoint(x, y)` receives taps on the screen in GAME
 // pixels; returning true means the game used the tap, otherwise it is START.
-function makeInput({ screen, onAction, onDir, onAny, onLetter = null, onPoint = null }) {
+function makeInput({ screen, onAction, onDir, onAny, onLetter = null, onPoint = null, onKey = null }) {
   const held = { up: false, down: false, left: false, right: false };
   const KEYS = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
   const ACTIONS = { Space: 'start', Enter: 'start', Escape: 'back' };
@@ -470,6 +471,8 @@ function makeInput({ screen, onAction, onDir, onAny, onLetter = null, onPoint = 
       onAny();
       if (!e.repeat) onLetter(e.key.toUpperCase());
     }
+    // Anything else a game asked for by code (Z for undo, R for restart).
+    else if (onKey && !e.repeat && onKey(e.code)) { e.preventDefault(); onAny(); }
   });
   addEventListener('keyup', e => {
     const dir = KEYS[e.code];
