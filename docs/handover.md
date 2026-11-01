@@ -37,7 +37,8 @@ Nothing personal: interests, facts, instructions, coaching, experiences only.
   (`/play/fence/`, territory), **Say Again** (`/play/say-again/`, memory) and **Loading Bay**
   (`/play/loading-bay/`, crate puzzle) and **House Call** (`/play/house-call/`, action; egg sacs
   moved to head height because the Qlaim height was unreachable) and **Sorted** (`/play/sorted/`,
-  bead puzzle) and **Two Hills** (`/play/two-hills/`, artillery, CPU opponent added), all eight
+  bead puzzle) and **Two Hills** (`/play/two-hills/`, artillery, CPU opponent added) and **No Crossing**
+  (`/play/no-crossing/`, light-trail duel, CPU opponent added), all nine
   built overnight 1-2 Nov while Leon slept. Leon has
   seen Lamplight live; neither has been played through on his iPhone yet. Card pictures: each game draws its own 4:3 card (`npm run cards` in the arcade repo
   saves `cards/<slug>.png`); the import copies it to `public/play/<slug>/card.png` and the

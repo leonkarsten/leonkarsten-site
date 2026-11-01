@@ -1,0 +1,8 @@
+{
+  "name": "No Crossing",
+  "slug": "no-crossing",
+  "summary": "Two riders who never stop, and every inch they pass becomes a wall. Play the CPU or a friend on one screen.",
+  "app": "/play/no-crossing/",
+  "image": "/play/no-crossing/card.png",
+  "tags": ["duel", "1 or 2 players"]
+}

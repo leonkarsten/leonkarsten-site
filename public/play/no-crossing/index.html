@@ -1,0 +1,995 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>No Crossing</title>
+<meta name="description" content="Two riders, one screen. The wall you leave behind is the weapon.">
+<meta name="theme-color" content="#000000">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2016%2016'%20shape-rendering='crispEdges'%3E%3Crect%20width='16'%20height='16'%20fill='%2305051a'/%3E%3Crect%20x='1'%20y='3'%20width='9'%20height='2'%20fill='%235eeaf5'/%3E%3Crect%20x='8'%20y='3'%20width='2'%20height='8'%20fill='%235eeaf5'/%3E%3Crect%20x='6'%20y='11'%20width='9'%20height='2'%20fill='%23ff8a1e'/%3E%3C/svg%3E">
+<style>
+:root {
+  --void: #000;
+  --chrome: #8f8fb0;
+  --chrome-hi: #5eeaf5;
+  --edge: #2a2a40;
+  --start: #e8302f;
+  --ui: ui-monospace, 'Cascadia Mono', Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; height: 100%; background: var(--void); color: var(--chrome); }
+body {
+  font-family: var(--ui);
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  height: 100dvh;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: 'bar' 'stage' 'pad';
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.bar {
+  grid-area: bar;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+}
+.bar a, .bar button {
+  font: 700 12px/1 var(--ui);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--chrome);
+  background: none;
+  border: 1px solid transparent;
+  padding: 9px 10px;
+  text-decoration: none;
+  cursor: pointer;
+  border-radius: 0;
+}
+.bar a:hover, .bar button:hover, .bar a:focus-visible, .bar button:focus-visible {
+  color: var(--chrome-hi);
+  border-color: var(--edge);
+  outline: none;
+}
+.bar button[aria-pressed='true'] { color: var(--chrome-hi); }
+.toggles { display: flex; gap: 2px; }
+
+.stage {
+  grid-area: stage;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  padding: 8px 16px;
+}
+/* A faint edge, so an unexplored black playfield still has a size. */
+.screen { position: relative; line-height: 0; touch-action: none; box-shadow: 0 0 0 1px #1c1c2c; }
+.screen canvas {
+  display: block;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+/* The CRT switch. Off by default: sharp pixels are the honest picture, the
+   tube is a costume. Scanlines are one per game pixel row (--px is set by
+   the screen fit), so they never beat against the art. */
+.screen.crt { border-radius: 3% / 4%; overflow: hidden; box-shadow: 0 0 0 4px #0b0b14, 0 0 36px rgba(94, 234, 245, 0.12); }
+.screen.crt canvas { filter: saturate(1.25) brightness(1.12) contrast(1.05) blur(calc(var(--px) * 0.18)); }
+.screen.crt::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background:
+    radial-gradient(ellipse at center, rgba(0, 0, 0, 0) 58%, rgba(0, 0, 0, 0.6) 100%),
+    repeating-linear-gradient(to bottom,
+      rgba(0, 0, 0, 0) 0, rgba(0, 0, 0, 0) calc(var(--px) * 0.55),
+      rgba(0, 0, 0, 0.38) calc(var(--px) * 0.55), rgba(0, 0, 0, 0.38) var(--px));
+  box-shadow: inset 0 0 48px rgba(0, 0, 0, 0.75);
+}
+
+/* Touch controls: shown on touch screens only. */
+.pad {
+  grid-area: pad;
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  max-width: 380px;
+  margin: 0 auto;
+  padding: 4px 20px 16px;
+}
+body.touch .pad { display: flex; }
+.dpad {
+  display: grid;
+  grid-template-columns: repeat(3, 54px);
+  grid-template-rows: repeat(3, 50px);
+  gap: 3px;
+}
+.dpad button, .start {
+  font: 700 18px/1 var(--ui);
+  color: var(--chrome);
+  background: #12121e;
+  border: 2px solid var(--edge);
+  border-radius: 6px;
+  padding: 0;
+  touch-action: none;
+  cursor: pointer;
+}
+.dpad button:active { background: #24243a; color: var(--chrome-hi); }
+.dpad .up { grid-area: 1 / 2; }
+.dpad .left { grid-area: 2 / 1; }
+.dpad .right { grid-area: 2 / 3; }
+.dpad .down { grid-area: 3 / 2; }
+.start {
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  background: var(--start);
+  border: 4px solid #7a1414;
+  color: #fff;
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  box-shadow: inset 0 -6px 0 rgba(0, 0, 0, 0.25);
+}
+.start:active { transform: translateY(2px); box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.25); }
+
+/* A phone on its side: d-pad left of the screen, START right of it. A game
+   with no d-pad (its keys are on the screen) moves the bar to a column
+   instead, so an upright screen gets the full height. */
+@media (orientation: landscape) and (max-height: 520px) {
+  body.no-pad {
+    grid-template-rows: minmax(0, 1fr);
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas: 'bar stage';
+  }
+  body.no-pad .bar { flex-direction: column; justify-content: flex-start; align-items: flex-start; }
+  body.no-pad .toggles { flex-direction: column; }
+  .stage { padding: 4px 8px; }
+  body.touch:not(.no-pad) {
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas: 'bar bar bar' 'dpad stage start';
+  }
+  body.touch:not(.no-pad) .pad { display: contents; }
+  body.touch .dpad { grid-area: dpad; align-self: center; margin-left: 12px; }
+  body.touch .start { grid-area: start; align-self: center; margin-right: 16px; }
+}
+
+/* Two-button pairs, for games with two things to turn (Sorted's loops). */
+.pair { display: grid; grid-template-columns: repeat(2, 54px); grid-template-rows: 54px auto; gap: 3px; justify-items: center; }
+.pair button {
+  width: 54px; height: 54px;
+  font: 700 18px/1 var(--ui); color: var(--chrome);
+  background: #12121e; border: 2px solid var(--edge); border-radius: 6px;
+  padding: 0; touch-action: none; cursor: pointer;
+}
+.pair button:active { background: #24243a; color: var(--chrome-hi); }
+.pair span { grid-column: 1 / 3; font: 700 10px/1 var(--ui); letter-spacing: 0.14em; color: var(--chrome); }
+@media (orientation: landscape) and (max-height: 520px) {
+  body.touch:not(.no-pad) .pad.loops { display: flex; flex-direction: column; gap: 12px; grid-area: start; align-self: center; margin-right: 12px; padding: 0; }
+  body.touch:not(.no-pad) .pad.loops .start { margin: 0; }
+}
+</style>
+</head>
+<body>
+
+<header class="bar">
+  <a href="/games/">&larr; Games</a>
+  <div class="toggles">
+    <button type="button" data-action="crt" aria-pressed="false">CRT off</button>
+    <button type="button" data-action="mute" aria-pressed="true">Sound on</button>
+  </div>
+</header>
+
+<main class="stage" id="stage">
+  <div class="screen" id="screen">
+    <canvas id="c" role="img" aria-label="No Crossing game screen. Player one steers with W A S D, player two with the arrow keys; on a touch screen each side has turn buttons under the screen."></canvas>
+  </div>
+</main>
+
+<div class="pad loops">
+  <div class="pair">
+    <button type="button" data-letter="Q" aria-label="Player one turn left">&#9664;</button>
+    <button type="button" data-letter="E" aria-label="Player one turn right">&#9654;</button>
+    <span>BLUE TURNS</span>
+  </div>
+  <button type="button" class="start" data-action="start">Start</button>
+  <div class="pair">
+    <button type="button" data-letter="U" aria-label="Player two turn left">&#9664;</button>
+    <button type="button" data-letter="O" aria-label="Player two turn right">&#9654;</button>
+    <span>ORANGE TURNS</span>
+  </div>
+</div>
+
+<script>
+(() => {
+'use strict';
+// ---- engine/font.js
+// 5x7 bitmap font, one string per glyph, rows separated by spaces. Drawn with
+// fillRect so it stays on the pixel grid at any scale; there is no web font.
+const GLYPHS = {
+  A: '.###. #...# #...# ##### #...# #...# #...#',
+  B: '####. #...# #...# ####. #...# #...# ####.',
+  C: '.###. #...# #.... #.... #.... #...# .###.',
+  D: '####. #...# #...# #...# #...# #...# ####.',
+  E: '##### #.... #.... ####. #.... #.... #####',
+  F: '##### #.... #.... ####. #.... #.... #....',
+  G: '.###. #...# #.... #.### #...# #...# .####',
+  H: '#...# #...# #...# ##### #...# #...# #...#',
+  I: '.###. ..#.. ..#.. ..#.. ..#.. ..#.. .###.',
+  J: '..### ...#. ...#. ...#. ...#. #..#. .##..',
+  K: '#...# #..#. #.#.. ##... #.#.. #..#. #...#',
+  L: '#.... #.... #.... #.... #.... #.... #####',
+  M: '#...# ##.## #.#.# #.#.# #...# #...# #...#',
+  N: '#...# #...# ##..# #.#.# #..## #...# #...#',
+  O: '.###. #...# #...# #...# #...# #...# .###.',
+  P: '####. #...# #...# ####. #.... #.... #....',
+  Q: '.###. #...# #...# #...# #.#.# #..#. .##.#',
+  R: '####. #...# #...# ####. #.#.. #..#. #...#',
+  S: '.###. #...# #.... .###. ....# #...# .###.',
+  T: '##### ..#.. ..#.. ..#.. ..#.. ..#.. ..#..',
+  U: '#...# #...# #...# #...# #...# #...# .###.',
+  V: '#...# #...# #...# #...# #...# .#.#. ..#..',
+  W: '#...# #...# #...# #.#.# #.#.# #.#.# .#.#.',
+  X: '#...# #...# .#.#. ..#.. .#.#. #...# #...#',
+  Y: '#...# #...# .#.#. ..#.. ..#.. ..#.. ..#..',
+  Z: '##### ....# ...#. ..#.. .#... #.... #####',
+  0: '.###. #...# #..## #.#.# ##..# #...# .###.',
+  1: '..#.. .##.. ..#.. ..#.. ..#.. ..#.. .###.',
+  2: '.###. #...# ....# ...#. ..#.. .#... #####',
+  3: '##### ...#. ..#.. ...#. ....# #...# .###.',
+  4: '...#. ..##. .#.#. #..#. ##### ...#. ...#.',
+  5: '##### #.... ####. ....# ....# #...# .###.',
+  6: '..##. .#... #.... ####. #...# #...# .###.',
+  7: '##### ....# ...#. ..#.. .#... .#... .#...',
+  8: '.###. #...# #...# .###. #...# #...# .###.',
+  9: '.###. #...# #...# .#### ....# ...#. .##..',
+  ' ': '..... ..... ..... ..... ..... ..... .....',
+  '.': '..... ..... ..... ..... ..... .##.. .##..',
+  ',': '..... ..... ..... ..... .##.. ..#.. .#...',
+  '!': '..#.. ..#.. ..#.. ..#.. ..#.. ..... ..#..',
+  '?': '.###. #...# ....# ...#. ..#.. ..... ..#..',
+  '-': '..... ..... ..... .###. ..... ..... .....',
+  '+': '..... ..#.. ..#.. ##### ..#.. ..#.. .....',
+  '=': '..... ..... ##### ..... ##### ..... .....',
+  ':': '..... .##.. .##.. ..... .##.. .##.. .....',
+  '/': '....# ...#. ...#. ..#.. .#... .#... #....',
+  "'": '..#.. ..#.. .#... ..... ..... ..... .....',
+  '<': '...#. ..#.. .#... #.... .#... ..#.. ...#.',
+  '>': '.#... ..#.. ...#. ....# ...#. ..#.. .#...',
+  '*': '..... #...# .#.#. ..#.. .#.#. #...# .....',
+  '%': '##..# ##.#. ...#. ..#.. .#... .#.## #..##',
+};
+const FONT_CHARS = Object.keys(GLYPHS).join('');
+
+const FONT_BITS = {};
+for (const [ch, rows] of Object.entries(GLYPHS)) FONT_BITS[ch] = rows.split(' ');
+
+const GLYPH_W = 5, GLYPH_H = 7, ADVANCE = 6;
+
+function textWidth(str, scale = 1) {
+  return str.length ? (str.length * ADVANCE - 1) * scale : 0;
+}
+
+// `color` is one colour, or an array of seven (one per glyph row) for the
+// striped logos arcade title screens used.
+function text(ctx, str, x, y, color, opts = {}) {
+  const scale = opts.scale || 1;
+  const s = String(str).toUpperCase();
+  let left = x;
+  if (opts.align === 'center') left = x - Math.floor(textWidth(s, scale) / 2);
+  else if (opts.align === 'right') left = x - textWidth(s, scale);
+  for (let i = 0; i < s.length; i++) {
+    const rows = FONT_BITS[s[i]] || FONT_BITS['?'];
+    const gx = left + i * ADVANCE * scale;
+    for (let r = 0; r < GLYPH_H; r++) {
+      ctx.fillStyle = Array.isArray(color) ? color[r] : color;
+      const row = rows[r];
+      for (let c = 0; c < GLYPH_W; c++) {
+        if (row[c] === '#') ctx.fillRect(gx + c * scale, y + r * scale, scale, scale);
+      }
+    }
+  }
+}
+
+// ---- engine/screen.js
+// The arcade screen: a small fixed-resolution canvas, scaled up in whole
+// DEVICE pixels so every game pixel is the same size and stays sharp. A 336px
+// screen on a 3x phone is drawn at exactly 3 device pixels per game pixel,
+// never 3.35, which is what makes uneven, shimmering pixels.
+function makeScreen({ canvas, stage, frame, w, h, crtKey }) {
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+
+  function fit() {
+    const dpr = window.devicePixelRatio || 1;
+    // clientWidth/Height include the stage's padding; the screen gets only
+    // what is inside it.
+    const cs = getComputedStyle(stage);
+    const aw = stage.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    const ah = stage.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+    const s = Math.max(1, Math.floor(Math.min((aw * dpr) / w, (ah * dpr) / h)));
+    canvas.style.width = (s * w) / dpr + 'px';
+    canvas.style.height = (s * h) / dpr + 'px';
+    frame.style.setProperty('--px', s / dpr + 'px');
+  }
+  addEventListener('resize', fit);
+  if (window.visualViewport) visualViewport.addEventListener('resize', fit);
+  fit();
+
+  let crt = false;
+  try { crt = localStorage.getItem(crtKey) === '1'; } catch { crt = false; }
+  function setCrt(on) {
+    crt = on;
+    frame.classList.toggle('crt', on);
+    try { localStorage.setItem(crtKey, on ? '1' : '0'); } catch {}
+  }
+  setCrt(crt);
+
+  return {
+    ctx, w, h, fit,
+    get crt() { return crt; },
+    toggleCrt() { setCrt(!crt); return crt; },
+  };
+}
+
+// ---- engine/sound.js
+// Chip sound: square, triangle and noise voices made in the browser. No audio
+// files. Browsers only allow sound after a tap or key, so `wake()` is called
+// from every input handler and does nothing until then.
+function makeSound(muteKey) {
+  let ac = null, out = null;
+  let muted = false;
+  try { muted = localStorage.getItem(muteKey) === '1'; } catch { muted = false; }
+
+  function wake() {
+    if (ac) { if (ac.state === 'suspended') ac.resume(); return; }
+    const Ctor = window.AudioContext || window.webkitAudioContext;
+    if (!Ctor) return;
+    ac = new Ctor();
+    out = ac.createGain();
+    out.gain.value = muted ? 0 : 1;
+    out.connect(ac.destination);
+  }
+
+  // One note. `at` is seconds from now, `to` slides the pitch.
+  function note(freq, dur, { type = 'square', vol = 0.05, at = 0, to = null } = {}) {
+    if (!ac) return;
+    const t = ac.currentTime + at;
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(freq, t);
+    if (to) o.frequency.exponentialRampToValueAtTime(to, t + dur);
+    g.gain.setValueAtTime(vol, t);
+    g.gain.setValueAtTime(vol, t + dur * 0.7);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(out);
+    o.start(t); o.stop(t + dur + 0.02);
+  }
+
+  // A run of notes: [[freq, dur], ...], each after the last; 0 is a rest.
+  function tune(notes, opts = {}) {
+    let at = opts.at || 0;
+    for (const [f, d] of notes) {
+      if (f) note(f, d * 0.92, { ...opts, at });
+      at += d;
+    }
+  }
+
+  function noise(dur, { vol = 0.2, cutoff = 900, at = 0 } = {}) {
+    if (!ac) return;
+    const len = Math.floor(ac.sampleRate * dur);
+    const buf = ac.createBuffer(1, len, ac.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len) ** 2;
+    const s = ac.createBufferSource(); s.buffer = buf;
+    const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = cutoff;
+    const g = ac.createGain(); g.gain.value = vol;
+    s.connect(f); f.connect(g); g.connect(out);
+    s.start(ac.currentTime + at);
+  }
+
+  // A held sound (an engine): filtered noise that runs for the whole session
+  // and is gated by its gain. Starting a source every frame is what makes
+  // engine sound crackle. Returns set(on); safe to call before wake().
+  function drone({ cutoff = 420, vol = 0.16 } = {}) {
+    let gain = null;
+    return on => {
+      if (!ac) return;
+      if (!gain) {
+        const len = ac.sampleRate * 2;
+        const buf = ac.createBuffer(1, len, ac.sampleRate);
+        const d = buf.getChannelData(0);
+        for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+        const s = ac.createBufferSource(); s.buffer = buf; s.loop = true;
+        const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = cutoff;
+        gain = ac.createGain(); gain.gain.value = 0;
+        s.connect(f); f.connect(gain); gain.connect(out);
+        s.start();
+      }
+      gain.gain.setTargetAtTime(on ? vol : 0, ac.currentTime, 0.03);
+    };
+  }
+
+  function setMuted(on) {
+    muted = on;
+    if (out) out.gain.value = on ? 0 : 1;
+    try { localStorage.setItem(muteKey, on ? '1' : '0'); } catch {}
+  }
+
+  return {
+    wake, note, tune, noise, drone,
+    get muted() { return muted; },
+    toggleMute() { setMuted(!muted); return muted; },
+  };
+}
+
+// ---- engine/input.js
+// Keyboard and touch in one place. `held` is what a game polls each tick;
+// `onDir` fires once per press (menus, initials); `onAction` carries the
+// buttons: start, pause, back, crt, mute.
+//
+// A word game passes `onLetter`: then every letter key is a letter (WASD stop
+// being directions, P/C/M stop being shortcuts; those stay on the buttons) and
+// only the arrows move. `onKey(code)` gets any other key and returns true if
+// it used it. `onPoint(x, y)` receives taps on the screen in GAME
+// pixels; returning true means the game used the tap, otherwise it is START.
+function makeInput({ screen, onAction, onDir, onAny, onLetter = null, onPoint = null, onKey = null }) {
+  // `fire` is Space, Enter or the START button while held, for games that
+  // hold a trigger down; every other game ignores it.
+  const held = { up: false, down: false, left: false, right: false, fire: false };
+  const KEYS = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
+  const ACTIONS = { Space: 'start', Enter: 'start', Escape: 'back' };
+  if (!onLetter) {
+    Object.assign(KEYS, { KeyW: 'up', KeyS: 'down', KeyA: 'left', KeyD: 'right' });
+    Object.assign(ACTIONS, { KeyP: 'pause', KeyC: 'crt', KeyM: 'mute' });
+  }
+
+  let touch = matchMedia('(pointer: coarse)').matches;
+  const markTouch = on => {
+    touch = on;
+    document.body.classList.toggle('touch', on);
+  };
+  markTouch(touch);
+  addEventListener('touchstart', () => { if (!touch) markTouch(true); }, { passive: true });
+
+  addEventListener('keydown', e => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const dir = KEYS[e.code];
+    if (dir) {
+      e.preventDefault();
+      onAny();
+      if (!e.repeat) onDir(dir);
+      held[dir] = true;
+      return;
+    }
+    const action = ACTIONS[e.code];
+    if (action) {
+      if (action === 'start') held.fire = true;
+      // Space and Enter on a focused button or link belong to that control.
+      if ((e.code === 'Space' || e.code === 'Enter') && e.target.closest && e.target.closest('button, a')) return;
+      e.preventDefault();
+      onAny();
+      if (!e.repeat) onAction(action);
+      return;
+    }
+    // e.key, not e.code: the letter printed on the key, whatever the layout.
+    // Digits come through the same door, for games that number their keys.
+    if (onLetter && /^[a-z0-9]$/i.test(e.key)) {
+      e.preventDefault();
+      onAny();
+      if (!e.repeat) onLetter(e.key.toUpperCase());
+    }
+    // Anything else a game asked for by code (Z for undo, R for restart).
+    else if (onKey && !e.repeat && onKey(e.code)) { e.preventDefault(); onAny(); }
+  });
+  addEventListener('keyup', e => {
+    const dir = KEYS[e.code];
+    if (dir) held[dir] = false;
+    if (ACTIONS[e.code] === 'start') held.fire = false;
+  });
+  addEventListener('blur', () => { held.up = held.down = held.left = held.right = held.fire = false; });
+
+  for (const b of document.querySelectorAll('[data-dir]')) {
+    const dir = b.dataset.dir;
+    const down = e => {
+      e.preventDefault();
+      onAny();
+      held.up = held.down = held.left = held.right = false;
+      held[dir] = true;
+      onDir(dir);
+    };
+    const up = () => { held[dir] = false; };
+    b.addEventListener('pointerdown', down);
+    b.addEventListener('pointerup', up);
+    b.addEventListener('pointerleave', up);
+    b.addEventListener('pointercancel', up);
+    b.addEventListener('contextmenu', e => e.preventDefault());
+  }
+  // Buttons that send a letter (Sorted's left loop is A and D).
+  for (const b of document.querySelectorAll('[data-letter]')) {
+    b.addEventListener('pointerdown', e => { e.preventDefault(); onAny(); if (onLetter) onLetter(b.dataset.letter); });
+    b.addEventListener('contextmenu', e => e.preventDefault());
+  }
+  for (const b of document.querySelectorAll('[data-action]')) {
+    const action = b.dataset.action;
+    // pointerdown for the START button, so it answers as fast as the d-pad;
+    // click for the toggles, so keyboard users can press them too.
+    if (b.classList.contains('start')) {
+      b.addEventListener('pointerdown', e => { e.preventDefault(); onAny(); held.fire = true; onAction(action); });
+      for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(ev, () => { held.fire = false; });
+    } else {
+      b.addEventListener('click', () => { onAny(); onAction(action); });
+    }
+  }
+  screen.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    onAny();
+    if (onPoint) {
+      const r = screen.getBoundingClientRect();
+      const x = ((e.clientX - r.left) * screen.width) / r.width;
+      const y = ((e.clientY - r.top) * screen.height) / r.height;
+      if (onPoint(x, y)) return;
+    }
+    onAction('start');
+  });
+
+  return { held, get touch() { return touch; } };
+}
+
+// ---- games/no-crossing/rules.js
+// No Crossing's grid and riders, with no drawing, so the tests can race them.
+// Carried over from the Qlaim cabinet unchanged: a 160x90 grid, the same
+// collisions (a head-on draw included), and refused reversals. New here:
+// cpuTurn(), a rider for one player and for the demo.
+const COLS = 160, ROWS = 90, WINS_NEEDED = 5;
+// Clockwise, so a right turn is +1 and a left turn is -1 with a modulo.
+const HEADINGS = [[0, -1], [1, 0], [0, 1], [-1, 0]];
+
+function newRound() {
+  const grid = new Uint8Array(COLS * ROWS);
+  const riders = [
+    { x: Math.floor(COLS * 0.22), y: Math.floor(ROWS / 2), dir: 1, alive: true, queued: null },
+    { x: Math.floor(COLS * 0.78), y: Math.floor(ROWS / 2), dir: 3, alive: true, queued: null },
+  ];
+  for (const r of riders) grid[r.y * COLS + r.x] = 1;
+  return { grid, riders };
+}
+
+// Absolute steering: a reversal is refused rather than fatal.
+function steer(r, dir) {
+  if (!r.alive || (dir + 2) % 4 === r.dir) return false;
+  r.queued = dir;
+  return true;
+}
+
+// Relative steering (touch buttons): queued, so two taps between steps cannot
+// reverse a rider into its own wall.
+function turnBy(r, delta) {
+  if (!r.alive) return;
+  r.queued = (r.dir + delta + 4) % 4;
+}
+
+// One step for every rider. Returns the indexes of riders that crashed this
+// step (none, one, or both: both is a draw).
+function stepRiders(round) {
+  const { grid, riders } = round;
+  for (const r of riders) {
+    if (!r.alive) continue;
+    if (r.queued !== null) { r.dir = r.queued; r.queued = null; }
+    r.x += HEADINGS[r.dir][0];
+    r.y += HEADINGS[r.dir][1];
+  }
+  const dead = [];
+  riders.forEach((r, i) => {
+    if (!r.alive) return;
+    if (r.x < 0 || r.y < 0 || r.x >= COLS || r.y >= ROWS || grid[r.y * COLS + r.x]) dead.push(i);
+  });
+  // Head-on into the same empty cell is a draw, not a win for whoever the
+  // loop happened to reach first.
+  if (riders[0].alive && riders[1].alive && riders[0].x === riders[1].x && riders[0].y === riders[1].y) {
+    if (!dead.includes(0)) dead.push(0);
+    if (!dead.includes(1)) dead.push(1);
+  }
+  for (const r of riders) if (r.alive && r.x >= 0 && r.y >= 0 && r.x < COLS && r.y < ROWS) grid[r.y * COLS + r.x] = 1;
+  for (const i of dead) riders[i].alive = false;
+  return dead;
+}
+
+const free = (grid, x, y) => x >= 0 && y >= 0 && x < COLS && y < ROWS && !grid[y * COLS + x];
+
+// How many cells can be reached from (x, y), counting up to `cap`.
+function room(grid, x, y, cap) {
+  if (!free(grid, x, y)) return 0;
+  const seen = new Set([y * COLS + x]), stack = [[x, y]];
+  while (stack.length && seen.size < cap) {
+    const [cx, cy] = stack.pop();
+    for (const [dx, dy] of HEADINGS) {
+      const nx = cx + dx, ny = cy + dy, k = ny * COLS + nx;
+      if (free(grid, nx, ny) && !seen.has(k)) { seen.add(k); stack.push([nx, ny]); }
+    }
+  }
+  return seen.size;
+}
+
+// The computer's rider: of straight on, left and right, take the one with the
+// most room behind it, keeping straight on when it is nearly as good, and
+// now and then turning for no reason, as a person does.
+function cpuTurn(round, me, rand = Math.random) {
+  const r = round.riders[me];
+  if (!r.alive) return null;
+  const options = [r.dir, (r.dir + 3) % 4, (r.dir + 1) % 4].map(dir => {
+    const nx = r.x + HEADINGS[dir][0], ny = r.y + HEADINGS[dir][1];
+    return { dir, room: room(round.grid, nx, ny, 2000) };
+  });
+  const best = Math.max(...options.map(o => o.room));
+  if (best === 0) return r.dir;
+  const straight = options[0];
+  if (straight.room >= best * 0.9 && rand() > 0.03) return r.dir;
+  const good = options.filter(o => o.room >= best * 0.9);
+  return good[Math.floor(rand() * good.length)].dir;
+}
+
+// ---- games/no-crossing/game.js
+// The 160x90 grid at 2 pixels a cell, under a 20px bar.
+const PX = 2, TOP = 20;
+const W = COLS * PX, H = TOP + ROWS * PX; // 320 x 200
+const TICK_MS = 1000 / 60;
+
+const INK = {
+  red: '#ff3b3b', white: '#ffffff', yellow: '#ffd23f', orange: '#ff8a1e', green: '#3fd46b',
+  cyan: '#5eeaf5', grey: '#8f8fb0', dim: '#4a4a6a',
+};
+const SIDE = [
+  { trail: '#5eeaf5', edge: '#2a9db0' },
+  { trail: '#ff8a1e', edge: '#a3501e' },
+];
+const SIDE_INK = [INK.cyan, INK.orange];
+const LOGO_INK = ['#ffffff', '#d0f8ff', '#5eeaf5', '#5eeaf5', '#ff8a1e', '#ff8a1e', '#a3501e'];
+
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const canvas = document.getElementById('c');
+const screen = makeScreen({ canvas, stage: document.getElementById('stage'), frame: document.getElementById('screen'), w: W, h: H, crtKey: 'lk.arcade.crt' });
+const ctx = screen.ctx;
+const sound = makeSound('lk.arcade.mute');
+const hum = [sound.drone({ cutoff: 220, vol: 0.05 })];
+
+let round = newRound(), trails = null, wins = [0, 0], speed = 3, cpu = [false, false];
+let mode = 'attract', page = 'title', pageT = 0, t = 0, clock = 0, countdown = 0, choice = 0, message = '';
+let sparks = [], demo = false, pausedFrom = null;
+
+const SFX = {
+  count: () => sound.note(440, 0.12, { vol: 0.05 }),
+  go: () => sound.note(880, 0.2, { vol: 0.06 }),
+  crash: () => { sound.noise(0.5, { vol: 0.3, cutoff: 900 }); sound.note(220, 0.4, { to: 55, vol: 0.05 }); },
+  win: () => sound.tune([[784, 0.1], [988, 0.1], [1175, 0.1], [1568, 0.35]], { vol: 0.045 }),
+  blip: () => sound.note(988, 0.05, { vol: 0.04 }),
+};
+// The demo plays silently: nobody asked for noise from a screen they are not using.
+function sfx(name) { if (!demo) SFX[name](); }
+
+// ---------------------------------------------------------------- the game
+
+// Trails are painted once as each cell is claimed, onto a canvas that is
+// never cleared: repainting 14,400 cells a frame is what makes this stutter.
+function freshTrails() {
+  trails = document.createElement('canvas');
+  trails.width = W; trails.height = ROWS * PX;
+  const g = trails.getContext('2d');
+  g.fillStyle = '#05051a'; g.fillRect(0, 0, W, ROWS * PX);
+  g.fillStyle = '#0c0c2c';
+  for (let x = 0; x < W; x += 16) g.fillRect(x, 0, 1, ROWS * PX);
+  for (let y = 0; y < ROWS * PX; y += 16) g.fillRect(0, y, W, 1);
+  for (const [i, r] of round.riders.entries()) stamp(i, r);
+}
+function stamp(i, r) {
+  const g = trails.getContext('2d');
+  g.fillStyle = SIDE[i].trail;
+  g.fillRect(r.x * PX, r.y * PX, PX, PX);
+}
+
+function newMatch(vsCpu, isDemo) {
+  demo = isDemo;
+  cpu = [isDemo, isDemo || vsCpu];
+  wins = [0, 0]; speed = 3;
+  startRound();
+}
+
+function startRound() {
+  round = newRound();
+  freshTrails();
+  sparks = [];
+  countdown = 3 * 60;
+  mode = 'countdown';
+}
+
+function endRound(dead) {
+  hum[0](false);
+  sfx('crash');
+  for (const i of dead) {
+    const r = round.riders[i];
+    for (let k = 0; k < (reduceMotion ? 6 : 22); k++) {
+      const a = Math.random() * Math.PI * 2, s = 0.3 + Math.random() * 1.5;
+      sparks.push({ x: r.x * PX, y: TOP + r.y * PX, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 1, col: SIDE[i].trail });
+    }
+  }
+  if (dead.length === 2) { message = 'BOTH AT ONCE'; mode = 'between'; t = 0; return; }
+  const winner = dead[0] === 0 ? 1 : 0;
+  wins[winner]++;
+  message = who(winner) + (wins[winner] >= WINS_NEEDED ? ' TAKES THE MATCH' : ' TAKES IT');
+  mode = wins[winner] >= WINS_NEEDED ? 'match' : 'between';
+  if (mode === 'between') speed = Math.max(1.6, speed - 0.18);
+  t = 0;
+  sfx('win');
+}
+
+function who(i) {
+  if (demo) return i === 0 ? 'BLUE' : 'ORANGE';
+  return i === 0 ? 'PLAYER ONE' : cpu[1] ? 'THE CPU' : 'PLAYER TWO';
+}
+
+function toAttract(p) { mode = 'attract'; page = p; pageT = 0; demo = false; hum[0](false); }
+
+let stepClock = 0;
+function playTick() {
+  if (++stepClock % Math.max(1, Math.round(speed)) !== 0) return;
+  for (const i of [0, 1]) if (cpu[i]) steer(round.riders[i], cpuTurn(round, i));
+  const dead = stepRiders(round);
+  round.riders.forEach((r, i) => { if (r.alive) stamp(i, r); });
+  if (dead.length) endRound(dead);
+}
+
+// ---------------------------------------------------------------- input
+
+// Keyboard: player one W A S D, player two the arrows (absolute headings).
+// Against the CPU the arrows steer player one too. Touch: each side has a
+// turn-left and turn-right button (Q E for one, U O for two on a keyboard).
+const ABS = { W: 0, D: 1, S: 2, A: 3 };
+const DIR = { up: 0, right: 1, down: 2, left: 3 };
+const modeRow = i => ({ x: 70, y: 100 + i * 24, w: 180, h: 20 });
+
+function human(i) { return !cpu[i] && mode === 'playing'; }
+
+function onAction(action) {
+  if (action === 'crt') { screen.toggleCrt(); syncToggles(); return; }
+  if (action === 'mute') { sound.toggleMute(); syncToggles(); return; }
+  if (action === 'back') { toAttract('title'); return; }
+  if (mode === 'attract' || demo) { newMatch(choice === 0, false); return; }
+  if (mode === 'between' && t >= 40) { startRound(); return; }
+  if (mode === 'match' && t >= 40) toAttract('title');
+}
+
+function onLetter(ch) {
+  if (mode === 'attract' || demo) return;
+  if (ch in ABS && human(0)) steer(round.riders[0], ABS[ch]);
+  if (ch === 'Q' && human(0)) turnBy(round.riders[0], -1);
+  if (ch === 'E' && human(0)) turnBy(round.riders[0], 1);
+  if (ch === 'U' && human(1)) turnBy(round.riders[1], -1);
+  if (ch === 'O' && human(1)) turnBy(round.riders[1], 1);
+}
+
+function onDir(dir) {
+  if (mode === 'attract') {
+    if (page !== 'title') { page = 'title'; pageT = 0; }
+    if (dir === 'up' || dir === 'down') { choice = 1 - choice; pageT = 0; sfx('blip'); }
+    return;
+  }
+  const me = cpu[1] ? 0 : 1;
+  if (human(me)) steer(round.riders[me], DIR[dir]);
+}
+
+function onPoint(x, y) {
+  if (mode === 'attract' && page === 'title') {
+    for (let i = 0; i < 2; i++) {
+      const r = modeRow(i);
+      if (x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h) { choice = i; newMatch(i === 0, false); return true; }
+    }
+  }
+  return mode === 'playing' || mode === 'countdown';
+}
+
+const input = makeInput({ screen: canvas, onAction, onDir, onLetter, onPoint, onAny: () => sound.wake() });
+
+const crtBtn = document.querySelector('[data-action="crt"]');
+const muteBtn = document.querySelector('[data-action="mute"]');
+function syncToggles() {
+  crtBtn.textContent = 'CRT ' + (screen.crt ? 'on' : 'off');
+  crtBtn.setAttribute('aria-pressed', String(screen.crt));
+  muteBtn.textContent = 'Sound ' + (sound.muted ? 'off' : 'on');
+  muteBtn.setAttribute('aria-pressed', String(!sound.muted));
+}
+syncToggles();
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && !demo && (mode === 'playing' || mode === 'countdown')) { pausedFrom = mode; mode = 'paused'; hum[0](false); }
+});
+addEventListener('focus', () => { if (mode === 'paused') mode = pausedFrom; });
+
+// ---------------------------------------------------------------- drawing
+
+const blinkOn = (rate = 32) => reduceMotion || ((clock / rate) | 0) % 2 === 0;
+const prompt = () => (input.touch ? 'TAP START' : 'PRESS SPACE');
+
+function drawHud() {
+  if (mode === 'attract') return;
+  for (let i = 0; i < 2; i++) {
+    const left = i === 0;
+    const label = demo ? (left ? 'BLUE' : 'ORANGE') : left ? 'ONE' : cpu[1] ? 'CPU' : 'TWO';
+    text(ctx, label, left ? 6 : W - 6, 3, SIDE_INK[i], { align: left ? 'left' : 'right' });
+    for (let k = 0; k < WINS_NEEDED; k++) {
+      ctx.fillStyle = k < wins[i] ? SIDE_INK[i] : '#24243a';
+      ctx.fillRect(left ? 6 + k * 7 : W - 11 - k * 7, 12, 5, 5);
+    }
+  }
+  text(ctx, 'FIRST TO ' + WINS_NEEDED, W / 2, 3, INK.grey, { align: 'center' });
+}
+
+function drawField() {
+  ctx.drawImage(trails, 0, TOP);
+  round.riders.forEach((r, i) => {
+    if (!r.alive) return;
+    const x = r.x * PX, y = TOP + r.y * PX;
+    ctx.fillStyle = SIDE[i].edge; ctx.fillRect(x - 1, y - 1, 4, 4);
+    ctx.fillStyle = INK.white; ctx.fillRect(x, y, 2, 2);
+  });
+  for (const s of sparks) { ctx.fillStyle = s.life > 0.5 ? INK.white : s.col; ctx.fillRect(Math.round(s.x), Math.round(s.y), 1, 1); }
+  ctx.fillStyle = '#2a2a50';
+  ctx.fillRect(0, TOP, W, 1); ctx.fillRect(0, H - 1, W, 1); ctx.fillRect(0, TOP, 1, H - TOP); ctx.fillRect(W - 1, TOP, 1, H - TOP);
+}
+
+function banner(lines, y) {
+  const wide = Math.max(...lines.map(([s]) => s.length)) * 6 + 10;
+  ctx.fillStyle = '#000';
+  ctx.fillRect(Math.floor((W - wide) / 2), y - 5, wide, lines.length * 12 + 7);
+  lines.forEach(([s, ink], i) => text(ctx, s, W / 2, y + i * 12, ink, { align: 'center' }));
+}
+
+function drawTitle() {
+  if (!trails) { round = newRound(); freshTrails(); }
+  ctx.drawImage(trails, 0, TOP);
+  // two trails racing across behind the title
+  const n = reduceMotion ? 80 : (clock >> 1) % 220;
+  for (let k = 0; k < n; k++) {
+    ctx.fillStyle = SIDE[0].trail; ctx.fillRect(10 + k, TOP + 162, 2, 2);
+    ctx.fillStyle = SIDE[1].trail; ctx.fillRect(W - 12 - k, TOP + 172, 2, 2);
+  }
+  text(ctx, 'NO CROSSING', W / 2 + 2, 34, '#1c2870', { align: 'center', scale: 4 });
+  text(ctx, 'NO CROSSING', W / 2, 32, LOGO_INK, { align: 'center', scale: 4 });
+  ctx.fillStyle = '#000'; ctx.fillRect(40, 64, 240, 14);
+  text(ctx, 'THE WALL YOU LEAVE BEHIND IS THE WEAPON', W / 2, 68, INK.white, { align: 'center' });
+  ['1 PLAYER VS THE CPU', '2 PLAYERS, ONE SCREEN'].forEach((s, i) => {
+    const r = modeRow(i), on = i === choice;
+    ctx.fillStyle = on ? '#1c2870' : '#000'; ctx.fillRect(r.x, r.y, r.w, r.h);
+    text(ctx, s, W / 2, r.y + 7, on ? INK.yellow : INK.grey, { align: 'center' });
+  });
+  ctx.fillStyle = '#000'; ctx.fillRect(80, 151, 160, 22);
+  if (blinkOn()) text(ctx, input.touch ? 'TAP ONE TO PLAY' : 'UP / DOWN, THEN SPACE', W / 2, 154, INK.yellow, { align: 'center' });
+  text(ctx, 'LEON KARSTEN 2026', W / 2, 164, INK.dim, { align: 'center' });
+}
+
+function drawHowTo() {
+  text(ctx, 'HOW TO PLAY', W / 2, 14, INK.cyan, { align: 'center' });
+  text(ctx, 'YOU NEVER STOP. EVERYTHING YOU PASS', W / 2, 32, INK.white, { align: 'center' });
+  text(ctx, 'BECOMES A WALL. HIT A WALL AND YOU ARE OUT.', W / 2, 44, INK.white, { align: 'center' });
+  text(ctx, 'MAKE THE OTHER RIDER RUN OUT OF ROOM.', W / 2, 60, INK.orange, { align: 'center' });
+  if (input.touch) {
+    text(ctx, 'EACH SIDE HAS TWO BUTTONS:', W / 2, 84, INK.grey, { align: 'center' });
+    text(ctx, 'TURN LEFT AND TURN RIGHT.', W / 2, 96, INK.grey, { align: 'center' });
+  } else {
+    text(ctx, 'PLAYER ONE   W A S D', W / 2, 84, INK.cyan, { align: 'center' });
+    text(ctx, 'PLAYER TWO   ARROW KEYS', W / 2, 96, INK.orange, { align: 'center' });
+    text(ctx, 'ALONE AGAINST THE CPU, EITHER WILL DO.', W / 2, 108, INK.grey, { align: 'center' });
+  }
+  text(ctx, 'HEAD-ON IS A DRAW. FIRST TO ' + WINS_NEEDED + ' WINS,', W / 2, 128, INK.white, { align: 'center' });
+  text(ctx, 'AND EVERY ROUND IS A LITTLE FASTER.', W / 2, 140, INK.white, { align: 'center' });
+  if (blinkOn()) text(ctx, prompt(), W / 2, 166, INK.yellow, { align: 'center' });
+}
+
+function draw() {
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, W, H);
+  if (mode === 'attract') { if (page === 'title') drawTitle(); else drawHowTo(); return; }
+  drawField();
+  drawHud();
+  const mid = TOP + 70;
+  if (mode === 'countdown') {
+    const n = String(Math.ceil(countdown / 60));
+    text(ctx, n, W / 2 + 2, mid - 8, '#1c2870', { align: 'center', scale: 5 });
+    text(ctx, n, W / 2, mid - 10, INK.yellow, { align: 'center', scale: 5 });
+  } else if (mode === 'between' || mode === 'match') {
+    const lines = [[message, INK.yellow], [wins[0] + ' - ' + wins[1], INK.white]];
+    if (t >= 40 && !demo && blinkOn()) lines.push([prompt(), INK.cyan]);
+    banner(lines, mid);
+  } else if (mode === 'paused') banner([['PAUSED', INK.white]], mid);
+  if (demo && blinkOn()) text(ctx, 'DEMO PLAY', W / 2, TOP + 6, INK.yellow, { align: 'center' });
+}
+
+// ---------------------------------------------------------------- card art
+
+function drawCard() {
+  const c = document.createElement('canvas');
+  c.width = 320; c.height = 240;
+  const g = c.getContext('2d');
+  let seed = 9;
+  const rnd = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+  const keep = [round, trails];
+  round = newRound(); freshTrails();
+  for (let n = 0; n < 420; n++) { for (const i of [0, 1]) steer(round.riders[i], cpuTurn(round, i, rnd)); const d = stepRiders(round); round.riders.forEach((r, i) => { if (r.alive) stamp(i, r); }); if (d.length) break; }
+  g.fillStyle = '#000'; g.fillRect(0, 0, 320, 240);
+  g.drawImage(trails, 0, 50);
+  round.riders.forEach((r, i) => { if (r.alive) { g.fillStyle = SIDE[i].edge; g.fillRect(r.x * 2 - 1, 50 + r.y * 2 - 1, 4, 4); g.fillStyle = '#fff'; g.fillRect(r.x * 2, 50 + r.y * 2, 2, 2); } });
+  [round, trails] = keep;
+  text(g, 'NO CROSSING', 162, 14, '#1c2870', { align: 'center', scale: 4 });
+  text(g, 'NO CROSSING', 160, 12, LOGO_INK, { align: 'center', scale: 4 });
+  return c;
+}
+
+// ---------------------------------------------------------------- loop
+
+const PAGES = { title: ['howto', 600], howto: ['demo', 540] };
+function attractTick() {
+  pageT++;
+  const [next, length] = PAGES[page];
+  if (pageT < length) return;
+  if (next === 'demo') { newMatch(true, true); return; }
+  toAttract(next);
+}
+
+let demoTicks = 0;
+function tick() {
+  clock++;
+  for (const s of sparks) { s.x += s.vx; s.y += s.vy; s.life -= 0.02; }
+  sparks = sparks.filter(s => s.life > 0);
+  if (demo && ++demoTicks > 60 * 40) { demoTicks = 0; toAttract('title'); return; }
+  if (!demo) demoTicks = 0;
+  switch (mode) {
+    case 'attract': attractTick(); break;
+    case 'countdown':
+      if (--countdown <= 0) { mode = 'playing'; sfx('go'); if (!demo) hum[0](true); }
+      else if (countdown % 60 === 0) sfx('count');
+      break;
+    case 'playing': playTick(); break;
+    case 'between': if (++t >= (demo ? 120 : 60 * 20)) { if (demo) toAttract('title'); else startRound(); } break;
+    case 'match': if (++t >= (demo ? 120 : 60 * 20)) toAttract('title'); break;
+  }
+}
+
+let acc = 0, lastT = 0;
+function frame(now) {
+  requestAnimationFrame(frame);
+  if (!lastT) lastT = now;
+  acc += Math.min(100, now - lastT);
+  lastT = now;
+  while (acc >= TICK_MS) { tick(); acc -= TICK_MS; }
+  draw();
+}
+requestAnimationFrame(frame);
+
+window.__nocrossing = {
+  get mode() { return mode; },
+  get page() { return page; },
+  get demo() { return demo; },
+  get wins() { return wins.slice(); },
+  get riders() { return round.riders.map(r => ({ ...r })); },
+  get cpu() { return cpu.slice(); },
+  attract(p) { toAttract(p); },
+  // Put rider `i` one step from the wall, heading into it.
+  doom(i) { const r = round.riders[i]; r.dir = i === 0 ? 3 : 1; r.queued = null; r.x = i === 0 ? 0 : COLS - 1; },
+};
+window.__arcade = { card: drawCard };
+})();
+</script>
+</body>
+</html>
