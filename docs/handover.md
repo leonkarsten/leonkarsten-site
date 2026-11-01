@@ -30,9 +30,10 @@ Nothing personal: interests, facts, instructions, coaching, experiences only.
 - **Games:** source repo `C:\Users\leon\Documents\leonkarsten-arcade` (local only, no remote
   yet). Style: real 1980–85 raster arcade inside the screen (black, pixel sprites, bitmap font,
   attract mode, top-ten initials), synthwave only on the page around it; rules in that repo's
-  `docs/style.md`. Import with `.\scripts\import-arcade.ps1 -Build`. First game **Lamplight**
-  (`/play/lamplight/`, ported from Leon's Qlaim arcade) added 2026-11-01; not yet played through
-  by Leon. Card pictures: each game draws its own 4:3 card (`npm run cards` in the arcade repo
+  `docs/style.md`. Import with `.\scripts\import-arcade.ps1 -Build`. Games, both ported from Leon's
+  Qlaim arcade on 2026-11-01: **Lamplight** (`/play/lamplight/`, maze) and **Launch Window**
+  (`/play/launch-window/`, word guessing, upright screen with on-screen letter keys). Leon has
+  seen Lamplight live; neither has been played through on his iPhone yet. Card pictures: each game draws its own 4:3 card (`npm run cards` in the arcade repo
   saves `cards/<slug>.png`); the import copies it to `public/play/<slug>/card.png` and the
   catalogue entry's optional `image` field shows it on `/games/`.
 - **Content:** one draft post and one draft guide, both `draft: true` placeholders. About page

@@ -1,0 +1,8 @@
+{
+  "name": "Launch Window",
+  "slug": "launch-window",
+  "summary": "Guess the word before the fuel runs out. Six wrong letters and the launch is scrubbed; three rockets a game.",
+  "app": "/play/launch-window/",
+  "image": "/play/launch-window/card.png",
+  "tags": ["word", "keyboard or touch"]
+}

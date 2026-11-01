@@ -144,14 +144,24 @@ body.touch .pad { display: flex; }
 }
 .start:active { transform: translateY(2px); box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.25); }
 
-/* A phone on its side: d-pad left of the screen, START right of it. */
+/* A phone on its side: d-pad left of the screen, START right of it. A game
+   with no d-pad (its keys are on the screen) moves the bar to a column
+   instead, so an upright screen gets the full height. */
 @media (orientation: landscape) and (max-height: 520px) {
-  body.touch {
+  body.no-pad {
+    grid-template-rows: minmax(0, 1fr);
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas: 'bar stage';
+  }
+  body.no-pad .bar { flex-direction: column; justify-content: flex-start; align-items: flex-start; }
+  body.no-pad .toggles { flex-direction: column; }
+  .stage { padding: 4px 8px; }
+  body.touch:not(.no-pad) {
     grid-template-rows: auto minmax(0, 1fr);
     grid-template-columns: auto minmax(0, 1fr) auto;
     grid-template-areas: 'bar bar bar' 'dpad stage start';
   }
-  body.touch .pad { display: contents; }
+  body.touch:not(.no-pad) .pad { display: contents; }
   body.touch .dpad { grid-area: dpad; align-self: center; margin-left: 12px; }
   body.touch .start { grid-area: start; align-self: center; margin-right: 16px; }
 }
@@ -285,7 +295,11 @@ function makeScreen({ canvas, stage, frame, w, h, crtKey }) {
 
   function fit() {
     const dpr = window.devicePixelRatio || 1;
-    const aw = stage.clientWidth, ah = stage.clientHeight;
+    // clientWidth/Height include the stage's padding; the screen gets only
+    // what is inside it.
+    const cs = getComputedStyle(stage);
+    const aw = stage.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    const ah = stage.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
     const s = Math.max(1, Math.floor(Math.min((aw * dpr) / w, (ah * dpr) / h)));
     canvas.style.width = (s * w) / dpr + 'px';
     canvas.style.height = (s * h) / dpr + 'px';
@@ -384,13 +398,19 @@ function makeSound(muteKey) {
 // Keyboard and touch in one place. `held` is what a game polls each tick;
 // `onDir` fires once per press (menus, initials); `onAction` carries the
 // buttons: start, pause, back, crt, mute.
-function makeInput({ screen, onAction, onDir, onAny }) {
+//
+// A word game passes `onLetter`: then every letter key is a letter (WASD stop
+// being directions, P/C/M stop being shortcuts; those stay on the buttons) and
+// only the arrows move. `onPoint(x, y)` receives taps on the screen in GAME
+// pixels; returning true means the game used the tap, otherwise it is START.
+function makeInput({ screen, onAction, onDir, onAny, onLetter = null, onPoint = null }) {
   const held = { up: false, down: false, left: false, right: false };
-  const KEYS = {
-    ArrowUp: 'up', KeyW: 'up', ArrowDown: 'down', KeyS: 'down',
-    ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right',
-  };
-  const ACTIONS = { Space: 'start', Enter: 'start', KeyP: 'pause', Escape: 'back', KeyC: 'crt', KeyM: 'mute' };
+  const KEYS = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
+  const ACTIONS = { Space: 'start', Enter: 'start', Escape: 'back' };
+  if (!onLetter) {
+    Object.assign(KEYS, { KeyW: 'up', KeyS: 'down', KeyA: 'left', KeyD: 'right' });
+    Object.assign(ACTIONS, { KeyP: 'pause', KeyC: 'crt', KeyM: 'mute' });
+  }
 
   let touch = matchMedia('(pointer: coarse)').matches;
   const markTouch = on => {
@@ -417,6 +437,13 @@ function makeInput({ screen, onAction, onDir, onAny }) {
       e.preventDefault();
       onAny();
       if (!e.repeat) onAction(action);
+      return;
+    }
+    // e.key, not e.code: the letter printed on the key, whatever the layout.
+    if (onLetter && /^[a-z]$/i.test(e.key)) {
+      e.preventDefault();
+      onAny();
+      if (!e.repeat) onLetter(e.key.toUpperCase());
     }
   });
   addEventListener('keyup', e => {
@@ -451,7 +478,17 @@ function makeInput({ screen, onAction, onDir, onAny }) {
       b.addEventListener('click', () => { onAny(); onAction(action); });
     }
   }
-  screen.addEventListener('pointerdown', e => { e.preventDefault(); onAny(); onAction('start'); });
+  screen.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    onAny();
+    if (onPoint) {
+      const r = screen.getBoundingClientRect();
+      const x = ((e.clientX - r.left) * screen.width) / r.width;
+      const y = ((e.clientY - r.top) * screen.height) / r.height;
+      if (onPoint(x, y)) return;
+    }
+    onAction('start');
+  });
 
   return { held, get touch() { return touch; } };
 }

@@ -1,0 +1,1366 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Launch Window</title>
+<meta name="description" content="Guess the word before the fuel runs out. Six wrong letters and the launch is scrubbed.">
+<meta name="theme-color" content="#000000">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2016%2016'%20shape-rendering='crispEdges'%3E%3Crect%20width='16'%20height='16'%20fill='%23000'/%3E%3Crect%20x='7'%20y='1'%20width='2'%20height='2'%20fill='%23e8302f'/%3E%3Crect%20x='6'%20y='3'%20width='4'%20height='8'%20fill='%23f0f0f0'/%3E%3Crect%20x='7'%20y='5'%20width='2'%20height='2'%20fill='%235eeaf5'/%3E%3Crect%20x='4'%20y='8'%20width='2'%20height='4'%20fill='%23e8302f'/%3E%3Crect%20x='10'%20y='8'%20width='2'%20height='4'%20fill='%23e8302f'/%3E%3Crect%20x='7'%20y='11'%20width='2'%20height='3'%20fill='%23ffd23f'/%3E%3C/svg%3E">
+<style>
+:root {
+  --void: #000;
+  --chrome: #8f8fb0;
+  --chrome-hi: #5eeaf5;
+  --edge: #2a2a40;
+  --start: #e8302f;
+  --ui: ui-monospace, 'Cascadia Mono', Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; height: 100%; background: var(--void); color: var(--chrome); }
+body {
+  font-family: var(--ui);
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  height: 100dvh;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: 'bar' 'stage' 'pad';
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.bar {
+  grid-area: bar;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+}
+.bar a, .bar button {
+  font: 700 12px/1 var(--ui);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--chrome);
+  background: none;
+  border: 1px solid transparent;
+  padding: 9px 10px;
+  text-decoration: none;
+  cursor: pointer;
+  border-radius: 0;
+}
+.bar a:hover, .bar button:hover, .bar a:focus-visible, .bar button:focus-visible {
+  color: var(--chrome-hi);
+  border-color: var(--edge);
+  outline: none;
+}
+.bar button[aria-pressed='true'] { color: var(--chrome-hi); }
+.toggles { display: flex; gap: 2px; }
+
+.stage {
+  grid-area: stage;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  padding: 8px 16px;
+}
+/* A faint edge, so an unexplored black playfield still has a size. */
+.screen { position: relative; line-height: 0; touch-action: none; box-shadow: 0 0 0 1px #1c1c2c; }
+.screen canvas {
+  display: block;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+/* The CRT switch. Off by default: sharp pixels are the honest picture, the
+   tube is a costume. Scanlines are one per game pixel row (--px is set by
+   the screen fit), so they never beat against the art. */
+.screen.crt { border-radius: 3% / 4%; overflow: hidden; box-shadow: 0 0 0 4px #0b0b14, 0 0 36px rgba(94, 234, 245, 0.12); }
+.screen.crt canvas { filter: saturate(1.25) brightness(1.12) contrast(1.05) blur(calc(var(--px) * 0.18)); }
+.screen.crt::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background:
+    radial-gradient(ellipse at center, rgba(0, 0, 0, 0) 58%, rgba(0, 0, 0, 0.6) 100%),
+    repeating-linear-gradient(to bottom,
+      rgba(0, 0, 0, 0) 0, rgba(0, 0, 0, 0) calc(var(--px) * 0.55),
+      rgba(0, 0, 0, 0.38) calc(var(--px) * 0.55), rgba(0, 0, 0, 0.38) var(--px));
+  box-shadow: inset 0 0 48px rgba(0, 0, 0, 0.75);
+}
+
+/* Touch controls: shown on touch screens only. */
+.pad {
+  grid-area: pad;
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  max-width: 380px;
+  margin: 0 auto;
+  padding: 4px 20px 16px;
+}
+body.touch .pad { display: flex; }
+.dpad {
+  display: grid;
+  grid-template-columns: repeat(3, 54px);
+  grid-template-rows: repeat(3, 50px);
+  gap: 3px;
+}
+.dpad button, .start {
+  font: 700 18px/1 var(--ui);
+  color: var(--chrome);
+  background: #12121e;
+  border: 2px solid var(--edge);
+  border-radius: 6px;
+  padding: 0;
+  touch-action: none;
+  cursor: pointer;
+}
+.dpad button:active { background: #24243a; color: var(--chrome-hi); }
+.dpad .up { grid-area: 1 / 2; }
+.dpad .left { grid-area: 2 / 1; }
+.dpad .right { grid-area: 2 / 3; }
+.dpad .down { grid-area: 3 / 2; }
+.start {
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  background: var(--start);
+  border: 4px solid #7a1414;
+  color: #fff;
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  box-shadow: inset 0 -6px 0 rgba(0, 0, 0, 0.25);
+}
+.start:active { transform: translateY(2px); box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.25); }
+
+/* A phone on its side: d-pad left of the screen, START right of it. A game
+   with no d-pad (its keys are on the screen) moves the bar to a column
+   instead, so an upright screen gets the full height. */
+@media (orientation: landscape) and (max-height: 520px) {
+  body.no-pad {
+    grid-template-rows: minmax(0, 1fr);
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas: 'bar stage';
+  }
+  body.no-pad .bar { flex-direction: column; justify-content: flex-start; align-items: flex-start; }
+  body.no-pad .toggles { flex-direction: column; }
+  .stage { padding: 4px 8px; }
+  body.touch:not(.no-pad) {
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas: 'bar bar bar' 'dpad stage start';
+  }
+  body.touch:not(.no-pad) .pad { display: contents; }
+  body.touch .dpad { grid-area: dpad; align-self: center; margin-left: 12px; }
+  body.touch .start { grid-area: start; align-self: center; margin-right: 16px; }
+}
+</style>
+</head>
+<body class="no-pad">
+
+<header class="bar">
+  <a href="/games/">&larr; Games</a>
+  <div class="toggles">
+    <button type="button" data-action="crt" aria-pressed="false">CRT off</button>
+    <button type="button" data-action="mute" aria-pressed="true">Sound on</button>
+  </div>
+</header>
+
+<main class="stage" id="stage">
+  <div class="screen" id="screen">
+    <canvas id="c" role="img" aria-label="Launch Window game screen. Type a letter to guess it, or tap the letters on screen. Space to start."></canvas>
+  </div>
+</main>
+
+<script>
+(() => {
+'use strict';
+// ---- engine/font.js
+// 5x7 bitmap font, one string per glyph, rows separated by spaces. Drawn with
+// fillRect so it stays on the pixel grid at any scale; there is no web font.
+const GLYPHS = {
+  A: '.###. #...# #...# ##### #...# #...# #...#',
+  B: '####. #...# #...# ####. #...# #...# ####.',
+  C: '.###. #...# #.... #.... #.... #...# .###.',
+  D: '####. #...# #...# #...# #...# #...# ####.',
+  E: '##### #.... #.... ####. #.... #.... #####',
+  F: '##### #.... #.... ####. #.... #.... #....',
+  G: '.###. #...# #.... #.### #...# #...# .####',
+  H: '#...# #...# #...# ##### #...# #...# #...#',
+  I: '.###. ..#.. ..#.. ..#.. ..#.. ..#.. .###.',
+  J: '..### ...#. ...#. ...#. ...#. #..#. .##..',
+  K: '#...# #..#. #.#.. ##... #.#.. #..#. #...#',
+  L: '#.... #.... #.... #.... #.... #.... #####',
+  M: '#...# ##.## #.#.# #.#.# #...# #...# #...#',
+  N: '#...# #...# ##..# #.#.# #..## #...# #...#',
+  O: '.###. #...# #...# #...# #...# #...# .###.',
+  P: '####. #...# #...# ####. #.... #.... #....',
+  Q: '.###. #...# #...# #...# #.#.# #..#. .##.#',
+  R: '####. #...# #...# ####. #.#.. #..#. #...#',
+  S: '.###. #...# #.... .###. ....# #...# .###.',
+  T: '##### ..#.. ..#.. ..#.. ..#.. ..#.. ..#..',
+  U: '#...# #...# #...# #...# #...# #...# .###.',
+  V: '#...# #...# #...# #...# #...# .#.#. ..#..',
+  W: '#...# #...# #...# #.#.# #.#.# #.#.# .#.#.',
+  X: '#...# #...# .#.#. ..#.. .#.#. #...# #...#',
+  Y: '#...# #...# .#.#. ..#.. ..#.. ..#.. ..#..',
+  Z: '##### ....# ...#. ..#.. .#... #.... #####',
+  0: '.###. #...# #..## #.#.# ##..# #...# .###.',
+  1: '..#.. .##.. ..#.. ..#.. ..#.. ..#.. .###.',
+  2: '.###. #...# ....# ...#. ..#.. .#... #####',
+  3: '##### ...#. ..#.. ...#. ....# #...# .###.',
+  4: '...#. ..##. .#.#. #..#. ##### ...#. ...#.',
+  5: '##### #.... ####. ....# ....# #...# .###.',
+  6: '..##. .#... #.... ####. #...# #...# .###.',
+  7: '##### ....# ...#. ..#.. .#... .#... .#...',
+  8: '.###. #...# #...# .###. #...# #...# .###.',
+  9: '.###. #...# #...# .#### ....# ...#. .##..',
+  ' ': '..... ..... ..... ..... ..... ..... .....',
+  '.': '..... ..... ..... ..... ..... .##.. .##..',
+  ',': '..... ..... ..... ..... .##.. ..#.. .#...',
+  '!': '..#.. ..#.. ..#.. ..#.. ..#.. ..... ..#..',
+  '?': '.###. #...# ....# ...#. ..#.. ..... ..#..',
+  '-': '..... ..... ..... .###. ..... ..... .....',
+  '+': '..... ..#.. ..#.. ##### ..#.. ..#.. .....',
+  '=': '..... ..... ##### ..... ##### ..... .....',
+  ':': '..... .##.. .##.. ..... .##.. .##.. .....',
+  '/': '....# ...#. ...#. ..#.. .#... .#... #....',
+  "'": '..#.. ..#.. .#... ..... ..... ..... .....',
+  '<': '...#. ..#.. .#... #.... .#... ..#.. ...#.',
+  '>': '.#... ..#.. ...#. ....# ...#. ..#.. .#...',
+  '*': '..... #...# .#.#. ..#.. .#.#. #...# .....',
+};
+
+const FONT_BITS = {};
+for (const [ch, rows] of Object.entries(GLYPHS)) FONT_BITS[ch] = rows.split(' ');
+
+const GLYPH_W = 5, GLYPH_H = 7, ADVANCE = 6;
+
+function textWidth(str, scale = 1) {
+  return str.length ? (str.length * ADVANCE - 1) * scale : 0;
+}
+
+// `color` is one colour, or an array of seven (one per glyph row) for the
+// striped logos arcade title screens used.
+function text(ctx, str, x, y, color, opts = {}) {
+  const scale = opts.scale || 1;
+  const s = String(str).toUpperCase();
+  let left = x;
+  if (opts.align === 'center') left = x - Math.floor(textWidth(s, scale) / 2);
+  else if (opts.align === 'right') left = x - textWidth(s, scale);
+  for (let i = 0; i < s.length; i++) {
+    const rows = FONT_BITS[s[i]] || FONT_BITS['?'];
+    const gx = left + i * ADVANCE * scale;
+    for (let r = 0; r < GLYPH_H; r++) {
+      ctx.fillStyle = Array.isArray(color) ? color[r] : color;
+      const row = rows[r];
+      for (let c = 0; c < GLYPH_W; c++) {
+        if (row[c] === '#') ctx.fillRect(gx + c * scale, y + r * scale, scale, scale);
+      }
+    }
+  }
+}
+
+// ---- engine/screen.js
+// The arcade screen: a small fixed-resolution canvas, scaled up in whole
+// DEVICE pixels so every game pixel is the same size and stays sharp. A 336px
+// screen on a 3x phone is drawn at exactly 3 device pixels per game pixel,
+// never 3.35, which is what makes uneven, shimmering pixels.
+function makeScreen({ canvas, stage, frame, w, h, crtKey }) {
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+
+  function fit() {
+    const dpr = window.devicePixelRatio || 1;
+    // clientWidth/Height include the stage's padding; the screen gets only
+    // what is inside it.
+    const cs = getComputedStyle(stage);
+    const aw = stage.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    const ah = stage.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+    const s = Math.max(1, Math.floor(Math.min((aw * dpr) / w, (ah * dpr) / h)));
+    canvas.style.width = (s * w) / dpr + 'px';
+    canvas.style.height = (s * h) / dpr + 'px';
+    frame.style.setProperty('--px', s / dpr + 'px');
+  }
+  addEventListener('resize', fit);
+  if (window.visualViewport) visualViewport.addEventListener('resize', fit);
+  fit();
+
+  let crt = false;
+  try { crt = localStorage.getItem(crtKey) === '1'; } catch { crt = false; }
+  function setCrt(on) {
+    crt = on;
+    frame.classList.toggle('crt', on);
+    try { localStorage.setItem(crtKey, on ? '1' : '0'); } catch {}
+  }
+  setCrt(crt);
+
+  return {
+    ctx, w, h, fit,
+    get crt() { return crt; },
+    toggleCrt() { setCrt(!crt); return crt; },
+  };
+}
+
+// ---- engine/sound.js
+// Chip sound: square, triangle and noise voices made in the browser. No audio
+// files. Browsers only allow sound after a tap or key, so `wake()` is called
+// from every input handler and does nothing until then.
+function makeSound(muteKey) {
+  let ac = null, out = null;
+  let muted = false;
+  try { muted = localStorage.getItem(muteKey) === '1'; } catch { muted = false; }
+
+  function wake() {
+    if (ac) { if (ac.state === 'suspended') ac.resume(); return; }
+    const Ctor = window.AudioContext || window.webkitAudioContext;
+    if (!Ctor) return;
+    ac = new Ctor();
+    out = ac.createGain();
+    out.gain.value = muted ? 0 : 1;
+    out.connect(ac.destination);
+  }
+
+  // One note. `at` is seconds from now, `to` slides the pitch.
+  function note(freq, dur, { type = 'square', vol = 0.05, at = 0, to = null } = {}) {
+    if (!ac) return;
+    const t = ac.currentTime + at;
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(freq, t);
+    if (to) o.frequency.exponentialRampToValueAtTime(to, t + dur);
+    g.gain.setValueAtTime(vol, t);
+    g.gain.setValueAtTime(vol, t + dur * 0.7);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(out);
+    o.start(t); o.stop(t + dur + 0.02);
+  }
+
+  // A run of notes: [[freq, dur], ...], each after the last; 0 is a rest.
+  function tune(notes, opts = {}) {
+    let at = opts.at || 0;
+    for (const [f, d] of notes) {
+      if (f) note(f, d * 0.92, { ...opts, at });
+      at += d;
+    }
+  }
+
+  function noise(dur, { vol = 0.2, cutoff = 900, at = 0 } = {}) {
+    if (!ac) return;
+    const len = Math.floor(ac.sampleRate * dur);
+    const buf = ac.createBuffer(1, len, ac.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len) ** 2;
+    const s = ac.createBufferSource(); s.buffer = buf;
+    const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = cutoff;
+    const g = ac.createGain(); g.gain.value = vol;
+    s.connect(f); f.connect(g); g.connect(out);
+    s.start(ac.currentTime + at);
+  }
+
+  function setMuted(on) {
+    muted = on;
+    if (out) out.gain.value = on ? 0 : 1;
+    try { localStorage.setItem(muteKey, on ? '1' : '0'); } catch {}
+  }
+
+  return {
+    wake, note, tune, noise,
+    get muted() { return muted; },
+    toggleMute() { setMuted(!muted); return muted; },
+  };
+}
+
+// ---- engine/input.js
+// Keyboard and touch in one place. `held` is what a game polls each tick;
+// `onDir` fires once per press (menus, initials); `onAction` carries the
+// buttons: start, pause, back, crt, mute.
+//
+// A word game passes `onLetter`: then every letter key is a letter (WASD stop
+// being directions, P/C/M stop being shortcuts; those stay on the buttons) and
+// only the arrows move. `onPoint(x, y)` receives taps on the screen in GAME
+// pixels; returning true means the game used the tap, otherwise it is START.
+function makeInput({ screen, onAction, onDir, onAny, onLetter = null, onPoint = null }) {
+  const held = { up: false, down: false, left: false, right: false };
+  const KEYS = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
+  const ACTIONS = { Space: 'start', Enter: 'start', Escape: 'back' };
+  if (!onLetter) {
+    Object.assign(KEYS, { KeyW: 'up', KeyS: 'down', KeyA: 'left', KeyD: 'right' });
+    Object.assign(ACTIONS, { KeyP: 'pause', KeyC: 'crt', KeyM: 'mute' });
+  }
+
+  let touch = matchMedia('(pointer: coarse)').matches;
+  const markTouch = on => {
+    touch = on;
+    document.body.classList.toggle('touch', on);
+  };
+  markTouch(touch);
+  addEventListener('touchstart', () => { if (!touch) markTouch(true); }, { passive: true });
+
+  addEventListener('keydown', e => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const dir = KEYS[e.code];
+    if (dir) {
+      e.preventDefault();
+      onAny();
+      if (!e.repeat) onDir(dir);
+      held[dir] = true;
+      return;
+    }
+    const action = ACTIONS[e.code];
+    if (action) {
+      // Space and Enter on a focused button or link belong to that control.
+      if ((e.code === 'Space' || e.code === 'Enter') && e.target.closest && e.target.closest('button, a')) return;
+      e.preventDefault();
+      onAny();
+      if (!e.repeat) onAction(action);
+      return;
+    }
+    // e.key, not e.code: the letter printed on the key, whatever the layout.
+    if (onLetter && /^[a-z]$/i.test(e.key)) {
+      e.preventDefault();
+      onAny();
+      if (!e.repeat) onLetter(e.key.toUpperCase());
+    }
+  });
+  addEventListener('keyup', e => {
+    const dir = KEYS[e.code];
+    if (dir) held[dir] = false;
+  });
+  addEventListener('blur', () => { held.up = held.down = held.left = held.right = false; });
+
+  for (const b of document.querySelectorAll('[data-dir]')) {
+    const dir = b.dataset.dir;
+    const down = e => {
+      e.preventDefault();
+      onAny();
+      held.up = held.down = held.left = held.right = false;
+      held[dir] = true;
+      onDir(dir);
+    };
+    const up = () => { held[dir] = false; };
+    b.addEventListener('pointerdown', down);
+    b.addEventListener('pointerup', up);
+    b.addEventListener('pointerleave', up);
+    b.addEventListener('pointercancel', up);
+    b.addEventListener('contextmenu', e => e.preventDefault());
+  }
+  for (const b of document.querySelectorAll('[data-action]')) {
+    const action = b.dataset.action;
+    // pointerdown for the START button, so it answers as fast as the d-pad;
+    // click for the toggles, so keyboard users can press them too.
+    if (b.classList.contains('start')) {
+      b.addEventListener('pointerdown', e => { e.preventDefault(); onAny(); onAction(action); });
+    } else {
+      b.addEventListener('click', () => { onAny(); onAction(action); });
+    }
+  }
+  screen.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    onAny();
+    if (onPoint) {
+      const r = screen.getBoundingClientRect();
+      const x = ((e.clientX - r.left) * screen.width) / r.width;
+      const y = ((e.clientY - r.top) * screen.height) / r.height;
+      if (onPoint(x, y)) return;
+    }
+    onAction('start');
+  });
+
+  return { held, get touch() { return touch; } };
+}
+
+// ---- engine/scores.js
+// The top-ten table, kept on this device only. A new browser starts with a
+// table of invented initials so the attract mode has something to show.
+const ENTRY_LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ.';
+
+function makeScores(key, defaults) {
+  let table = defaults.map(r => ({ ...r }));
+  try {
+    const saved = JSON.parse(localStorage.getItem(key) || 'null');
+    if (Array.isArray(saved) && saved.length === 10 && saved.every(r => typeof r.s === 'number' && typeof r.n === 'string')) table = saved;
+  } catch {}
+
+  return {
+    get table() { return table; },
+    get top() { return table[0].s; },
+    qualifies(score) { return score > 0 && score > table[9].s; },
+    // Returns the rank (0-9) the new row landed on.
+    add(n, s) {
+      let rank = table.findIndex(r => s > r.s);
+      if (rank === -1) return -1;
+      table.splice(rank, 0, { n, s });
+      table.length = 10;
+      try { localStorage.setItem(key, JSON.stringify(table)); } catch {}
+      return rank;
+    },
+  };
+}
+
+// ---- games/launch-window/words.js
+// Launch Window's words and rules, with no drawing, so the tests can import
+// them. The word list is carried over from the Qlaim cabinet unchanged.
+//
+// Ordinary hangman, with the gallows taken out. Six fuel cells do exactly the
+// same job as a stick figure on a rope, without any of the freight.
+const FUEL_CELLS = 6;
+
+const WORDS = [
+  ['ANIMALS', ['ELEPHANT', 'GIRAFFE', 'PENGUIN', 'DOLPHIN', 'TORTOISE', 'MEERKAT', 'ZEBRA', 'CHEETAH',
+    'BABOON', 'WARTHOG', 'SPRINGBOK', 'RHINO', 'HIPPO', 'OSTRICH', 'FLAMINGO', 'BUTTERFLY',
+    'LADYBIRD', 'OCTOPUS', 'SQUIRREL', 'HEDGEHOG', 'KINGFISHER', 'CROCODILE', 'JELLYFISH', 'SEAHORSE']],
+  ['FOOD', ['BILTONG', 'PANCAKE', 'CHOCOLATE', 'WATERMELON', 'POPCORN', 'PUMPKIN', 'BREAD', 'RUSKS',
+    'MILKSHAKE', 'STRAWBERRY', 'PINEAPPLE', 'SANDWICH', 'PORRIDGE', 'BRAAI', 'ROOIBOS', 'MANGO',
+    'AVOCADO', 'HONEY', 'NOODLES', 'MEATBALLS', 'CUSTARD', 'MARSHMALLOW']],
+  ['AROUND THE HOUSE', ['TOOTHBRUSH', 'BLANKET', 'CUPBOARD', 'KETTLE', 'MIRROR', 'PILLOW', 'CURTAIN',
+    'DOORBELL', 'STAIRCASE', 'BATHTUB', 'LADDER', 'BROOM', 'CANDLE', 'CLOCK', 'FRIDGE',
+    'WASHING LINE', 'SLIPPERS', 'HAIRBRUSH', 'TELEVISION', 'BOOKSHELF']],
+  ['OUT AND ABOUT', ['MOUNTAIN', 'HARBOUR', 'LIGHTHOUSE', 'PLAYGROUND', 'MARKET', 'BEACH', 'FOREST',
+    'BRIDGE', 'WATERFALL', 'DESERT', 'VINEYARD', 'RAILWAY', 'CAMPFIRE', 'ROCK POOL',
+    'SAND DUNE', 'TABLE MOUNTAIN', 'KOPPIE', 'RIVERBANK']],
+  ['GETTING ABOUT', ['BICYCLE', 'HELICOPTER', 'SUBMARINE', 'TRACTOR', 'SCOOTER', 'AEROPLANE', 'CANOE',
+    'MINIBUS', 'SKATEBOARD', 'HOT AIR BALLOON', 'FERRY', 'MOTORBIKE', 'ROWING BOAT', 'TRAIN']],
+  ['UP IN THE SKY', ['ROCKET', 'ASTEROID', 'TELESCOPE', 'GALAXY', 'COMET', 'SUNRISE', 'RAINBOW',
+    'THUNDER', 'LIGHTNING', 'SATELLITE', 'CONSTELLATION', 'ECLIPSE', 'METEOR', 'MOONLIGHT']],
+  ['THINGS YOU DO', ['SWIMMING', 'PAINTING', 'WHISTLING', 'CLIMBING', 'READING', 'DANCING', 'CAMPING',
+    'FISHING', 'BAKING', 'GARDENING', 'SKIPPING', 'CARTWHEEL', 'HIDE AND SEEK', 'SANDCASTLE']],
+];
+
+const ALL = WORDS.flatMap(([category, words]) => words.map(word => ({ category, word })));
+
+function lettersOf(word) {
+  return [...new Set(word.replace(/[^A-Z]/g, ''))];
+}
+
+function isSolved(word, found) {
+  return lettersOf(word).every(l => found.has(l));
+}
+
+// 10 for every letter of the word, 100 for every fuel cell still full, times
+// the launch streak (this launch included), capped at 5.
+function launchScore(word, fuelLeft, streak) {
+  const letters = word.replace(/[^A-Z]/g, '').length;
+  const mult = Math.max(1, Math.min(streak, 5));
+  return { letters, letterPts: letters * 10, fuel: fuelLeft, fuelPts: fuelLeft * 100, mult, total: (letters * 10 + fuelLeft * 100) * mult };
+}
+
+// A shuffle bag: every word once before any word twice. Picking at random
+// repeats far sooner than anyone expects. The saved bag holds positions in
+// ALL, so it is only trusted when the list is the same length it was drawn from.
+function makeBag(n, rand = Math.random, saved = null) {
+  let bag = saved && saved.n === n && Array.isArray(saved.bag)
+    ? saved.bag.filter(i => Number.isInteger(i) && i >= 0 && i < n)
+    : [];
+  return {
+    take() {
+      if (!bag.length) {
+        bag = [...Array(n).keys()];
+        for (let i = bag.length - 1; i > 0; i--) {
+          const j = Math.floor(rand() * (i + 1));
+          [bag[i], bag[j]] = [bag[j], bag[i]];
+        }
+      }
+      return bag.pop();
+    },
+    get state() { return { n, bag: bag.slice() }; },
+  };
+}
+
+// ---- engine/sprites.js
+// Sprites are drawn as text: one character per pixel, '.' is transparent and
+// every other character is looked up in a palette. Swapping the palette is how
+// a sprite changes state (lit, remembered, alerted) — the way the hardware did it.
+function sprite(rows, palette) {
+  const w = rows[0].length, h = rows.length;
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const g = c.getContext('2d');
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const ch = rows[y][x];
+    if (ch === '.' || !palette[ch]) continue;
+    g.fillStyle = palette[ch];
+    g.fillRect(x, y, 1, 1);
+  }
+  return c;
+}
+
+function mirrored(src) {
+  const c = document.createElement('canvas');
+  c.width = src.width; c.height = src.height;
+  const g = c.getContext('2d');
+  g.translate(src.width, 0);
+  g.scale(-1, 1);
+  g.drawImage(src, 0, 0);
+  return c;
+}
+
+// A 16x16 tile painted by a function of (x, y) -> colour or null.
+function tile(size, paint) {
+  const c = document.createElement('canvas');
+  c.width = size; c.height = size;
+  const g = c.getContext('2d');
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    const col = paint(x, y);
+    if (!col) continue;
+    g.fillStyle = col;
+    g.fillRect(x, y, 1, 1);
+  }
+  return c;
+}
+
+// ---- games/launch-window/art.js
+const ROCKET = [
+  '.......RR.......',
+  '......RRRR......',
+  '......RRRR......',
+  '.....RRRRRR.....',
+  '.....RRRRrR.....',
+  '.....WWWWWG.....',
+  '....WWWWWWGG....',
+  '....WWWWWWGG....',
+  '....WWKKKWGG....',
+  '....WKBBBKGG....',
+  '....WKBBBKGG....',
+  '....WKBBBKGG....',
+  '....WWKKKWGG....',
+  '....WWWWWWGG....',
+  '....WWWWWWGG....',
+  '....RRRRRRrr....',
+  '....WWWWWWGG....',
+  '....WWWWWWGG....',
+  '....WWWWWWGG....',
+  '....WWWWWWGG....',
+  '....WWWWWWGG....',
+  '....WWWWWWGG....',
+  '....WWWWWWGG....',
+  '....WWWWWWGG....',
+  '....WWWWWWGG....',
+  '....RRRRRRrr....',
+  '....WWWWWWGG....',
+  '...RWWWWWWGGr...',
+  '..RRWWWWWWGGrr..',
+  '.RRRWWWWWWGGrrr.',
+  '.RRRWWWWWWGGrrr.',
+  'RRRRWWWWWWGGrrrr',
+  'RRRRWWWWWWGGrrrr',
+  'RRR.KKKKKKKK.rrr',
+  'RR...KKKKKK...rr',
+  '.....KKKKKK.....',
+];
+const ROCKET_PAL = { R: '#e8302f', r: '#8a1c1c', W: '#f0f0f0', G: '#a0a0b8', B: '#5eeaf5', K: '#2a2a40' };
+// A scrubbed launch: the same rocket with the colour gone out of it.
+const ROCKET_DEAD = { R: '#4a3a4a', r: '#2e2433', W: '#5a5a70', G: '#3a3a50', B: '#2a3a4a', K: '#1a1a24' };
+
+const FLAME_A = [
+  '.....YWWWWY.....',
+  '.....YYWWYY.....',
+  '......YYYY......',
+  '......OYYO......',
+  '......OOOO......',
+  '.......OO.......',
+  '.......RO.......',
+  '.......RR.......',
+  '........R.......',
+  '................',
+];
+const FLAME_B = [
+  '.....YWWWWY.....',
+  '....YYYWWYYY....',
+  '.....YYYYYY.....',
+  '.....OYYYYO.....',
+  '......OOOO......',
+  '......OOOO......',
+  '......ROOR......',
+  '.......RR.......',
+  '.......R........',
+  '.......R........',
+];
+const FLAME_PAL = { W: '#ffffff', Y: '#ffd23f', O: '#ff8a1e', R: '#e8302f' };
+
+// The rockets left, in the score bar.
+const MINI = [
+  '...R...',
+  '..RRR..',
+  '..WWW..',
+  '..WBW..',
+  '..WWW..',
+  '..WWW..',
+  '.RWWWR.',
+  'RRWWWRR',
+  'R.KKK.R',
+];
+
+function makeArt() {
+  return {
+    rocket: sprite(ROCKET, ROCKET_PAL),
+    rocketDead: sprite(ROCKET, ROCKET_DEAD),
+    flame: [sprite(FLAME_A, FLAME_PAL), sprite(FLAME_B, FLAME_PAL)],
+    mini: sprite(MINI, ROCKET_PAL),
+  };
+}
+
+// ---- games/launch-window/game.js
+// An upright screen, like the arcade monitors turned on their side.
+const W = 240, H = 320;
+const SCENE_TOP = 32, GROUND = 164, PAD_Y = 156, ROCKET_X = 96, ROCKET_HOME = PAD_Y - 36;
+const WORD_Y = 182, STATUS_Y = 206;
+const KEY_W = 34, KEY_H = 23, KB_TOP = 218, KB_ROW = 25;
+const ROCKETS = 3;
+const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+const DEMO_ORDER = 'EAROITNSLCUDPMHGBFYWKVXZJQ'; // roughly how often each letter turns up
+const TICK_MS = 1000 / 60;
+const BAG_KEY = 'lk.launchwindow.bag';
+
+const INK = {
+  red: '#ff3b3b', white: '#ffffff', yellow: '#ffd23f', orange: '#ff8a1e', green: '#3fd46b',
+  cyan: '#5eeaf5', pink: '#ff5fb8', grey: '#8f8fb0', dim: '#4a4a6a',
+};
+const ROW_INKS = ['#ff3b3b', '#ff8a1e', '#ffd23f', '#3fd46b', '#5eeaf5', '#8f7bff', '#ff5fb8', '#ff8a1e', '#ffd23f', '#3fd46b'];
+const LOGO_INK = ['#ffffff', '#d0f8ff', '#9ef3fa', '#5eeaf5', '#8f7bff', '#7a5bff', '#5b2a86'];
+const RANKS = ['1ST', '2ND', '3RD', '4TH', '5TH', '6TH', '7TH', '8TH', '9TH', '10TH'];
+
+// Invented initials, so a first visit has a table to beat.
+const DEFAULT_SCORES = [
+  ['ACE', 15000], ['SKY', 12000], ['ORB', 9000], ['JET', 7000], ['FLY', 5000],
+  ['SUN', 4000], ['ZAP', 3000], ['ION', 2000], ['GEO', 1200], ['DOT', 600],
+].map(([n, s]) => ({ n, s }));
+
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const canvas = document.getElementById('c');
+const screen = makeScreen({ canvas, stage: document.getElementById('stage'), frame: document.getElementById('screen'), w: W, h: H, crtKey: 'lk.arcade.crt' });
+const ctx = screen.ctx;
+const sound = makeSound('lk.arcade.mute');
+const scores = makeScores('lk.launchwindow.scores', DEFAULT_SCORES);
+const art = makeArt();
+
+let savedBag = null;
+try { savedBag = JSON.parse(localStorage.getItem(BAG_KEY) || 'null'); } catch { savedBag = null; }
+const bag = makeBag(ALL.length, Math.random, savedBag);
+
+// A fixed sky: the same stars every time, a few of them twinkling. Spread over
+// 320 pixels so the wider card picture is full of them too.
+const STARS = [];
+{
+  let s = 1984;
+  const rnd = () => ((s = (s * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+  for (let i = 0; i < 60; i++) {
+    STARS.push({ x: Math.floor(rnd() * 320), dy: 2 + Math.floor(rnd() * (GROUND - SCENE_TOP - 34)), c: rnd() < 0.3 ? '#8f8fb0' : '#ffffff', tw: rnd() < 0.3, ph: Math.floor(rnd() * 64) });
+  }
+}
+
+let mode = 'attract', page = 'title', pageT = 0, t = 0, timer = 0, clock = 0;
+let answer = '', category = '', found = new Set(), missed = new Set();
+let rockets = ROCKETS, score = 0, streak = 0;
+let rocketY = ROCKET_HOME, rocketV = 0, smoke = [], shake = 0, cellFlash = 0;
+let demo = false, demoT = 0, tally = null, entry = null, highlight = -1, cursor = 0;
+
+const SFX = {
+  start: () => {
+    sound.tune([[523, 0.12], [659, 0.12], [784, 0.12], [1047, 0.12], [0, 0.06], [784, 0.12], [1047, 0.36]], { vol: 0.045 });
+    sound.tune([[131, 0.36], [196, 0.36], [262, 0.48]], { type: 'triangle', vol: 0.12 });
+  },
+  hit: () => sound.tune([[660, 0.05], [990, 0.09]], { vol: 0.045 }),
+  miss: () => sound.note(160, 0.3, { to: 80, vol: 0.06 }),
+  beep: () => sound.note(880, 0.12, { vol: 0.05 }),
+  ignite: () => {
+    sound.note(1760, 0.25, { vol: 0.04 });
+    sound.noise(2.2, { vol: 0.3, cutoff: 600 });
+    sound.note(70, 2, { type: 'triangle', to: 420, vol: 0.14 });
+  },
+  clear: () => sound.tune([[784, 0.1], [988, 0.1], [1175, 0.1], [1568, 0.1], [0, 0.06], [1175, 0.1], [1568, 0.4]], { vol: 0.045 }),
+  tick: () => sound.note(1760, 0.03, { vol: 0.025 }),
+  blip: () => sound.note(988, 0.05, { vol: 0.04 }),
+  scrub: () => sound.tune([[392, 0.16], [330, 0.16], [262, 0.45]], { type: 'triangle', vol: 0.12 }),
+  over: () => sound.tune([[392, 0.22], [370, 0.22], [349, 0.22], [330, 0.7]], { type: 'triangle', vol: 0.12 }),
+};
+// The demo plays silently: nobody asked for noise from a screen they are not using.
+function play(name) { if (!demo) SFX[name](); }
+
+// ---------------------------------------------------------------- the game
+
+function takeWord() {
+  const pick = ALL[bag.take()];
+  try { localStorage.setItem(BAG_KEY, JSON.stringify(bag.state)); } catch {}
+  return pick;
+}
+
+function nextWord() {
+  // The demo picks at random so it never uses up the player's bag.
+  const pick = demo ? ALL[Math.floor(Math.random() * ALL.length)] : takeWord();
+  answer = pick.word; category = pick.category;
+  found = new Set(); missed = new Set();
+  rocketY = ROCKET_HOME; rocketV = 0; smoke = []; shake = 0; cellFlash = 0;
+  tally = null;
+  mode = 'play'; t = 0;
+}
+
+function newGame() {
+  demo = false; highlight = -1;
+  rockets = ROCKETS; score = 0; streak = 0;
+  nextWord();
+  play('start');
+}
+
+function startDemo() {
+  demo = true; demoT = 0;
+  rockets = ROCKETS; score = 0; streak = 0;
+  nextWord();
+}
+
+function endDemo() {
+  demo = false;
+  toAttract('scores');
+}
+
+function toAttract(p) {
+  mode = 'attract'; page = p; pageT = 0; demo = false; tally = null; entry = null;
+}
+
+function guess(ch) {
+  if (mode !== 'play' || found.has(ch) || missed.has(ch)) return;
+  cursor = ALPHABET.indexOf(ch);
+  if (answer.includes(ch)) {
+    found.add(ch);
+    play('hit');
+    if (isSolved(answer, found)) { streak++; mode = 'count'; t = 0; }
+  } else {
+    missed.add(ch);
+    play('miss');
+    cellFlash = 30;
+    if (missed.size >= FUEL_CELLS) {
+      streak = 0; rockets--;
+      mode = 'scrub'; t = 0;
+      play('scrub');
+    }
+  }
+}
+
+function demoGuess() {
+  for (const ch of DEMO_ORDER) {
+    if (!found.has(ch) && !missed.has(ch)) { guess(ch); return; }
+  }
+}
+
+function puff() {
+  smoke.push({
+    x: ROCKET_X + 8 + (Math.random() - 0.5) * 12, y: PAD_Y + 2,
+    vx: (Math.random() < 0.5 ? -1 : 1) * (0.3 + Math.random()), vy: -0.05 - Math.random() * 0.25,
+    r: 3 + Math.random() * 2, life: 1,
+  });
+}
+
+function finishLaunch() {
+  const s = launchScore(answer, FUEL_CELLS - missed.size, streak);
+  tally = { ...s, from: score };
+  score += s.total;
+  mode = 'tally'; t = 0;
+  play('clear');
+}
+
+function afterOver() {
+  if (scores.qualifies(score)) {
+    entry = { letters: [0, 0, 0], pos: 0, timer: 60 * 30 };
+    mode = 'entry';
+  } else {
+    toAttract('scores');
+  }
+}
+
+function saveEntry() {
+  const name = entry.letters.map(i => ENTRY_LETTERS[i]).join('');
+  highlight = scores.add(name, score);
+  toAttract('scores');
+}
+
+function confirmLetter() {
+  play('blip');
+  entry.pos++;
+  if (entry.pos >= 3) saveEntry();
+}
+
+function typeInitial(i) {
+  entry.letters[entry.pos] = i;
+  confirmLetter();
+}
+
+// ---------------------------------------------------------------- input
+
+function keyRect(i) {
+  const row = Math.floor(i / 7), col = i % 7;
+  const inRow = row < 3 ? 7 : 5;
+  const x0 = 1 + ((7 - inRow) * KEY_W) / 2;
+  return { x: x0 + col * KEY_W, y: KB_TOP + row * KB_ROW, w: KEY_W - 2, h: KEY_H };
+}
+
+// The whole cell counts, gaps included, so a finger between two keys still
+// lands on one of them.
+function keyAt(x, y) {
+  for (let i = 0; i < 26; i++) {
+    const r = keyRect(i);
+    if (x >= r.x - 1 && x < r.x + KEY_W - 1 && y >= r.y - 1 && y < r.y + KB_ROW - 1) return i;
+  }
+  return -1;
+}
+
+function canContinue() {
+  return (mode === 'tally' && t >= 40) || (mode === 'scrub' && t >= 40 && rockets > 0);
+}
+
+function onAction(action) {
+  if (action === 'crt') { screen.toggleCrt(); syncToggles(); return; }
+  if (action === 'mute') { sound.toggleMute(); syncToggles(); return; }
+  if (action === 'back') { toAttract('title'); return; }
+  // start
+  if (mode === 'attract' || demo) { newGame(); return; }
+  if (mode === 'play') { guess(ALPHABET[cursor]); return; }
+  if (canContinue()) { nextWord(); return; }
+  if (mode === 'over') { timer = 0; return; }
+  if (mode === 'entry') confirmLetter();
+}
+
+function onLetter(ch) {
+  if (mode === 'attract' || demo) { newGame(); return; }
+  if (mode === 'play') guess(ch);
+  else if (mode === 'entry') typeInitial(ALPHABET.indexOf(ch));
+}
+
+function onDir(dir) {
+  if (mode === 'play' && !demo) {
+    const step = { left: -1, right: 1, up: -7, down: 7 }[dir];
+    cursor = Math.max(0, Math.min(25, cursor + step));
+    return;
+  }
+  if (mode !== 'entry') return;
+  const n = ENTRY_LETTERS.length, i = entry.pos;
+  if (dir === 'up') { entry.letters[i] = (entry.letters[i] + 1) % n; play('blip'); }
+  else if (dir === 'down') { entry.letters[i] = (entry.letters[i] + n - 1) % n; play('blip'); }
+  else if (dir === 'right') confirmLetter();
+  else if (dir === 'left' && entry.pos > 0) { entry.pos--; play('blip'); }
+}
+
+// While a word is being guessed every tap belongs to the letters: a tap that
+// misses a key does nothing, rather than guessing whatever the cursor is on.
+function onPoint(x, y) {
+  if (mode === 'play' && !demo) {
+    const i = keyAt(x, y);
+    if (i >= 0) guess(ALPHABET[i]);
+    return true;
+  }
+  if (mode === 'entry') {
+    const i = keyAt(x, y);
+    if (i >= 0) typeInitial(i);
+    return true;
+  }
+  return false;
+}
+
+const input = makeInput({ screen: canvas, onAction, onDir, onLetter, onPoint, onAny: () => sound.wake() });
+
+const crtBtn = document.querySelector('[data-action="crt"]');
+const muteBtn = document.querySelector('[data-action="mute"]');
+function syncToggles() {
+  crtBtn.textContent = 'CRT ' + (screen.crt ? 'on' : 'off');
+  crtBtn.setAttribute('aria-pressed', String(screen.crt));
+  muteBtn.textContent = 'Sound ' + (sound.muted ? 'off' : 'on');
+  muteBtn.setAttribute('aria-pressed', String(!sound.muted));
+}
+syncToggles();
+
+// ---------------------------------------------------------------- drawing
+
+const blinkOn = (rate = 32) => reduceMotion || ((clock / rate) | 0) % 2 === 0;
+const prompt = () => (input.touch ? 'TAP TO START' : 'PRESS SPACE');
+const nextPrompt = () => (input.touch ? 'TAP FOR THE NEXT WORD' : 'SPACE FOR THE NEXT WORD');
+
+// A filled circle on the pixel grid: one rect per row, never anti-aliased.
+function disc(g, cx, cy, r, col) {
+  g.fillStyle = col;
+  const R = Math.round(r);
+  for (let dy = -R; dy <= R; dy++) {
+    const w = Math.floor(Math.sqrt(r * r - dy * dy));
+    g.fillRect(Math.round(cx) - w, Math.round(cy) + dy, w * 2 + 1, 1);
+  }
+}
+
+function box(g, x, y, w, h, col) {
+  g.fillStyle = col;
+  g.fillRect(x, y, w, 1); g.fillRect(x, y + h - 1, w, 1);
+  g.fillRect(x, y, 1, h); g.fillRect(x + w - 1, y, 1, h);
+}
+
+function banner(lines, y) {
+  const wide = Math.max(...lines.map(([s]) => s.length)) * 6 + 10;
+  ctx.fillStyle = '#000';
+  ctx.fillRect(Math.floor((W - wide) / 2), y - 5, wide, lines.length * 12 + 7);
+  lines.forEach(([s, ink], i) => text(ctx, s, W / 2, y + i * 12, ink, { align: 'center' }));
+}
+
+// The pad, the sky and the fuel gauge. `ox, oy` shift everything but the
+// stars, so the card picture can reuse it on a wider canvas.
+function drawScene(g, ox, oy, o) {
+  for (const s of STARS) {
+    const dim = !reduceMotion && s.tw && ((clock + s.ph) >> 4) % 3 === 0;
+    g.fillStyle = dim ? '#3a3a55' : s.c;
+    g.fillRect(s.x, oy + SCENE_TOP + s.dy, 1, 1);
+  }
+  disc(g, ox + 206, oy + 52, 9, '#fff3a0');
+  disc(g, ox + 203, oy + 49, 2, '#d9c070');
+  disc(g, ox + 210, oy + 56, 2, '#d9c070');
+  disc(g, ox + 209, oy + 47, 1, '#d9c070');
+
+  // gantry
+  g.fillStyle = '#6a6a88';
+  g.fillRect(ox + 60, oy + 84, 1, GROUND - 84);
+  g.fillRect(ox + 71, oy + 84, 1, GROUND - 84);
+  for (let y = 84; y < GROUND; y += 8) {
+    g.fillRect(ox + 60, oy + y, 12, 1);
+    for (let x = 0; x < 12; x++) g.fillRect(ox + 60 + x, oy + y + Math.round((x * 7) / 11), 1, 1);
+  }
+  g.fillStyle = reduceMotion || (clock >> 5) % 2 ? '#e8302f' : '#5a1414';
+  g.fillRect(ox + 65, oy + 81, 2, 3);
+  if (o.arms) {
+    g.fillStyle = '#e8302f';
+    g.fillRect(ox + 72, oy + ROCKET_HOME + 8, ROCKET_X + 4 - 72, 2);
+    g.fillRect(ox + 72, oy + ROCKET_HOME + 22, ROCKET_X + 4 - 72, 2);
+  }
+
+  // pad and ground
+  g.fillStyle = '#4a4a6a'; g.fillRect(ox + 84, oy + PAD_Y, 40, GROUND - PAD_Y);
+  g.fillStyle = '#8f8fb0'; g.fillRect(ox + 84, oy + PAD_Y, 40, 1);
+  g.fillStyle = '#24160c'; g.fillRect(0, oy + GROUND, g.canvas.width, 8);
+  g.fillStyle = '#3a2416'; g.fillRect(0, oy + GROUND, g.canvas.width, 1);
+
+  // rocket and flame, clipped to the sky so it leaves by the top of the scene
+  g.save();
+  g.beginPath();
+  g.rect(0, oy + SCENE_TOP, g.canvas.width, GROUND - SCENE_TOP);
+  g.clip();
+  const ry = Math.round(o.rocketY) + oy;
+  if (o.flame) g.drawImage(art.flame[reduceMotion ? 0 : (clock >> 2) & 1], ox + ROCKET_X, ry + 36);
+  g.drawImage(o.dead ? art.rocketDead : art.rocket, ox + ROCKET_X, ry);
+  for (const p of o.smoke) disc(g, ox + p.x, oy + p.y, p.r, p.life > 0.5 ? '#8f8fb0' : '#4a4a6a');
+  g.restore();
+
+  // fuel gauge: cells burn from the top down
+  for (let i = 0; i < FUEL_CELLS; i++) {
+    const y = oy + 140 - i * 13;
+    if (i < o.fuelLeft) {
+      g.fillStyle = '#3fd46b'; g.fillRect(ox + 184, y, 20, 10);
+      g.fillStyle = '#a0f0b0'; g.fillRect(ox + 185, y + 1, 18, 1);
+    } else {
+      g.fillStyle = i === o.flashCell ? '#ff3b3b' : '#1a0c0c';
+      g.fillRect(ox + 184, y, 20, 10);
+      box(g, ox + 184, y, 20, 10, '#5a2a2a');
+    }
+  }
+  text(g, 'FUEL', ox + 194, oy + 153, INK.grey, { align: 'center' });
+}
+
+function drawWord(g, word, known, cx, y, revealMisses) {
+  let x = Math.round(cx - (word.length * 12 - 2) / 2);
+  for (const ch of word) {
+    if (ch !== ' ') {
+      const got = known.has(ch);
+      g.fillStyle = got ? '#3a3a55' : '#8f8fb0';
+      g.fillRect(x, y + 16, 10, 2);
+      if (got) text(g, ch, x, y, INK.white, { scale: 2 });
+      else if (revealMisses) text(g, ch, x, y, INK.red, { scale: 2 });
+    }
+    x += 12;
+  }
+}
+
+function drawKeys(showCursor) {
+  for (let i = 0; i < 26; i++) {
+    const r = keyRect(i), ch = ALPHABET[i];
+    let fill = '#14141f', edge = '#4a4a6a', ink = INK.white;
+    if (mode !== 'entry' && found.has(ch)) { fill = '#1f5a2e'; edge = '#3fd46b'; ink = '#c8f8d4'; }
+    else if (mode !== 'entry' && missed.has(ch)) { fill = '#1a0c0c'; edge = '#4a2020'; ink = '#6a3030'; }
+    ctx.fillStyle = fill;
+    ctx.fillRect(r.x, r.y, r.w, r.h);
+    box(ctx, r.x, r.y, r.w, r.h, edge);
+    text(ctx, ch, r.x + r.w / 2, r.y + 5, ink, { align: 'center', scale: 2 });
+    if (showCursor && i === cursor) {
+      box(ctx, r.x - 1, r.y - 1, r.w + 2, r.h + 2, INK.yellow);
+      box(ctx, r.x, r.y, r.w, r.h, INK.yellow);
+    }
+  }
+}
+
+function shownScore() {
+  if (!tally) return score;
+  const k = Math.max(0, Math.min(1, (t - 50) / 40));
+  return tally.from + Math.round(tally.total * k);
+}
+
+function drawHud() {
+  const hi = Math.max(scores.top, demo ? 0 : score);
+  if (!(mode === 'play' && !demo) || blinkOn(24)) text(ctx, '1UP', 8, 3, INK.red);
+  text(ctx, String(shownScore()).padStart(2, '0'), 50, 12, INK.white, { align: 'right' });
+  text(ctx, 'HI-SCORE', W / 2, 3, INK.red, { align: 'center' });
+  text(ctx, String(hi), W / 2, 12, INK.white, { align: 'center' });
+  if (mode !== 'attract' && mode !== 'entry') {
+    for (let i = 0; i < rockets; i++) ctx.drawImage(art.mini, W - 12 - i * 10, 6);
+  }
+}
+
+function drawTally() {
+  const x0 = 16, y0 = 44, w = 208, h = 106;
+  ctx.fillStyle = '#000';
+  ctx.fillRect(x0, y0, w, h);
+  box(ctx, x0, y0, w, h, INK.cyan);
+  text(ctx, 'LIFT OFF!', W / 2, y0 + 8, INK.yellow, { align: 'center', scale: 2 });
+  const row = (i, label, value, ink = INK.white) => {
+    const y = y0 + 32 + i * 12;
+    text(ctx, label, x0 + 10, y, INK.grey);
+    text(ctx, value, x0 + w - 10, y, ink, { align: 'right' });
+  };
+  row(0, 'LETTERS ' + tally.letters + ' X 10', String(tally.letterPts));
+  row(1, 'FUEL LEFT ' + tally.fuel + ' X 100', String(tally.fuelPts));
+  row(2, 'STREAK', 'X' + tally.mult);
+  ctx.fillStyle = INK.dim; ctx.fillRect(x0 + 10, y0 + 68, w - 20, 1);
+  row(4, 'SCORE', '+' + tally.total, INK.yellow);
+  if (t >= 40 && !demo && blinkOn()) text(ctx, nextPrompt(), W / 2, y0 + 92, INK.cyan, { align: 'center' });
+}
+
+function drawGame() {
+  ctx.save();
+  if (shake > 0 && !reduceMotion) ctx.translate(Math.round(Math.random() * 2 - 1), Math.round(Math.random() * 2 - 1));
+  drawScene(ctx, 0, 0, {
+    rocketY, smoke,
+    flame: mode === 'launch' || (mode === 'count' && t >= 75),
+    dead: mode === 'scrub' || mode === 'over',
+    arms: mode !== 'launch' && mode !== 'tally' && !(mode === 'count' && t >= 60),
+    fuelLeft: FUEL_CELLS - missed.size,
+    flashCell: cellFlash > 0 && (cellFlash >> 2) % 2 === 0 ? FUEL_CELLS - missed.size : -1,
+  });
+  ctx.restore();
+  text(ctx, category, W / 2, 38, INK.cyan, { align: 'center' });
+
+  if (mode === 'count' && t < 90) {
+    text(ctx, String(3 - Math.floor(t / 30)), W / 2 + 2, 54, '#1c2870', { align: 'center', scale: 4 });
+    text(ctx, String(3 - Math.floor(t / 30)), W / 2, 52, INK.white, { align: 'center', scale: 4 });
+  }
+  if (mode === 'tally') drawTally();
+  // Narrow banners, so they never cover the fuel gauge on the right.
+  if (mode === 'scrub') {
+    banner([['SCRUBBED', INK.red], [rockets === 1 ? '1 ROCKET LEFT' : rockets + ' ROCKETS LEFT', INK.grey]], 66);
+  }
+  if (mode === 'over') banner([['GAME OVER', INK.red]], 66);
+  if (demo && blinkOn()) text(ctx, 'DEMO PLAY', W / 2, 50, INK.yellow, { align: 'center' });
+
+  drawWord(ctx, answer, found, W / 2, WORD_Y, mode === 'scrub' || mode === 'over');
+
+  let status = '', ink = INK.grey;
+  if (mode === 'play' && streak > 0) { status = 'STREAK ' + streak + '   NEXT LAUNCH X' + Math.min(streak + 1, 5); }
+  else if (mode === 'count' || mode === 'launch') { status = 'ALL SYSTEMS GO'; ink = INK.green; }
+  else if (mode === 'tally') { status = 'LAUNCH ' + (tally.mult > 1 ? 'STREAK ' + streak : 'COMPLETE'); ink = INK.yellow; }
+  else if (mode === 'scrub' && rockets > 0 && t >= 40 && !demo) { status = blinkOn() ? nextPrompt() : ''; ink = INK.cyan; }
+  else if (mode === 'scrub' || mode === 'over') { status = 'SIX WRONG. THE FUEL IS GONE.'; ink = INK.red; }
+  if (status) text(ctx, status, W / 2, STATUS_Y, ink, { align: 'center' });
+
+  drawKeys(mode === 'play' && (demo || !input.touch));
+}
+
+function drawTitle() {
+  text(ctx, 'LAUNCH', W / 2 + 2, 40, '#1c2870', { align: 'center', scale: 3 });
+  text(ctx, 'LAUNCH', W / 2, 38, LOGO_INK, { align: 'center', scale: 3 });
+  text(ctx, 'WINDOW', W / 2 + 2, 64, '#1c2870', { align: 'center', scale: 3 });
+  text(ctx, 'WINDOW', W / 2, 62, LOGO_INK, { align: 'center', scale: 3 });
+  drawScene(ctx, 0, 0, { rocketY: ROCKET_HOME, smoke: [], flame: false, dead: false, arms: true, fuelLeft: FUEL_CELLS, flashCell: -1 });
+  text(ctx, 'GUESS THE WORD BEFORE', W / 2, 186, INK.white, { align: 'center' });
+  text(ctx, 'THE FUEL RUNS OUT.', W / 2, 198, INK.white, { align: 'center' });
+  if (blinkOn()) text(ctx, prompt(), W / 2, 226, INK.yellow, { align: 'center' });
+  text(ctx, input.touch ? 'TAP THE LETTERS TO GUESS' : 'TYPE A LETTER TO GUESS', W / 2, 246, INK.grey, { align: 'center' });
+  text(ctx, 'LEON KARSTEN 2026', W / 2, 300, INK.dim, { align: 'center' });
+}
+
+function drawHowTo() {
+  text(ctx, 'HOW TO PLAY', W / 2, 30, INK.cyan, { align: 'center' });
+  text(ctx, 'GUESS THE WORD ONE LETTER AT A TIME.', W / 2, 48, INK.white, { align: 'center' });
+  text(ctx, 'THE CATEGORY IS YOUR CLUE.', W / 2, 60, INK.white, { align: 'center' });
+  ctx.fillStyle = '#3fd46b'; ctx.fillRect(14, 80, 20, 10);
+  ctx.fillStyle = '#a0f0b0'; ctx.fillRect(15, 81, 18, 1);
+  text(ctx, 'RIGHT LETTER: NO FUEL LOST', 42, 82, INK.green);
+  ctx.fillStyle = '#1a0c0c'; ctx.fillRect(14, 98, 20, 10);
+  box(ctx, 14, 98, 20, 10, '#5a2a2a');
+  text(ctx, 'WRONG LETTER: ONE CELL BURNS', 42, 100, INK.orange);
+  text(ctx, 'SIX WRONG AND THE LAUNCH', W / 2, 122, INK.grey, { align: 'center' });
+  text(ctx, 'IS SCRUBBED. THREE ROCKETS A GAME.', W / 2, 134, INK.grey, { align: 'center' });
+  text(ctx, 'SCORING', W / 2, 158, INK.yellow, { align: 'center' });
+  const row = (y, label, value) => {
+    text(ctx, label, 12, y, INK.white);
+    text(ctx, value, 228, y, INK.white, { align: 'right' });
+  };
+  row(174, 'EACH LETTER IN THE WORD', '10');
+  row(186, 'EACH FUEL CELL LEFT', '100');
+  row(198, 'LAUNCHES IN A ROW', 'X2 TO X5');
+  if (blinkOn()) text(ctx, prompt(), W / 2, 240, INK.yellow, { align: 'center' });
+}
+
+function drawScores() {
+  text(ctx, 'HIGH SCORES', W / 2, 30, INK.yellow, { align: 'center' });
+  text(ctx, 'RANK', 40, 48, INK.grey);
+  text(ctx, 'SCORE', 150, 48, INK.grey, { align: 'right' });
+  text(ctx, 'NAME', 170, 48, INK.grey);
+  scores.table.forEach((r, i) => {
+    if (i === highlight && !blinkOn(16)) return;
+    const y = 64 + i * 16;
+    const ink = i === highlight ? INK.white : ROW_INKS[i];
+    text(ctx, RANKS[i], 40, y, ink);
+    text(ctx, String(r.s), 150, y, ink, { align: 'right' });
+    text(ctx, r.n, 170, y, ink);
+  });
+  if (blinkOn()) text(ctx, prompt(), W / 2, 240, INK.yellow, { align: 'center' });
+}
+
+function drawEntry() {
+  text(ctx, 'YOU MADE THE TOP TEN', W / 2, 34, INK.cyan, { align: 'center' });
+  text(ctx, String(score), W / 2, 50, INK.yellow, { align: 'center', scale: 2 });
+  text(ctx, 'ENTER YOUR INITIALS', W / 2, 80, INK.white, { align: 'center' });
+  for (let i = 0; i < 3; i++) {
+    const x = W / 2 - 39 + i * 30;
+    const current = i === entry.pos;
+    if (!current || blinkOn(16)) text(ctx, ENTRY_LETTERS[entry.letters[i]], x, 100, current ? INK.yellow : INK.white, { scale: 3 });
+    ctx.fillStyle = current ? INK.yellow : INK.dim;
+    ctx.fillRect(x - 2, 126, 18, 2);
+  }
+  text(ctx, input.touch ? 'TAP A LETTER FOR EACH' : 'TYPE THEM, OR USE THE ARROWS', W / 2, 150, INK.grey, { align: 'center' });
+  text(ctx, 'TIME ' + Math.ceil(entry.timer / 60), W / 2, 180, INK.orange, { align: 'center' });
+  drawKeys(false);
+}
+
+function draw() {
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, W, H);
+  drawHud();
+  if (mode === 'attract') {
+    if (page === 'title') drawTitle();
+    else if (page === 'howto') drawHowTo();
+    else drawScores();
+    return;
+  }
+  if (mode === 'entry') { drawEntry(); return; }
+  drawGame();
+}
+
+// ---------------------------------------------------------------- card art
+
+// The picture on the site's Games page, 320x240 (the card is 4:3), drawn with
+// the game's own scene, sprites and font. scripts/cards.mjs saves it as a PNG.
+const CARD_SMOKE = [
+  { x: 92, y: 154, r: 6, life: 1 }, { x: 113, y: 152, r: 7, life: 1 }, { x: 130, y: 157, r: 5, life: 0.4 },
+  { x: 76, y: 158, r: 5, life: 0.4 }, { x: 104, y: 140, r: 4, life: 1 }, { x: 103, y: 128, r: 3, life: 0.4 },
+];
+function drawCard() {
+  const c = document.createElement('canvas');
+  c.width = 320; c.height = 240;
+  const g = c.getContext('2d');
+  g.fillStyle = '#000';
+  g.fillRect(0, 0, 320, 240);
+  text(g, 'LAUNCH WINDOW', 162, 10, '#1c2870', { align: 'center', scale: 3 });
+  text(g, 'LAUNCH WINDOW', 160, 8, LOGO_INK, { align: 'center', scale: 3 });
+  drawScene(g, 40, 6, { rocketY: 62, smoke: CARD_SMOKE, flame: true, dead: false, arms: false, fuelLeft: 4, flashCell: -1 });
+  drawWord(g, 'SATELLITE', new Set('SATELLITE'), 160, 190, false);
+  text(g, 'LIFT OFF!', 160, 220, INK.yellow, { align: 'center', scale: 2 });
+  return c;
+}
+
+// ---------------------------------------------------------------- loop
+
+const PAGES = { title: ['howto', 420], howto: ['demo', 600], scores: ['title', 420] };
+function attractTick() {
+  pageT++;
+  const [next, length] = PAGES[page];
+  if (pageT < length) return;
+  if (next === 'demo') { startDemo(); return; }
+  if (next === 'title') highlight = -1;
+  toAttract(next);
+}
+
+function tick() {
+  clock++;
+  if (shake > 0) shake--;
+  if (cellFlash > 0) cellFlash--;
+  for (const p of smoke) { p.x += p.vx; p.y += p.vy; p.r += 0.06; p.life -= 0.012; }
+  smoke = smoke.filter(p => p.life > 0);
+  if (demo && ++demoT > 60 * 45) { endDemo(); return; }
+
+  switch (mode) {
+    case 'attract': attractTick(); break;
+    case 'play':
+      if (demo && ++t % 40 === 0) demoGuess();
+      break;
+    case 'count':
+      if (t % 30 === 0 && t < 90) play('beep');
+      if (++t >= 90) { mode = 'launch'; t = 0; shake = 50; play('ignite'); }
+      break;
+    case 'launch':
+      t++;
+      rocketV += 0.045;
+      rocketY -= rocketV;
+      if (t < 70 && t % 2 === 0) puff();
+      if (rocketY < SCENE_TOP - 60) finishLaunch();
+      break;
+    case 'tally':
+      t++;
+      if (t > 50 && t <= 90 && t % 3 === 0) play('tick');
+      if (demo && t >= 150) endDemo();
+      else if (t >= 600) nextWord();
+      break;
+    case 'scrub':
+      t++;
+      if (demo && t >= 150) endDemo();
+      else if (rockets === 0 && t >= 150) { mode = 'over'; timer = 180; play('over'); }
+      else if (rockets > 0 && t >= 600) nextWord();
+      break;
+    case 'over': if (--timer <= 0) afterOver(); break;
+    case 'entry': if (--entry.timer <= 0) saveEntry(); break;
+  }
+}
+
+// A fixed 60 ticks a second whatever the display's refresh rate.
+let acc = 0, lastT = 0;
+function frame(now) {
+  requestAnimationFrame(frame);
+  if (!lastT) lastT = now;
+  acc += Math.min(100, now - lastT);
+  lastT = now;
+  while (acc >= TICK_MS) { tick(); acc -= TICK_MS; }
+  draw();
+}
+requestAnimationFrame(frame);
+
+// Read-only view for the page checks, plus two shortcuts so a check can reach
+// the high-score screens without playing a whole game.
+window.__launchwindow = {
+  get mode() { return mode; },
+  get page() { return page; },
+  get demo() { return demo; },
+  get score() { return score; },
+  get rockets() { return rockets; },
+  get answer() { return answer; },
+  get found() { return [...found]; },
+  get missed() { return [...missed]; },
+  keyCentre(ch) { const r = keyRect(ALPHABET.indexOf(ch)); return { x: r.x + r.w / 2, y: r.y + r.h / 2 }; },
+  attract(p) { toAttract(p); },
+  endGame(s) { demo = false; score = s; rockets = 0; mode = 'over'; timer = 1; },
+};
+window.__arcade = { card: drawCard };
+})();
+</script>
+</body>
+</html>
