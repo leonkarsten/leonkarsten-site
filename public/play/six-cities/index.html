@@ -1,0 +1,1246 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Six Cities</title>
+<meta name="description" content="Nothing to shoot at, only something to protect. It always ends in loss; the score is how long you held.">
+<meta name="theme-color" content="#000000">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2016%2016'%20shape-rendering='crispEdges'%3E%3Crect%20width='16'%20height='16'%20fill='%23000'/%3E%3Crect%20x='7'%20y='3'%20width='5'%20height='5'%20fill='%23ffd23f'/%3E%3Crect%20x='8'%20y='4'%20width='3'%20height='3'%20fill='%23fff'/%3E%3Crect%20x='1'%20y='11'%20width='3'%20height='3'%20fill='%235eeaf5'/%3E%3Crect%20x='5'%20y='10'%20width='2'%20height='4'%20fill='%232b4cff'/%3E%3Crect%20x='10'%20y='11'%20width='3'%20height='3'%20fill='%238f7bff'/%3E%3Crect%20x='0'%20y='14'%20width='16'%20height='2'%20fill='%23d9a066'/%3E%3C/svg%3E">
+<style>
+:root {
+  --void: #000;
+  --chrome: #8f8fb0;
+  --chrome-hi: #5eeaf5;
+  --edge: #2a2a40;
+  --start: #e8302f;
+  --ui: ui-monospace, 'Cascadia Mono', Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; height: 100%; background: var(--void); color: var(--chrome); }
+body {
+  font-family: var(--ui);
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  height: 100dvh;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: 'bar' 'stage' 'pad';
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.bar {
+  grid-area: bar;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+}
+.bar a, .bar button {
+  font: 700 12px/1 var(--ui);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--chrome);
+  background: none;
+  border: 1px solid transparent;
+  padding: 9px 10px;
+  text-decoration: none;
+  cursor: pointer;
+  border-radius: 0;
+}
+.bar a:hover, .bar button:hover, .bar a:focus-visible, .bar button:focus-visible {
+  color: var(--chrome-hi);
+  border-color: var(--edge);
+  outline: none;
+}
+.bar button[aria-pressed='true'] { color: var(--chrome-hi); }
+.toggles { display: flex; gap: 2px; }
+
+.stage {
+  grid-area: stage;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  padding: 8px 16px;
+}
+/* A faint edge, so an unexplored black playfield still has a size. */
+.screen { position: relative; line-height: 0; touch-action: none; box-shadow: 0 0 0 1px #1c1c2c; }
+.screen canvas {
+  display: block;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+/* The CRT switch. Off by default: sharp pixels are the honest picture, the
+   tube is a costume. Scanlines are one per game pixel row (--px is set by
+   the screen fit), so they never beat against the art. */
+.screen.crt { border-radius: 3% / 4%; overflow: hidden; box-shadow: 0 0 0 4px #0b0b14, 0 0 36px rgba(94, 234, 245, 0.12); }
+.screen.crt canvas { filter: saturate(1.25) brightness(1.12) contrast(1.05) blur(calc(var(--px) * 0.18)); }
+.screen.crt::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background:
+    radial-gradient(ellipse at center, rgba(0, 0, 0, 0) 58%, rgba(0, 0, 0, 0.6) 100%),
+    repeating-linear-gradient(to bottom,
+      rgba(0, 0, 0, 0) 0, rgba(0, 0, 0, 0) calc(var(--px) * 0.55),
+      rgba(0, 0, 0, 0.38) calc(var(--px) * 0.55), rgba(0, 0, 0, 0.38) var(--px));
+  box-shadow: inset 0 0 48px rgba(0, 0, 0, 0.75);
+}
+
+/* Touch controls: shown on touch screens only. */
+.pad {
+  grid-area: pad;
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  max-width: 380px;
+  margin: 0 auto;
+  padding: 4px 20px 16px;
+}
+body.touch .pad { display: flex; }
+.dpad {
+  display: grid;
+  grid-template-columns: repeat(3, 54px);
+  grid-template-rows: repeat(3, 50px);
+  gap: 3px;
+}
+.dpad button, .start {
+  font: 700 18px/1 var(--ui);
+  color: var(--chrome);
+  background: #12121e;
+  border: 2px solid var(--edge);
+  border-radius: 6px;
+  padding: 0;
+  touch-action: none;
+  cursor: pointer;
+}
+.dpad button:active { background: #24243a; color: var(--chrome-hi); }
+.dpad .up { grid-area: 1 / 2; }
+.dpad .left { grid-area: 2 / 1; }
+.dpad .right { grid-area: 2 / 3; }
+.dpad .down { grid-area: 3 / 2; }
+.start {
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  background: var(--start);
+  border: 4px solid #7a1414;
+  color: #fff;
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  box-shadow: inset 0 -6px 0 rgba(0, 0, 0, 0.25);
+}
+.start:active { transform: translateY(2px); box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.25); }
+
+/* A phone on its side: d-pad left of the screen, START right of it. A game
+   with no d-pad (its keys are on the screen) moves the bar to a column
+   instead, so an upright screen gets the full height. */
+@media (orientation: landscape) and (max-height: 520px) {
+  body.no-pad {
+    grid-template-rows: minmax(0, 1fr);
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas: 'bar stage';
+  }
+  body.no-pad .bar { flex-direction: column; justify-content: flex-start; align-items: flex-start; }
+  body.no-pad .toggles { flex-direction: column; }
+  .stage { padding: 4px 8px; }
+  body.touch:not(.no-pad) {
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas: 'bar bar bar' 'dpad stage start';
+  }
+  body.touch:not(.no-pad) .pad { display: contents; }
+  body.touch .dpad { grid-area: dpad; align-self: center; margin-left: 12px; }
+  body.touch .start { grid-area: start; align-self: center; margin-right: 16px; }
+}
+</style>
+</head>
+<body class="no-pad">
+
+<header class="bar">
+  <a href="/games/">&larr; Games</a>
+  <div class="toggles">
+    <button type="button" data-action="crt" aria-pressed="false">CRT off</button>
+    <button type="button" data-action="mute" aria-pressed="true">Sound on</button>
+    <button type="button" data-action="pause">Pause</button>
+  </div>
+</header>
+
+<main class="stage" id="stage">
+  <div class="screen" id="screen">
+    <canvas id="c" role="img" aria-label="Six Cities game screen. Tap or click the sky to fire; arrows move the sight and Space fires."></canvas>
+  </div>
+</main>
+
+<script>
+(() => {
+'use strict';
+// ---- engine/font.js
+// 5x7 bitmap font, one string per glyph, rows separated by spaces. Drawn with
+// fillRect so it stays on the pixel grid at any scale; there is no web font.
+const GLYPHS = {
+  A: '.###. #...# #...# ##### #...# #...# #...#',
+  B: '####. #...# #...# ####. #...# #...# ####.',
+  C: '.###. #...# #.... #.... #.... #...# .###.',
+  D: '####. #...# #...# #...# #...# #...# ####.',
+  E: '##### #.... #.... ####. #.... #.... #####',
+  F: '##### #.... #.... ####. #.... #.... #....',
+  G: '.###. #...# #.... #.### #...# #...# .####',
+  H: '#...# #...# #...# ##### #...# #...# #...#',
+  I: '.###. ..#.. ..#.. ..#.. ..#.. ..#.. .###.',
+  J: '..### ...#. ...#. ...#. ...#. #..#. .##..',
+  K: '#...# #..#. #.#.. ##... #.#.. #..#. #...#',
+  L: '#.... #.... #.... #.... #.... #.... #####',
+  M: '#...# ##.## #.#.# #.#.# #...# #...# #...#',
+  N: '#...# #...# ##..# #.#.# #..## #...# #...#',
+  O: '.###. #...# #...# #...# #...# #...# .###.',
+  P: '####. #...# #...# ####. #.... #.... #....',
+  Q: '.###. #...# #...# #...# #.#.# #..#. .##.#',
+  R: '####. #...# #...# ####. #.#.. #..#. #...#',
+  S: '.###. #...# #.... .###. ....# #...# .###.',
+  T: '##### ..#.. ..#.. ..#.. ..#.. ..#.. ..#..',
+  U: '#...# #...# #...# #...# #...# #...# .###.',
+  V: '#...# #...# #...# #...# #...# .#.#. ..#..',
+  W: '#...# #...# #...# #.#.# #.#.# #.#.# .#.#.',
+  X: '#...# #...# .#.#. ..#.. .#.#. #...# #...#',
+  Y: '#...# #...# .#.#. ..#.. ..#.. ..#.. ..#..',
+  Z: '##### ....# ...#. ..#.. .#... #.... #####',
+  0: '.###. #...# #..## #.#.# ##..# #...# .###.',
+  1: '..#.. .##.. ..#.. ..#.. ..#.. ..#.. .###.',
+  2: '.###. #...# ....# ...#. ..#.. .#... #####',
+  3: '##### ...#. ..#.. ...#. ....# #...# .###.',
+  4: '...#. ..##. .#.#. #..#. ##### ...#. ...#.',
+  5: '##### #.... ####. ....# ....# #...# .###.',
+  6: '..##. .#... #.... ####. #...# #...# .###.',
+  7: '##### ....# ...#. ..#.. .#... .#... .#...',
+  8: '.###. #...# #...# .###. #...# #...# .###.',
+  9: '.###. #...# #...# .#### ....# ...#. .##..',
+  ' ': '..... ..... ..... ..... ..... ..... .....',
+  '.': '..... ..... ..... ..... ..... .##.. .##..',
+  ',': '..... ..... ..... ..... .##.. ..#.. .#...',
+  '!': '..#.. ..#.. ..#.. ..#.. ..#.. ..... ..#..',
+  '?': '.###. #...# ....# ...#. ..#.. ..... ..#..',
+  '-': '..... ..... ..... .###. ..... ..... .....',
+  '+': '..... ..#.. ..#.. ##### ..#.. ..#.. .....',
+  '=': '..... ..... ##### ..... ##### ..... .....',
+  ':': '..... .##.. .##.. ..... .##.. .##.. .....',
+  '/': '....# ...#. ...#. ..#.. .#... .#... #....',
+  "'": '..#.. ..#.. .#... ..... ..... ..... .....',
+  '<': '...#. ..#.. .#... #.... .#... ..#.. ...#.',
+  '>': '.#... ..#.. ...#. ....# ...#. ..#.. .#...',
+  '*': '..... #...# .#.#. ..#.. .#.#. #...# .....',
+};
+
+const FONT_BITS = {};
+for (const [ch, rows] of Object.entries(GLYPHS)) FONT_BITS[ch] = rows.split(' ');
+
+const GLYPH_W = 5, GLYPH_H = 7, ADVANCE = 6;
+
+function textWidth(str, scale = 1) {
+  return str.length ? (str.length * ADVANCE - 1) * scale : 0;
+}
+
+// `color` is one colour, or an array of seven (one per glyph row) for the
+// striped logos arcade title screens used.
+function text(ctx, str, x, y, color, opts = {}) {
+  const scale = opts.scale || 1;
+  const s = String(str).toUpperCase();
+  let left = x;
+  if (opts.align === 'center') left = x - Math.floor(textWidth(s, scale) / 2);
+  else if (opts.align === 'right') left = x - textWidth(s, scale);
+  for (let i = 0; i < s.length; i++) {
+    const rows = FONT_BITS[s[i]] || FONT_BITS['?'];
+    const gx = left + i * ADVANCE * scale;
+    for (let r = 0; r < GLYPH_H; r++) {
+      ctx.fillStyle = Array.isArray(color) ? color[r] : color;
+      const row = rows[r];
+      for (let c = 0; c < GLYPH_W; c++) {
+        if (row[c] === '#') ctx.fillRect(gx + c * scale, y + r * scale, scale, scale);
+      }
+    }
+  }
+}
+
+// ---- engine/screen.js
+// The arcade screen: a small fixed-resolution canvas, scaled up in whole
+// DEVICE pixels so every game pixel is the same size and stays sharp. A 336px
+// screen on a 3x phone is drawn at exactly 3 device pixels per game pixel,
+// never 3.35, which is what makes uneven, shimmering pixels.
+function makeScreen({ canvas, stage, frame, w, h, crtKey }) {
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+
+  function fit() {
+    const dpr = window.devicePixelRatio || 1;
+    // clientWidth/Height include the stage's padding; the screen gets only
+    // what is inside it.
+    const cs = getComputedStyle(stage);
+    const aw = stage.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    const ah = stage.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+    const s = Math.max(1, Math.floor(Math.min((aw * dpr) / w, (ah * dpr) / h)));
+    canvas.style.width = (s * w) / dpr + 'px';
+    canvas.style.height = (s * h) / dpr + 'px';
+    frame.style.setProperty('--px', s / dpr + 'px');
+  }
+  addEventListener('resize', fit);
+  if (window.visualViewport) visualViewport.addEventListener('resize', fit);
+  fit();
+
+  let crt = false;
+  try { crt = localStorage.getItem(crtKey) === '1'; } catch { crt = false; }
+  function setCrt(on) {
+    crt = on;
+    frame.classList.toggle('crt', on);
+    try { localStorage.setItem(crtKey, on ? '1' : '0'); } catch {}
+  }
+  setCrt(crt);
+
+  return {
+    ctx, w, h, fit,
+    get crt() { return crt; },
+    toggleCrt() { setCrt(!crt); return crt; },
+  };
+}
+
+// ---- engine/sound.js
+// Chip sound: square, triangle and noise voices made in the browser. No audio
+// files. Browsers only allow sound after a tap or key, so `wake()` is called
+// from every input handler and does nothing until then.
+function makeSound(muteKey) {
+  let ac = null, out = null;
+  let muted = false;
+  try { muted = localStorage.getItem(muteKey) === '1'; } catch { muted = false; }
+
+  function wake() {
+    if (ac) { if (ac.state === 'suspended') ac.resume(); return; }
+    const Ctor = window.AudioContext || window.webkitAudioContext;
+    if (!Ctor) return;
+    ac = new Ctor();
+    out = ac.createGain();
+    out.gain.value = muted ? 0 : 1;
+    out.connect(ac.destination);
+  }
+
+  // One note. `at` is seconds from now, `to` slides the pitch.
+  function note(freq, dur, { type = 'square', vol = 0.05, at = 0, to = null } = {}) {
+    if (!ac) return;
+    const t = ac.currentTime + at;
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(freq, t);
+    if (to) o.frequency.exponentialRampToValueAtTime(to, t + dur);
+    g.gain.setValueAtTime(vol, t);
+    g.gain.setValueAtTime(vol, t + dur * 0.7);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(out);
+    o.start(t); o.stop(t + dur + 0.02);
+  }
+
+  // A run of notes: [[freq, dur], ...], each after the last; 0 is a rest.
+  function tune(notes, opts = {}) {
+    let at = opts.at || 0;
+    for (const [f, d] of notes) {
+      if (f) note(f, d * 0.92, { ...opts, at });
+      at += d;
+    }
+  }
+
+  function noise(dur, { vol = 0.2, cutoff = 900, at = 0 } = {}) {
+    if (!ac) return;
+    const len = Math.floor(ac.sampleRate * dur);
+    const buf = ac.createBuffer(1, len, ac.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len) ** 2;
+    const s = ac.createBufferSource(); s.buffer = buf;
+    const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = cutoff;
+    const g = ac.createGain(); g.gain.value = vol;
+    s.connect(f); f.connect(g); g.connect(out);
+    s.start(ac.currentTime + at);
+  }
+
+  // A held sound (an engine): filtered noise that runs for the whole session
+  // and is gated by its gain. Starting a source every frame is what makes
+  // engine sound crackle. Returns set(on); safe to call before wake().
+  function drone({ cutoff = 420, vol = 0.16 } = {}) {
+    let gain = null;
+    return on => {
+      if (!ac) return;
+      if (!gain) {
+        const len = ac.sampleRate * 2;
+        const buf = ac.createBuffer(1, len, ac.sampleRate);
+        const d = buf.getChannelData(0);
+        for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+        const s = ac.createBufferSource(); s.buffer = buf; s.loop = true;
+        const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = cutoff;
+        gain = ac.createGain(); gain.gain.value = 0;
+        s.connect(f); f.connect(gain); gain.connect(out);
+        s.start();
+      }
+      gain.gain.setTargetAtTime(on ? vol : 0, ac.currentTime, 0.03);
+    };
+  }
+
+  function setMuted(on) {
+    muted = on;
+    if (out) out.gain.value = on ? 0 : 1;
+    try { localStorage.setItem(muteKey, on ? '1' : '0'); } catch {}
+  }
+
+  return {
+    wake, note, tune, noise, drone,
+    get muted() { return muted; },
+    toggleMute() { setMuted(!muted); return muted; },
+  };
+}
+
+// ---- engine/input.js
+// Keyboard and touch in one place. `held` is what a game polls each tick;
+// `onDir` fires once per press (menus, initials); `onAction` carries the
+// buttons: start, pause, back, crt, mute.
+//
+// A word game passes `onLetter`: then every letter key is a letter (WASD stop
+// being directions, P/C/M stop being shortcuts; those stay on the buttons) and
+// only the arrows move. `onPoint(x, y)` receives taps on the screen in GAME
+// pixels; returning true means the game used the tap, otherwise it is START.
+function makeInput({ screen, onAction, onDir, onAny, onLetter = null, onPoint = null }) {
+  const held = { up: false, down: false, left: false, right: false };
+  const KEYS = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
+  const ACTIONS = { Space: 'start', Enter: 'start', Escape: 'back' };
+  if (!onLetter) {
+    Object.assign(KEYS, { KeyW: 'up', KeyS: 'down', KeyA: 'left', KeyD: 'right' });
+    Object.assign(ACTIONS, { KeyP: 'pause', KeyC: 'crt', KeyM: 'mute' });
+  }
+
+  let touch = matchMedia('(pointer: coarse)').matches;
+  const markTouch = on => {
+    touch = on;
+    document.body.classList.toggle('touch', on);
+  };
+  markTouch(touch);
+  addEventListener('touchstart', () => { if (!touch) markTouch(true); }, { passive: true });
+
+  addEventListener('keydown', e => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const dir = KEYS[e.code];
+    if (dir) {
+      e.preventDefault();
+      onAny();
+      if (!e.repeat) onDir(dir);
+      held[dir] = true;
+      return;
+    }
+    const action = ACTIONS[e.code];
+    if (action) {
+      // Space and Enter on a focused button or link belong to that control.
+      if ((e.code === 'Space' || e.code === 'Enter') && e.target.closest && e.target.closest('button, a')) return;
+      e.preventDefault();
+      onAny();
+      if (!e.repeat) onAction(action);
+      return;
+    }
+    // e.key, not e.code: the letter printed on the key, whatever the layout.
+    if (onLetter && /^[a-z]$/i.test(e.key)) {
+      e.preventDefault();
+      onAny();
+      if (!e.repeat) onLetter(e.key.toUpperCase());
+    }
+  });
+  addEventListener('keyup', e => {
+    const dir = KEYS[e.code];
+    if (dir) held[dir] = false;
+  });
+  addEventListener('blur', () => { held.up = held.down = held.left = held.right = false; });
+
+  for (const b of document.querySelectorAll('[data-dir]')) {
+    const dir = b.dataset.dir;
+    const down = e => {
+      e.preventDefault();
+      onAny();
+      held.up = held.down = held.left = held.right = false;
+      held[dir] = true;
+      onDir(dir);
+    };
+    const up = () => { held[dir] = false; };
+    b.addEventListener('pointerdown', down);
+    b.addEventListener('pointerup', up);
+    b.addEventListener('pointerleave', up);
+    b.addEventListener('pointercancel', up);
+    b.addEventListener('contextmenu', e => e.preventDefault());
+  }
+  for (const b of document.querySelectorAll('[data-action]')) {
+    const action = b.dataset.action;
+    // pointerdown for the START button, so it answers as fast as the d-pad;
+    // click for the toggles, so keyboard users can press them too.
+    if (b.classList.contains('start')) {
+      b.addEventListener('pointerdown', e => { e.preventDefault(); onAny(); onAction(action); });
+    } else {
+      b.addEventListener('click', () => { onAny(); onAction(action); });
+    }
+  }
+  screen.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    onAny();
+    if (onPoint) {
+      const r = screen.getBoundingClientRect();
+      const x = ((e.clientX - r.left) * screen.width) / r.width;
+      const y = ((e.clientY - r.top) * screen.height) / r.height;
+      if (onPoint(x, y)) return;
+    }
+    onAction('start');
+  });
+
+  return { held, get touch() { return touch; } };
+}
+
+// ---- engine/scores.js
+// The top-ten table, kept on this device only. A new browser starts with a
+// table of invented initials so the attract mode has something to show.
+const ENTRY_LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ.';
+
+function makeScores(key, defaults) {
+  let table = defaults.map(r => ({ ...r }));
+  try {
+    const saved = JSON.parse(localStorage.getItem(key) || 'null');
+    if (Array.isArray(saved) && saved.length === 10 && saved.every(r => typeof r.s === 'number' && typeof r.n === 'string')) table = saved;
+  } catch {}
+
+  return {
+    get table() { return table; },
+    get top() { return table[0].s; },
+    qualifies(score) { return score > 0 && score > table[9].s; },
+    // Returns the rank (0-9) the new row landed on.
+    add(n, s) {
+      let rank = table.findIndex(r => s > r.s);
+      if (rank === -1) return -1;
+      table.splice(rank, 0, { n, s });
+      table.length = 10;
+      try { localStorage.setItem(key, JSON.stringify(table)); } catch {}
+      return rank;
+    },
+  };
+}
+
+// ---- games/six-cities/rules.js
+// Six Cities' world and rules, with no drawing, so the tests can run them.
+// Carried over from the Qlaim cabinet unchanged: the same 960x600 world,
+// speeds, blast size and scoring. The game draws it at a third of the size.
+//
+// Nothing to shoot at, only something to protect. It always ends in loss;
+// the score is how long you held.
+const WORLD_W = 960, WORLD_H = 600, GROUND = WORLD_H - 42;
+const AMMO = 24, BLAST_MAX = 52, BLAST_RATE = 1.5, SHOT_SPEED = 8.5;
+const CITY_X = [110, 230, 350, 610, 730, 850];
+const CITY_REACH = 26;
+const BATTERY = { x: WORLD_W / 2, y: GROUND - 8 };
+
+function newWorld() {
+  const w = {
+    cities: CITY_X.map(x => ({ x, alive: true })),
+    incoming: [], ours: [], blasts: [],
+    wave: 1, score: 0, ammo: AMMO, spawnLeft: 0, spawnTimer: 0, waveGap: 0, over: false,
+  };
+  startWave(w);
+  return w;
+}
+
+function startWave(w) {
+  w.ammo = AMMO;
+  w.spawnLeft = 8 + w.wave * 2;
+  w.spawnTimer = 40;
+  w.waveGap = 0;
+  w.incoming = [];
+}
+
+function spawn(w, rand) {
+  const live = w.cities.filter(c => c.alive);
+  if (!live.length) return;
+  const target = live[Math.floor(rand() * live.length)];
+  const sx = rand() * WORLD_W;
+  const speed = 0.55 + w.wave * 0.11 + rand() * 0.35;
+  const dx = target.x - sx, dy = GROUND;
+  const len = Math.hypot(dx, dy);
+  w.incoming.push({ x: sx, y: 0, sx, sy: 0, vx: (dx / len) * speed, vy: (dy / len) * speed, tx: target.x });
+}
+
+// A shot flies from the battery to the point and opens there. Returns false
+// when it cannot fire: out of interceptors, or aimed at the ground.
+function fire(w, x, y) {
+  if (w.over || w.ammo <= 0 || y > GROUND - 8) return false;
+  w.ammo--;
+  const dx = x - BATTERY.x, dy = y - BATTERY.y;
+  const len = Math.hypot(dx, dy) || 1;
+  w.ours.push({ x: BATTERY.x, y: BATTERY.y, sx: BATTERY.x, sy: BATTERY.y, vx: (dx / len) * SHOT_SPEED, vy: (dy / len) * SHOT_SPEED, tx: x, ty: y });
+  return true;
+}
+
+function detonate(w, x, y, events) {
+  w.blasts.push({ x, y, r: 2, growing: true });
+  events.push({ type: 'blast', x, y });
+}
+
+function growBlasts(w) {
+  for (const b of w.blasts) {
+    if (b.growing) { b.r += BLAST_RATE; if (b.r >= BLAST_MAX) b.growing = false; }
+    else b.r -= BLAST_RATE * 0.8;
+  }
+}
+
+// One tick. Returns what happened, for the drawing and the sound:
+// blast, kill, city, wave (with its bonus), over.
+function step(w, rand = Math.random) {
+  const events = [];
+  if (w.over) {
+    growBlasts(w);
+    w.blasts = w.blasts.filter(b => b.r > 0);
+    return events;
+  }
+
+  if (w.spawnLeft > 0 && --w.spawnTimer <= 0) {
+    spawn(w, rand); w.spawnLeft--;
+    w.spawnTimer = Math.max(14, 60 - w.wave * 3) + rand() * 30;
+  }
+
+  for (const m of w.ours) {
+    m.x += m.vx; m.y += m.vy;
+    if ((m.vy < 0 && m.y <= m.ty) || (m.vy > 0 && m.y >= m.ty) || Math.hypot(m.x - m.tx, m.y - m.ty) < 7) {
+      detonate(w, m.tx, m.ty, events); m.done = true;
+    }
+  }
+  w.ours = w.ours.filter(m => !m.done);
+
+  for (const m of w.incoming) {
+    m.x += m.vx; m.y += m.vy;
+    if (m.y >= GROUND) {
+      m.done = true;
+      detonate(w, m.x, GROUND - 4, events);
+      for (const c of w.cities) {
+        if (c.alive && Math.abs(c.x - m.x) < CITY_REACH) { c.alive = false; events.push({ type: 'city', x: c.x }); }
+      }
+    }
+  }
+
+  for (const b of w.blasts) {
+    if (b.growing) { b.r += BLAST_RATE; if (b.r >= BLAST_MAX) b.growing = false; }
+    else b.r -= BLAST_RATE * 0.8;
+    for (const m of w.incoming) {
+      if (m.done) continue;
+      if (Math.hypot(m.x - b.x, m.y - b.y) < b.r) {
+        m.done = true;
+        w.score += 25 * w.wave;
+        events.push({ type: 'kill', x: m.x, y: m.y });
+        detonate(w, m.x, m.y, events);
+      }
+    }
+  }
+  w.blasts = w.blasts.filter(b => b.r > 0);
+  w.incoming = w.incoming.filter(m => !m.done);
+
+  if (!w.cities.some(c => c.alive)) {
+    w.over = true;
+    events.push({ type: 'over' });
+    return events;
+  }
+
+  if (w.spawnLeft === 0 && !w.incoming.length && !w.ours.length && !w.blasts.length && ++w.waveGap > 60) {
+    // Interceptors you did not need are worth more than ones you spent.
+    const bonus = waveBonus(w);
+    w.score += bonus.total;
+    events.push({ type: 'wave', wave: w.wave, ...bonus });
+    w.wave++;
+    startWave(w);
+  }
+  return events;
+}
+
+function waveBonus(w) {
+  const standing = w.cities.filter(c => c.alive).length;
+  return { ammo: w.ammo, ammoPts: w.ammo * 5, cities: standing, cityPts: standing * 100 * w.wave, total: w.ammo * 5 + standing * 100 * w.wave };
+}
+
+// The demo's gunner: lead the lowest missile by the time the shot takes to
+// get there, unless a blast or a shot is already waiting for it.
+function aimFor(w) {
+  let pick = null;
+  for (const m of w.incoming) {
+    if (m.y < 120) continue;
+    const covered = w.ours.some(o => Math.hypot(o.tx - m.x, o.ty - m.y) < 140) ||
+      w.blasts.some(b => Math.hypot(b.x - m.x, b.y - m.y) < BLAST_MAX + 20);
+    if (!covered && (!pick || m.y > pick.y)) pick = m;
+  }
+  if (!pick) return null;
+  let tx = pick.x, ty = pick.y;
+  for (let i = 0; i < 3; i++) {
+    const t = Math.hypot(tx - BATTERY.x, ty - BATTERY.y) / SHOT_SPEED + 12;
+    tx = pick.x + pick.vx * t; ty = pick.y + pick.vy * t;
+  }
+  return ty < GROUND - 20 ? { x: tx, y: ty } : null;
+}
+
+// ---- engine/sprites.js
+// Sprites are drawn as text: one character per pixel, '.' is transparent and
+// every other character is looked up in a palette. Swapping the palette is how
+// a sprite changes state (lit, remembered, alerted) — the way the hardware did it.
+function sprite(rows, palette) {
+  const w = rows[0].length, h = rows.length;
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const g = c.getContext('2d');
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const ch = rows[y][x];
+    if (ch === '.' || !palette[ch]) continue;
+    g.fillStyle = palette[ch];
+    g.fillRect(x, y, 1, 1);
+  }
+  return c;
+}
+
+function mirrored(src) {
+  const c = document.createElement('canvas');
+  c.width = src.width; c.height = src.height;
+  const g = c.getContext('2d');
+  g.translate(src.width, 0);
+  g.scale(-1, 1);
+  g.drawImage(src, 0, 0);
+  return c;
+}
+
+// A 16x16 tile painted by a function of (x, y) -> colour or null.
+function tile(size, paint) {
+  const c = document.createElement('canvas');
+  c.width = size; c.height = size;
+  const g = c.getContext('2d');
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    const col = paint(x, y);
+    if (!col) continue;
+    g.fillStyle = col;
+    g.fillRect(x, y, 1, 1);
+  }
+  return c;
+}
+
+// ---- games/six-cities/art.js
+const CITY = [
+  '......C.........',
+  '.....CCC........',
+  '.....CYC....P...',
+  '.B...CCC...PPP..',
+  'BBB..CYC...PYP..',
+  'BYB..CCC.P.PPP..',
+  'BBB.CCCCCPPPYP..',
+  'BYBBCYCYCPYPPP.B',
+  'BBBBCCCCCPPPPPBB',
+  'BBBBCCCCCPPPPPBB',
+];
+const CITY_PAL = { B: '#2b4cff', C: '#5eeaf5', Y: '#ffd23f', P: '#8f7bff' };
+
+const RUIN = [
+  '................',
+  '................',
+  '................',
+  '................',
+  '................',
+  '................',
+  '................',
+  '..R.....R...R...',
+  '.RRR.R.RRR.RRR..',
+  'RRRRRRRRRRRRRRRR',
+];
+const RUIN_PAL = { R: '#5a2e12' };
+
+const BATTERY_ART = [
+  '...........GG...........',
+  '...........GG...........',
+  '..........GGGG..........',
+  '.........MMMMMM.........',
+  '.......MMMMMMMMMM.......',
+  '.....MMMMMMMMMMMMMM.....',
+  '...MMMMMMMMMMMMMMMMMM...',
+  '.MMMMMMMMMMMMMMMMMMMMMM.',
+];
+const BATTERY_PAL = { G: '#c8c8d8', M: '#d9a066' };
+const BATTERY_EMPTY = { G: '#4a4a6a', M: '#8a4b22' };
+
+const SIGHT = [
+  '...W...',
+  '...W...',
+  '.......',
+  'WW.W.WW',
+  '.......',
+  '...W...',
+  '...W...',
+];
+
+function makeArt() {
+  return {
+    city: sprite(CITY, CITY_PAL),
+    ruin: sprite(RUIN, RUIN_PAL),
+    battery: sprite(BATTERY_ART, BATTERY_PAL),
+    batteryEmpty: sprite(BATTERY_ART, BATTERY_EMPTY),
+    sight: sprite(SIGHT, { W: '#ffffff' }),
+  };
+}
+
+// ---- games/six-cities/game.js
+// The world is 960x600, drawn at a third of the size under a 20px score bar.
+const SCALE = 3, TOP = 20;
+const W = WORLD_W / SCALE, H = TOP + WORLD_H / SCALE; // 320 x 220
+const GROUND_Y = TOP + GROUND / SCALE;
+const TICK_MS = 1000 / 60;
+const DEMO_TICKS = 60 * 30;
+
+const INK = {
+  red: '#ff3b3b', white: '#ffffff', yellow: '#ffd23f', orange: '#ff8a1e', green: '#3fd46b',
+  cyan: '#5eeaf5', pink: '#ff5fb8', grey: '#8f8fb0', dim: '#4a4a6a',
+};
+const ROW_INKS = ['#ff3b3b', '#ff8a1e', '#ffd23f', '#3fd46b', '#5eeaf5', '#8f7bff', '#ff5fb8', '#ff8a1e', '#ffd23f', '#3fd46b'];
+const LOGO_INK = ['#fff3a0', '#ffd23f', '#ff8a1e', '#ff8a1e', '#e8302f', '#e8302f', '#8a1c1c'];
+const BLAST_INKS = ['#ffffff', '#ffd23f', '#ff8a1e', '#e8302f', '#ff5fb8', '#5eeaf5'];
+const RANKS = ['1ST', '2ND', '3RD', '4TH', '5TH', '6TH', '7TH', '8TH', '9TH', '10TH'];
+
+// Invented initials, so a first visit has a table to beat.
+const DEFAULT_SCORES = [
+  ['SKY', 20000], ['ARC', 15000], ['DOM', 11000], ['HLD', 8000], ['WAL', 6000],
+  ['GRD', 4500], ['RAD', 3000], ['BOX', 2000], ['FIX', 1200], ['AIM', 600],
+].map(([n, s]) => ({ n, s }));
+
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const canvas = document.getElementById('c');
+const screen = makeScreen({ canvas, stage: document.getElementById('stage'), frame: document.getElementById('screen'), w: W, h: H, crtKey: 'lk.arcade.crt' });
+const ctx = screen.ctx;
+const sound = makeSound('lk.arcade.mute');
+const scores = makeScores('lk.sixcities.scores', DEFAULT_SCORES);
+const art = makeArt();
+
+const STARS = [];
+for (let i = 0; i < 40; i++) STARS.push({ x: (i * 151) % W, y: TOP + 4 + ((i * 67) % 120), c: i % 3 ? '#4a4a6a' : '#8f8fb0' });
+
+let world = newWorld();
+let mode = 'attract', page = 'title', pageT = 0, timer = 0, clock = 0;
+let sparks = [], banner = null, sight = { x: W / 2, y: TOP + 80 }, usedKeys = false;
+let demo = false, demoT = 0, cooldown = 0, entry = null, highlight = -1, pausedFrom = null, lastBoom = 0;
+
+const SFX = {
+  start: () => {
+    sound.tune([[523, 0.12], [659, 0.12], [784, 0.12], [1047, 0.12], [0, 0.06], [784, 0.12], [1047, 0.36]], { vol: 0.045 });
+    sound.tune([[131, 0.36], [196, 0.36], [262, 0.48]], { type: 'triangle', vol: 0.12 });
+  },
+  fire: () => sound.note(420, 0.16, { type: 'triangle', to: 924, vol: 0.05 }),
+  empty: () => sound.note(110, 0.08, { vol: 0.04 }),
+  blast: () => sound.noise(0.4, { vol: 0.2, cutoff: 800 }),
+  city: () => { sound.noise(0.8, { vol: 0.3, cutoff: 400 }); sound.note(196, 0.7, { to: 49, vol: 0.05 }); },
+  wave: () => sound.tune([[784, 0.1], [988, 0.1], [1175, 0.1], [1568, 0.1], [0, 0.06], [1175, 0.1], [1568, 0.4]], { vol: 0.045 }),
+  blip: () => sound.note(988, 0.05, { vol: 0.04 }),
+  over: () => sound.tune([[392, 0.22], [370, 0.22], [349, 0.22], [330, 0.7]], { type: 'triangle', vol: 0.12 }),
+};
+// The demo plays silently: nobody asked for noise from a screen they are not using.
+function play(name) { if (!demo) SFX[name](); }
+
+// ---------------------------------------------------------------- the game
+
+const toScreenX = x => x / SCALE, toScreenY = y => TOP + y / SCALE;
+
+function burst(x, y, n, speed) {
+  for (let i = 0; i < (reduceMotion ? Math.ceil(n / 3) : n); i++) {
+    const a = Math.random() * Math.PI * 2, s = 0.2 + Math.random() * speed;
+    sparks.push({ x: toScreenX(x), y: toScreenY(y), vx: Math.cos(a) * s, vy: Math.sin(a) * s - 0.3, life: 1 });
+  }
+}
+
+function shoot(x, y) {
+  if (fire(world, x, y)) play('fire'); else if (world.ammo <= 0) play('empty');
+}
+
+function newGame() {
+  demo = false; highlight = -1;
+  world = newWorld();
+  sparks = []; banner = null;
+  mode = 'ready'; timer = 120;
+  play('start');
+}
+
+function startDemo() {
+  demo = true; demoT = 0; cooldown = 30;
+  world = newWorld();
+  sparks = []; banner = null;
+  mode = 'playing';
+}
+
+function endDemo() {
+  demo = false;
+  toAttract('scores');
+}
+
+function toAttract(p) {
+  mode = 'attract'; page = p; pageT = 0; demo = false; entry = null; banner = null;
+}
+
+function playTick() {
+  if (demo) {
+    if (++demoT > DEMO_TICKS) { endDemo(); return; }
+    const a = aimFor(world);
+    if (a) { sight.x += (toScreenX(a.x) - sight.x) * 0.3; sight.y += (toScreenY(a.y) - sight.y) * 0.3; }
+    if (--cooldown <= 0 && a) { shoot(a.x, a.y); cooldown = 18; }
+  } else {
+    const h = input.held, sp = 2;
+    if (h.left) sight.x -= sp;
+    if (h.right) sight.x += sp;
+    if (h.up) sight.y -= sp;
+    if (h.down) sight.y += sp;
+    if (h.left || h.right || h.up || h.down) usedKeys = true;
+    sight.x = Math.max(2, Math.min(W - 3, sight.x));
+    sight.y = Math.max(TOP + 2, Math.min(GROUND_Y - 4, sight.y));
+  }
+  for (const e of step(world)) {
+    if (e.type === 'blast' && clock - lastBoom > 4) { lastBoom = clock; play('blast'); }
+    if (e.type === 'kill') burst(e.x, e.y, 10, 1.2);
+    if (e.type === 'city') { burst(e.x, GROUND - 10, 30, 2); play('city'); }
+    if (e.type === 'wave') { banner = { ...e, t: 150 }; play('wave'); }
+    if (e.type === 'over') {
+      if (demo) { endDemo(); return; }
+      mode = 'over'; timer = 240; play('over');
+    }
+  }
+}
+
+function afterOver() {
+  if (scores.qualifies(world.score)) {
+    entry = { letters: [0, 0, 0], pos: 0, timer: 60 * 30 };
+    mode = 'entry';
+  } else {
+    toAttract('scores');
+  }
+}
+
+function saveEntry() {
+  const name = entry.letters.map(i => ENTRY_LETTERS[i]).join('');
+  highlight = scores.add(name, world.score);
+  toAttract('scores');
+}
+
+// ---------------------------------------------------------------- input
+
+function onAction(action) {
+  if (action === 'crt') { screen.toggleCrt(); syncToggles(); return; }
+  if (action === 'mute') { sound.toggleMute(); syncToggles(); return; }
+  if (action === 'back') { toAttract('title'); return; }
+  if (action === 'pause') {
+    if (mode === 'paused') { mode = pausedFrom; return; }
+    if (!demo && (mode === 'playing' || mode === 'ready')) { pausedFrom = mode; mode = 'paused'; }
+    return;
+  }
+  if (mode === 'attract' || demo) { newGame(); return; }
+  if (mode === 'paused') { mode = pausedFrom; return; }
+  if (mode === 'playing') { usedKeys = true; shoot(sight.x * SCALE, (sight.y - TOP) * SCALE); return; }
+  if (mode === 'over' && timer < 180) { timer = 0; return; }
+  if (mode === 'entry') confirmLetter();
+}
+
+function confirmLetter() {
+  play('blip');
+  entry.pos++;
+  if (entry.pos >= 3) saveEntry();
+}
+
+function onDir(dir) {
+  if (mode !== 'entry') return;
+  const n = ENTRY_LETTERS.length, i = entry.pos;
+  if (dir === 'up') { entry.letters[i] = (entry.letters[i] + 1) % n; play('blip'); }
+  else if (dir === 'down') { entry.letters[i] = (entry.letters[i] + n - 1) % n; play('blip'); }
+  else if (dir === 'right') confirmLetter();
+  else if (dir === 'left' && entry.pos > 0) { entry.pos--; play('blip'); }
+}
+
+// In play, a tap or click is a shot at that spot. Everywhere else it is START.
+function onPoint(x, y) {
+  if (mode === 'playing' && !demo) {
+    usedKeys = false;
+    sight.x = x; sight.y = y;
+    shoot(x * SCALE, (y - TOP) * SCALE);
+    return true;
+  }
+  return mode === 'ready';
+}
+
+const input = makeInput({ screen: canvas, onAction, onDir, onPoint, onAny: () => sound.wake() });
+
+const crtBtn = document.querySelector('[data-action="crt"]');
+const muteBtn = document.querySelector('[data-action="mute"]');
+function syncToggles() {
+  crtBtn.textContent = 'CRT ' + (screen.crt ? 'on' : 'off');
+  crtBtn.setAttribute('aria-pressed', String(screen.crt));
+  muteBtn.textContent = 'Sound ' + (sound.muted ? 'off' : 'on');
+  muteBtn.setAttribute('aria-pressed', String(!sound.muted));
+}
+syncToggles();
+
+// A phone that locks or switches app mid-wave comes back paused.
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && !demo && (mode === 'playing' || mode === 'ready')) { pausedFrom = mode; mode = 'paused'; }
+});
+
+// ---------------------------------------------------------------- drawing
+
+const blinkOn = (rate = 32) => reduceMotion || ((clock / rate) | 0) % 2 === 0;
+const prompt = () => (input.touch ? 'TAP TO START' : 'PRESS SPACE');
+
+function line(g, x0, y0, x1, y1, col) {
+  x0 = Math.round(x0); y0 = Math.round(y0); x1 = Math.round(x1); y1 = Math.round(y1);
+  const dx = Math.abs(x1 - x0), dy = -Math.abs(y1 - y0), sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
+  let err = dx + dy;
+  g.fillStyle = col;
+  for (let n = 0; n < 2000; n++) {
+    g.fillRect(x0, y0, 1, 1);
+    if (x0 === x1 && y0 === y1) break;
+    const e2 = 2 * err;
+    if (e2 >= dy) { err += dy; x0 += sx; }
+    if (e2 <= dx) { err += dx; y0 += sy; }
+  }
+}
+
+function disc(g, cx, cy, r, col) {
+  g.fillStyle = col;
+  const R = Math.floor(r);
+  for (let dy = -R; dy <= R; dy++) {
+    const w = Math.floor(Math.sqrt(r * r - dy * dy));
+    g.fillRect(Math.round(cx) - w, Math.round(cy) + dy, w * 2 + 1, 1);
+  }
+}
+
+function drawBanner(lines, y) {
+  const wide = Math.max(...lines.map(([s]) => s.length)) * 6 + 10;
+  ctx.fillStyle = '#000';
+  ctx.fillRect(Math.floor((W - wide) / 2), y - 5, wide, lines.length * 12 + 7);
+  lines.forEach(([s, ink], i) => text(ctx, s, W / 2, y + i * 12, ink, { align: 'center' }));
+}
+
+function drawGround(g, cities, ammo, top) {
+  const gy = top + GROUND / SCALE;
+  g.fillStyle = '#8a4b22'; g.fillRect(0, gy, g.canvas.width, H);
+  g.fillStyle = '#d9a066'; g.fillRect(0, gy, g.canvas.width, 1);
+  g.fillStyle = '#5a2e12';
+  for (let x = 0; x < g.canvas.width; x += 4) g.fillRect(x + ((x / 4) % 2) * 2, gy + 4, 1, 1);
+  for (const c of cities) g.drawImage(c.alive ? art.city : art.ruin, Math.round(c.x / SCALE) - 8, gy - 10);
+  g.drawImage(ammo > 0 ? art.battery : art.batteryEmpty, W / 2 - 12, gy - 8);
+}
+
+function drawWorld() {
+  for (const s of STARS) { ctx.fillStyle = s.c; ctx.fillRect(s.x, s.y, 1, 1); }
+  drawGround(ctx, world.cities, world.ammo, TOP);
+  for (const m of world.incoming) {
+    line(ctx, toScreenX(m.sx), toScreenY(m.sy), toScreenX(m.x), toScreenY(m.y), '#a3203f');
+    ctx.fillStyle = (clock >> 2) % 2 && !reduceMotion ? INK.white : INK.red;
+    ctx.fillRect(Math.round(toScreenX(m.x)) - 1, Math.round(toScreenY(m.y)) - 1, 2, 2);
+  }
+  for (const m of world.ours) {
+    line(ctx, toScreenX(m.sx), toScreenY(m.sy), toScreenX(m.x), toScreenY(m.y), '#2a9db0');
+    ctx.fillStyle = INK.white;
+    ctx.fillRect(Math.round(toScreenX(m.x)), Math.round(toScreenY(m.y)), 1, 1);
+    const tx = Math.round(toScreenX(m.tx)), ty = Math.round(toScreenY(m.ty));
+    ctx.fillStyle = INK.cyan;
+    ctx.fillRect(tx - 2, ty - 2, 1, 1); ctx.fillRect(tx + 2, ty - 2, 1, 1); ctx.fillRect(tx, ty, 1, 1);
+    ctx.fillRect(tx - 2, ty + 2, 1, 1); ctx.fillRect(tx + 2, ty + 2, 1, 1);
+  }
+  world.blasts.forEach((b, i) => {
+    const col = reduceMotion ? INK.orange : BLAST_INKS[((clock >> 1) + i) % BLAST_INKS.length];
+    disc(ctx, toScreenX(b.x), toScreenY(b.y), Math.max(0, b.r / SCALE), col);
+  });
+  for (const s of sparks) {
+    ctx.fillStyle = s.life > 0.6 ? INK.white : s.life > 0.3 ? INK.yellow : INK.orange;
+    ctx.fillRect(Math.round(s.x), Math.round(s.y), 1, 1);
+  }
+  if ((demo || (usedKeys && !input.touch)) && mode === 'playing') ctx.drawImage(art.sight, Math.round(sight.x) - 3, Math.round(sight.y) - 3);
+}
+
+function drawHud() {
+  const hi = Math.max(scores.top, demo ? 0 : world.score);
+  if (!(mode === 'playing' && !demo) || blinkOn(24)) text(ctx, '1UP', 8, 3, INK.red);
+  text(ctx, String(mode === 'attract' ? 0 : world.score).padStart(2, '0'), 50, 12, INK.white, { align: 'right' });
+  text(ctx, 'HI-SCORE', W / 2, 3, INK.red, { align: 'center' });
+  text(ctx, String(hi), W / 2, 12, INK.white, { align: 'center' });
+  if (mode === 'attract' || mode === 'entry') return;
+  text(ctx, 'WAVE', 290, 3, INK.red, { align: 'right' });
+  text(ctx, String(world.wave), 312, 3, INK.white, { align: 'right' });
+  for (let i = 0; i < AMMO; i++) {
+    ctx.fillStyle = i < world.ammo ? (world.ammo <= 6 ? INK.orange : INK.cyan) : '#1a1a2a';
+    ctx.fillRect(312 - 72 + i * 3, 12, 2, 6);
+  }
+}
+
+function drawTitle() {
+  for (const s of STARS) { ctx.fillStyle = s.c; ctx.fillRect(s.x, s.y, 1, 1); }
+  text(ctx, 'SIX CITIES', W / 2 + 2, 42, '#1c2870', { align: 'center', scale: 4 });
+  text(ctx, 'SIX CITIES', W / 2, 40, LOGO_INK, { align: 'center', scale: 4 });
+  text(ctx, 'NOTHING TO SHOOT AT, ONLY SOMETHING TO PROTECT', W / 2, 78, INK.grey, { align: 'center' });
+  if (blinkOn()) text(ctx, prompt(), W / 2, 112, INK.yellow, { align: 'center' });
+  text(ctx, input.touch ? 'TAP THE SKY TO FIRE' : 'CLICK THE SKY, OR ARROWS AND SPACE', W / 2, 130, INK.grey, { align: 'center' });
+  text(ctx, 'LEON KARSTEN 2026', W / 2, 160, INK.dim, { align: 'center' });
+  drawGround(ctx, CITY_X.map(x => ({ x, alive: true })), AMMO, TOP);
+}
+
+function drawHowTo() {
+  text(ctx, 'HOW TO PLAY', W / 2, 30, INK.cyan, { align: 'center' });
+  text(ctx, 'FIRE WHERE YOU WANT THE SKY TO OPEN.', W / 2, 46, INK.white, { align: 'center' });
+  text(ctx, 'THE BLAST KILLS, NOT THE SHOT:', W / 2, 58, INK.white, { align: 'center' });
+  text(ctx, 'AIM AHEAD OF A MISSILE, NOT AT IT.', W / 2, 70, INK.white, { align: 'center' });
+  text(ctx, AMMO + ' INTERCEPTORS EACH WAVE.', W / 2, 86, INK.cyan, { align: 'center' });
+  text(ctx, 'SCORING', W / 2, 106, INK.yellow, { align: 'center' });
+  const row = (y, label, value) => { text(ctx, label, 50, y, INK.grey); text(ctx, value, 270, y, INK.white, { align: 'right' }); };
+  row(120, 'MISSILE STOPPED', '25 X WAVE');
+  row(130, 'INTERCEPTOR NOT USED', '5');
+  row(140, 'CITY STANDING', '100 X WAVE');
+  text(ctx, 'YOU CANNOT WIN. THE SCORE IS HOW LONG', W / 2, 160, INK.orange, { align: 'center' });
+  text(ctx, 'YOU HELD.', W / 2, 170, INK.orange, { align: 'center' });
+  if (blinkOn()) text(ctx, prompt(), W / 2, 192, INK.yellow, { align: 'center' });
+}
+
+function drawScores() {
+  text(ctx, 'HIGH SCORES', W / 2, 28, INK.yellow, { align: 'center' });
+  text(ctx, 'RANK', 80, 42, INK.grey);
+  text(ctx, 'SCORE', 196, 42, INK.grey, { align: 'right' });
+  text(ctx, 'NAME', 220, 42, INK.grey);
+  scores.table.forEach((r, i) => {
+    if (i === highlight && !blinkOn(16)) return;
+    const y = 54 + i * 14;
+    const ink = i === highlight ? INK.white : ROW_INKS[i];
+    text(ctx, RANKS[i], 80, y, ink);
+    text(ctx, String(r.s), 196, y, ink, { align: 'right' });
+    text(ctx, r.n, 220, y, ink);
+  });
+  if (blinkOn()) text(ctx, prompt(), W / 2, 202, INK.yellow, { align: 'center' });
+}
+
+function drawEntry() {
+  text(ctx, 'YOU MADE THE TOP TEN', W / 2, 32, INK.cyan, { align: 'center' });
+  text(ctx, String(world.score), W / 2, 46, INK.yellow, { align: 'center', scale: 2 });
+  text(ctx, 'ENTER YOUR INITIALS', W / 2, 74, INK.white, { align: 'center' });
+  for (let i = 0; i < 3; i++) {
+    const x = W / 2 - 39 + i * 30;
+    const current = i === entry.pos;
+    if (!current || blinkOn(16)) text(ctx, ENTRY_LETTERS[entry.letters[i]], x, 92, current ? INK.yellow : INK.white, { scale: 3 });
+    ctx.fillStyle = current ? INK.yellow : INK.dim;
+    ctx.fillRect(x - 2, 118, 18, 2);
+  }
+  text(ctx, 'UP / DOWN   CHANGE LETTER', W / 2, 138, INK.grey, { align: 'center' });
+  text(ctx, (input.touch ? 'TAP OR RIGHT' : 'RIGHT OR SPACE') + '   NEXT', W / 2, 150, INK.grey, { align: 'center' });
+  text(ctx, 'LEFT   BACK', W / 2, 162, INK.grey, { align: 'center' });
+  text(ctx, 'TIME ' + Math.ceil(entry.timer / 60), W / 2, 188, INK.orange, { align: 'center' });
+}
+
+function draw() {
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, W, H);
+  drawHud();
+  if (mode === 'attract') {
+    if (page === 'title') drawTitle();
+    else if (page === 'howto') drawHowTo();
+    else drawScores();
+    return;
+  }
+  if (mode === 'entry') { drawEntry(); return; }
+  drawWorld();
+  if (mode === 'ready') drawBanner([['DEFEND THE CITIES', INK.cyan], ['WAVE 1', INK.yellow]], TOP + 50);
+  else if (mode === 'paused') drawBanner([['PAUSED', INK.white], [input.touch ? 'TAP START' : 'PRESS P', INK.grey]], TOP + 50);
+  else if (mode === 'over') {
+    const held = world.wave === 1 ? 'YOU HELD 1 WAVE' : 'YOU HELD ' + world.wave + ' WAVES';
+    drawBanner([['THE LAST CITY HAS FALLEN', INK.red], [held, INK.white]], TOP + 50);
+  } else if (banner) {
+    drawBanner([
+      ['WAVE ' + banner.wave + ' HELD', INK.yellow],
+      ['INTERCEPTORS ' + banner.ammo + ' X 5   ' + banner.ammoPts, INK.grey],
+      ['CITIES ' + banner.cities + ' X ' + 100 * banner.wave + '   ' + banner.cityPts, INK.grey],
+    ], TOP + 40);
+  }
+  if (demo && blinkOn()) text(ctx, 'DEMO PLAY', W / 2, TOP + 4, INK.cyan, { align: 'center' });
+}
+
+// ---------------------------------------------------------------- card art
+
+// The picture on the site's Games page, 320x240 (the card is 4:3).
+function drawCard() {
+  const c = document.createElement('canvas');
+  c.width = 320; c.height = 240;
+  const g = c.getContext('2d');
+  g.fillStyle = '#000'; g.fillRect(0, 0, 320, 240);
+  const top = 20;
+  for (const s of STARS) { g.fillStyle = s.c; g.fillRect(s.x, s.y + 20, 1, 1); }
+  const trails = [[20, 60, 70, 150], [130, 50, 105, 170], [300, 60, 250, 140], [210, 50, 236, 185]];
+  for (const [x0, y0, x1, y1] of trails) { line(g, x0, y0, x1, y1, '#a3203f'); g.fillStyle = INK.white; g.fillRect(x1 - 1, y1 - 1, 2, 2); }
+  line(g, 160, top + 183, 120, 120, '#2a9db0');
+  disc(g, 112, 112, 16, '#ff8a1e'); disc(g, 112, 112, 11, '#ffd23f'); disc(g, 112, 112, 5, '#ffffff');
+  disc(g, 250, 130, 12, '#e8302f'); disc(g, 250, 130, 7, '#ff5fb8');
+  const cities = CITY_X.map((x, i) => ({ x, alive: i !== 4 }));
+  drawGround(g, cities, AMMO, top);
+  text(g, 'SIX CITIES', 162, 14, '#1c2870', { align: 'center', scale: 4 });
+  text(g, 'SIX CITIES', 160, 12, LOGO_INK, { align: 'center', scale: 4 });
+  return c;
+}
+
+// ---------------------------------------------------------------- loop
+
+const PAGES = { title: ['howto', 420], howto: ['demo', 600], scores: ['title', 420] };
+function attractTick() {
+  pageT++;
+  const [next, length] = PAGES[page];
+  if (pageT < length) return;
+  if (next === 'demo') { startDemo(); return; }
+  if (next === 'title') highlight = -1;
+  toAttract(next);
+}
+
+function tick() {
+  clock++;
+  for (const s of sparks) { s.x += s.vx; s.y += s.vy; s.vy += 0.04; s.life -= 0.02; }
+  sparks = sparks.filter(s => s.life > 0);
+  if (banner && --banner.t <= 0) banner = null;
+  switch (mode) {
+    case 'attract': attractTick(); break;
+    case 'ready': if (--timer <= 0) mode = 'playing'; break;
+    case 'playing': playTick(); break;
+    case 'over': step(world); if (--timer <= 0) afterOver(); break;
+    case 'entry': if (--entry.timer <= 0) saveEntry(); break;
+  }
+}
+
+// A fixed 60 ticks a second whatever the display's refresh rate.
+let acc = 0, lastT = 0;
+function frame(now) {
+  requestAnimationFrame(frame);
+  if (!lastT) lastT = now;
+  acc += Math.min(100, now - lastT);
+  lastT = now;
+  while (acc >= TICK_MS) { tick(); acc -= TICK_MS; }
+  draw();
+}
+requestAnimationFrame(frame);
+
+// Read-only view for the page checks, plus shortcuts so a check can reach the
+// later screens without playing a whole game.
+window.__sixcities = {
+  get mode() { return mode; },
+  get page() { return page; },
+  get demo() { return demo; },
+  get score() { return world.score; },
+  get ammo() { return world.ammo; },
+  get wave() { return world.wave; },
+  get shots() { return world.ours.length + world.blasts.length; },
+  attract(p) { toAttract(p); },
+  endGame(s) { demo = false; world.score = s; for (const c of world.cities) c.alive = false; world.over = true; mode = 'over'; timer = 1; },
+};
+window.__arcade = { card: drawCard };
+})();
+</script>
+</body>
+</html>
