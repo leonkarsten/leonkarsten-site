@@ -1,0 +1,8 @@
+{
+  "name": "Two Hills",
+  "slug": "two-hills",
+  "summary": "Two tanks, two hills. Angle, power, wind, fire, and the ground gives way where you miss. Play the CPU or a friend on one screen.",
+  "app": "/play/two-hills/",
+  "image": "/play/two-hills/card.png",
+  "tags": ["artillery", "1 or 2 players"]
+}

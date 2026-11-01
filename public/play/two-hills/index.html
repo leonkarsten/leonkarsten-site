@@ -1,0 +1,1120 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Two Hills</title>
+<meta name="description" content="Two tanks, two hills, one screen. Angle, power, wind, fire, and the ground gives way where you miss.">
+<meta name="theme-color" content="#000000">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2016%2016'%20shape-rendering='crispEdges'%3E%3Crect%20width='16'%20height='16'%20fill='%2306061a'/%3E%3Crect%20x='0'%20y='11'%20width='16'%20height='5'%20fill='%238a4b22'/%3E%3Crect%20x='0'%20y='11'%20width='16'%20height='1'%20fill='%233fd46b'/%3E%3Crect%20x='2'%20y='8'%20width='5'%20height='3'%20fill='%235eeaf5'/%3E%3Crect%20x='6'%20y='6'%20width='3'%20height='1'%20fill='%23fff'/%3E%3Crect%20x='10'%20y='8'%20width='5'%20height='3'%20fill='%23ff8a1e'/%3E%3C/svg%3E">
+<style>
+:root {
+  --void: #000;
+  --chrome: #8f8fb0;
+  --chrome-hi: #5eeaf5;
+  --edge: #2a2a40;
+  --start: #e8302f;
+  --ui: ui-monospace, 'Cascadia Mono', Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; height: 100%; background: var(--void); color: var(--chrome); }
+body {
+  font-family: var(--ui);
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  height: 100dvh;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: 'bar' 'stage' 'pad';
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.bar {
+  grid-area: bar;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+}
+.bar a, .bar button {
+  font: 700 12px/1 var(--ui);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--chrome);
+  background: none;
+  border: 1px solid transparent;
+  padding: 9px 10px;
+  text-decoration: none;
+  cursor: pointer;
+  border-radius: 0;
+}
+.bar a:hover, .bar button:hover, .bar a:focus-visible, .bar button:focus-visible {
+  color: var(--chrome-hi);
+  border-color: var(--edge);
+  outline: none;
+}
+.bar button[aria-pressed='true'] { color: var(--chrome-hi); }
+.toggles { display: flex; gap: 2px; }
+
+.stage {
+  grid-area: stage;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  padding: 8px 16px;
+}
+/* A faint edge, so an unexplored black playfield still has a size. */
+.screen { position: relative; line-height: 0; touch-action: none; box-shadow: 0 0 0 1px #1c1c2c; }
+.screen canvas {
+  display: block;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+/* The CRT switch. Off by default: sharp pixels are the honest picture, the
+   tube is a costume. Scanlines are one per game pixel row (--px is set by
+   the screen fit), so they never beat against the art. */
+.screen.crt { border-radius: 3% / 4%; overflow: hidden; box-shadow: 0 0 0 4px #0b0b14, 0 0 36px rgba(94, 234, 245, 0.12); }
+.screen.crt canvas { filter: saturate(1.25) brightness(1.12) contrast(1.05) blur(calc(var(--px) * 0.18)); }
+.screen.crt::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background:
+    radial-gradient(ellipse at center, rgba(0, 0, 0, 0) 58%, rgba(0, 0, 0, 0.6) 100%),
+    repeating-linear-gradient(to bottom,
+      rgba(0, 0, 0, 0) 0, rgba(0, 0, 0, 0) calc(var(--px) * 0.55),
+      rgba(0, 0, 0, 0.38) calc(var(--px) * 0.55), rgba(0, 0, 0, 0.38) var(--px));
+  box-shadow: inset 0 0 48px rgba(0, 0, 0, 0.75);
+}
+
+/* Touch controls: shown on touch screens only. */
+.pad {
+  grid-area: pad;
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  max-width: 380px;
+  margin: 0 auto;
+  padding: 4px 20px 16px;
+}
+body.touch .pad { display: flex; }
+.dpad {
+  display: grid;
+  grid-template-columns: repeat(3, 54px);
+  grid-template-rows: repeat(3, 50px);
+  gap: 3px;
+}
+.dpad button, .start {
+  font: 700 18px/1 var(--ui);
+  color: var(--chrome);
+  background: #12121e;
+  border: 2px solid var(--edge);
+  border-radius: 6px;
+  padding: 0;
+  touch-action: none;
+  cursor: pointer;
+}
+.dpad button:active { background: #24243a; color: var(--chrome-hi); }
+.dpad .up { grid-area: 1 / 2; }
+.dpad .left { grid-area: 2 / 1; }
+.dpad .right { grid-area: 2 / 3; }
+.dpad .down { grid-area: 3 / 2; }
+.start {
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  background: var(--start);
+  border: 4px solid #7a1414;
+  color: #fff;
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  box-shadow: inset 0 -6px 0 rgba(0, 0, 0, 0.25);
+}
+.start:active { transform: translateY(2px); box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.25); }
+
+/* A phone on its side: d-pad left of the screen, START right of it. A game
+   with no d-pad (its keys are on the screen) moves the bar to a column
+   instead, so an upright screen gets the full height. */
+@media (orientation: landscape) and (max-height: 520px) {
+  body.no-pad {
+    grid-template-rows: minmax(0, 1fr);
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas: 'bar stage';
+  }
+  body.no-pad .bar { flex-direction: column; justify-content: flex-start; align-items: flex-start; }
+  body.no-pad .toggles { flex-direction: column; }
+  .stage { padding: 4px 8px; }
+  body.touch:not(.no-pad) {
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas: 'bar bar bar' 'dpad stage start';
+  }
+  body.touch:not(.no-pad) .pad { display: contents; }
+  body.touch .dpad { grid-area: dpad; align-self: center; margin-left: 12px; }
+  body.touch .start { grid-area: start; align-self: center; margin-right: 16px; }
+}
+
+/* Two-button pairs, for games with two things to turn (Sorted's loops). */
+.pair { display: grid; grid-template-columns: repeat(2, 54px); grid-template-rows: 54px auto; gap: 3px; justify-items: center; }
+.pair button {
+  width: 54px; height: 54px;
+  font: 700 18px/1 var(--ui); color: var(--chrome);
+  background: #12121e; border: 2px solid var(--edge); border-radius: 6px;
+  padding: 0; touch-action: none; cursor: pointer;
+}
+.pair button:active { background: #24243a; color: var(--chrome-hi); }
+.pair span { grid-column: 1 / 3; font: 700 10px/1 var(--ui); letter-spacing: 0.14em; color: var(--chrome); }
+@media (orientation: landscape) and (max-height: 520px) {
+  body.touch:not(.no-pad) .pad.loops { display: flex; flex-direction: column; gap: 12px; grid-area: start; align-self: center; margin-right: 12px; padding: 0; }
+  body.touch:not(.no-pad) .pad.loops .start { margin: 0; }
+}
+</style>
+</head>
+<body>
+
+<header class="bar">
+  <a href="/games/">&larr; Games</a>
+  <div class="toggles">
+    <button type="button" data-action="crt" aria-pressed="false">CRT off</button>
+    <button type="button" data-action="mute" aria-pressed="true">Sound on</button>
+    <button type="button" data-action="pause">Pause</button>
+  </div>
+</header>
+
+<main class="stage" id="stage">
+  <div class="screen" id="screen">
+    <canvas id="c" role="img" aria-label="Two Hills game screen. Left and right swing the barrel, up and down set the power, Space fires."></canvas>
+  </div>
+</main>
+
+<div class="pad">
+  <div class="dpad">
+    <button type="button" class="up" data-dir="up" aria-label="Up">&#9650;</button>
+    <button type="button" class="left" data-dir="left" aria-label="Left">&#9664;</button>
+    <button type="button" class="right" data-dir="right" aria-label="Right">&#9654;</button>
+    <button type="button" class="down" data-dir="down" aria-label="Down">&#9660;</button>
+  </div>
+  <button type="button" class="start" data-action="start">Start</button>
+</div>
+
+<script>
+(() => {
+'use strict';
+// ---- engine/font.js
+// 5x7 bitmap font, one string per glyph, rows separated by spaces. Drawn with
+// fillRect so it stays on the pixel grid at any scale; there is no web font.
+const GLYPHS = {
+  A: '.###. #...# #...# ##### #...# #...# #...#',
+  B: '####. #...# #...# ####. #...# #...# ####.',
+  C: '.###. #...# #.... #.... #.... #...# .###.',
+  D: '####. #...# #...# #...# #...# #...# ####.',
+  E: '##### #.... #.... ####. #.... #.... #####',
+  F: '##### #.... #.... ####. #.... #.... #....',
+  G: '.###. #...# #.... #.### #...# #...# .####',
+  H: '#...# #...# #...# ##### #...# #...# #...#',
+  I: '.###. ..#.. ..#.. ..#.. ..#.. ..#.. .###.',
+  J: '..### ...#. ...#. ...#. ...#. #..#. .##..',
+  K: '#...# #..#. #.#.. ##... #.#.. #..#. #...#',
+  L: '#.... #.... #.... #.... #.... #.... #####',
+  M: '#...# ##.## #.#.# #.#.# #...# #...# #...#',
+  N: '#...# #...# ##..# #.#.# #..## #...# #...#',
+  O: '.###. #...# #...# #...# #...# #...# .###.',
+  P: '####. #...# #...# ####. #.... #.... #....',
+  Q: '.###. #...# #...# #...# #.#.# #..#. .##.#',
+  R: '####. #...# #...# ####. #.#.. #..#. #...#',
+  S: '.###. #...# #.... .###. ....# #...# .###.',
+  T: '##### ..#.. ..#.. ..#.. ..#.. ..#.. ..#..',
+  U: '#...# #...# #...# #...# #...# #...# .###.',
+  V: '#...# #...# #...# #...# #...# .#.#. ..#..',
+  W: '#...# #...# #...# #.#.# #.#.# #.#.# .#.#.',
+  X: '#...# #...# .#.#. ..#.. .#.#. #...# #...#',
+  Y: '#...# #...# .#.#. ..#.. ..#.. ..#.. ..#..',
+  Z: '##### ....# ...#. ..#.. .#... #.... #####',
+  0: '.###. #...# #..## #.#.# ##..# #...# .###.',
+  1: '..#.. .##.. ..#.. ..#.. ..#.. ..#.. .###.',
+  2: '.###. #...# ....# ...#. ..#.. .#... #####',
+  3: '##### ...#. ..#.. ...#. ....# #...# .###.',
+  4: '...#. ..##. .#.#. #..#. ##### ...#. ...#.',
+  5: '##### #.... ####. ....# ....# #...# .###.',
+  6: '..##. .#... #.... ####. #...# #...# .###.',
+  7: '##### ....# ...#. ..#.. .#... .#... .#...',
+  8: '.###. #...# #...# .###. #...# #...# .###.',
+  9: '.###. #...# #...# .#### ....# ...#. .##..',
+  ' ': '..... ..... ..... ..... ..... ..... .....',
+  '.': '..... ..... ..... ..... ..... .##.. .##..',
+  ',': '..... ..... ..... ..... .##.. ..#.. .#...',
+  '!': '..#.. ..#.. ..#.. ..#.. ..#.. ..... ..#..',
+  '?': '.###. #...# ....# ...#. ..#.. ..... ..#..',
+  '-': '..... ..... ..... .###. ..... ..... .....',
+  '+': '..... ..#.. ..#.. ##### ..#.. ..#.. .....',
+  '=': '..... ..... ##### ..... ##### ..... .....',
+  ':': '..... .##.. .##.. ..... .##.. .##.. .....',
+  '/': '....# ...#. ...#. ..#.. .#... .#... #....',
+  "'": '..#.. ..#.. .#... ..... ..... ..... .....',
+  '<': '...#. ..#.. .#... #.... .#... ..#.. ...#.',
+  '>': '.#... ..#.. ...#. ....# ...#. ..#.. .#...',
+  '*': '..... #...# .#.#. ..#.. .#.#. #...# .....',
+  '%': '##..# ##.#. ...#. ..#.. .#... .#.## #..##',
+};
+const FONT_CHARS = Object.keys(GLYPHS).join('');
+
+const FONT_BITS = {};
+for (const [ch, rows] of Object.entries(GLYPHS)) FONT_BITS[ch] = rows.split(' ');
+
+const GLYPH_W = 5, GLYPH_H = 7, ADVANCE = 6;
+
+function textWidth(str, scale = 1) {
+  return str.length ? (str.length * ADVANCE - 1) * scale : 0;
+}
+
+// `color` is one colour, or an array of seven (one per glyph row) for the
+// striped logos arcade title screens used.
+function text(ctx, str, x, y, color, opts = {}) {
+  const scale = opts.scale || 1;
+  const s = String(str).toUpperCase();
+  let left = x;
+  if (opts.align === 'center') left = x - Math.floor(textWidth(s, scale) / 2);
+  else if (opts.align === 'right') left = x - textWidth(s, scale);
+  for (let i = 0; i < s.length; i++) {
+    const rows = FONT_BITS[s[i]] || FONT_BITS['?'];
+    const gx = left + i * ADVANCE * scale;
+    for (let r = 0; r < GLYPH_H; r++) {
+      ctx.fillStyle = Array.isArray(color) ? color[r] : color;
+      const row = rows[r];
+      for (let c = 0; c < GLYPH_W; c++) {
+        if (row[c] === '#') ctx.fillRect(gx + c * scale, y + r * scale, scale, scale);
+      }
+    }
+  }
+}
+
+// ---- engine/sprites.js
+// Sprites are drawn as text: one character per pixel, '.' is transparent and
+// every other character is looked up in a palette. Swapping the palette is how
+// a sprite changes state (lit, remembered, alerted) — the way the hardware did it.
+function sprite(rows, palette) {
+  const w = rows[0].length, h = rows.length;
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const g = c.getContext('2d');
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const ch = rows[y][x];
+    if (ch === '.' || !palette[ch]) continue;
+    g.fillStyle = palette[ch];
+    g.fillRect(x, y, 1, 1);
+  }
+  return c;
+}
+
+function mirrored(src) {
+  const c = document.createElement('canvas');
+  c.width = src.width; c.height = src.height;
+  const g = c.getContext('2d');
+  g.translate(src.width, 0);
+  g.scale(-1, 1);
+  g.drawImage(src, 0, 0);
+  return c;
+}
+
+// A 16x16 tile painted by a function of (x, y) -> colour or null.
+function tile(size, paint) {
+  const c = document.createElement('canvas');
+  c.width = size; c.height = size;
+  const g = c.getContext('2d');
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    const col = paint(x, y);
+    if (!col) continue;
+    g.fillStyle = col;
+    g.fillRect(x, y, 1, 1);
+  }
+  return c;
+}
+
+// ---- engine/screen.js
+// The arcade screen: a small fixed-resolution canvas, scaled up in whole
+// DEVICE pixels so every game pixel is the same size and stays sharp. A 336px
+// screen on a 3x phone is drawn at exactly 3 device pixels per game pixel,
+// never 3.35, which is what makes uneven, shimmering pixels.
+function makeScreen({ canvas, stage, frame, w, h, crtKey }) {
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+
+  function fit() {
+    const dpr = window.devicePixelRatio || 1;
+    // clientWidth/Height include the stage's padding; the screen gets only
+    // what is inside it.
+    const cs = getComputedStyle(stage);
+    const aw = stage.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    const ah = stage.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+    const s = Math.max(1, Math.floor(Math.min((aw * dpr) / w, (ah * dpr) / h)));
+    canvas.style.width = (s * w) / dpr + 'px';
+    canvas.style.height = (s * h) / dpr + 'px';
+    frame.style.setProperty('--px', s / dpr + 'px');
+  }
+  addEventListener('resize', fit);
+  if (window.visualViewport) visualViewport.addEventListener('resize', fit);
+  fit();
+
+  let crt = false;
+  try { crt = localStorage.getItem(crtKey) === '1'; } catch { crt = false; }
+  function setCrt(on) {
+    crt = on;
+    frame.classList.toggle('crt', on);
+    try { localStorage.setItem(crtKey, on ? '1' : '0'); } catch {}
+  }
+  setCrt(crt);
+
+  return {
+    ctx, w, h, fit,
+    get crt() { return crt; },
+    toggleCrt() { setCrt(!crt); return crt; },
+  };
+}
+
+// ---- engine/sound.js
+// Chip sound: square, triangle and noise voices made in the browser. No audio
+// files. Browsers only allow sound after a tap or key, so `wake()` is called
+// from every input handler and does nothing until then.
+function makeSound(muteKey) {
+  let ac = null, out = null;
+  let muted = false;
+  try { muted = localStorage.getItem(muteKey) === '1'; } catch { muted = false; }
+
+  function wake() {
+    if (ac) { if (ac.state === 'suspended') ac.resume(); return; }
+    const Ctor = window.AudioContext || window.webkitAudioContext;
+    if (!Ctor) return;
+    ac = new Ctor();
+    out = ac.createGain();
+    out.gain.value = muted ? 0 : 1;
+    out.connect(ac.destination);
+  }
+
+  // One note. `at` is seconds from now, `to` slides the pitch.
+  function note(freq, dur, { type = 'square', vol = 0.05, at = 0, to = null } = {}) {
+    if (!ac) return;
+    const t = ac.currentTime + at;
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(freq, t);
+    if (to) o.frequency.exponentialRampToValueAtTime(to, t + dur);
+    g.gain.setValueAtTime(vol, t);
+    g.gain.setValueAtTime(vol, t + dur * 0.7);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(out);
+    o.start(t); o.stop(t + dur + 0.02);
+  }
+
+  // A run of notes: [[freq, dur], ...], each after the last; 0 is a rest.
+  function tune(notes, opts = {}) {
+    let at = opts.at || 0;
+    for (const [f, d] of notes) {
+      if (f) note(f, d * 0.92, { ...opts, at });
+      at += d;
+    }
+  }
+
+  function noise(dur, { vol = 0.2, cutoff = 900, at = 0 } = {}) {
+    if (!ac) return;
+    const len = Math.floor(ac.sampleRate * dur);
+    const buf = ac.createBuffer(1, len, ac.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len) ** 2;
+    const s = ac.createBufferSource(); s.buffer = buf;
+    const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = cutoff;
+    const g = ac.createGain(); g.gain.value = vol;
+    s.connect(f); f.connect(g); g.connect(out);
+    s.start(ac.currentTime + at);
+  }
+
+  // A held sound (an engine): filtered noise that runs for the whole session
+  // and is gated by its gain. Starting a source every frame is what makes
+  // engine sound crackle. Returns set(on); safe to call before wake().
+  function drone({ cutoff = 420, vol = 0.16 } = {}) {
+    let gain = null;
+    return on => {
+      if (!ac) return;
+      if (!gain) {
+        const len = ac.sampleRate * 2;
+        const buf = ac.createBuffer(1, len, ac.sampleRate);
+        const d = buf.getChannelData(0);
+        for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+        const s = ac.createBufferSource(); s.buffer = buf; s.loop = true;
+        const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = cutoff;
+        gain = ac.createGain(); gain.gain.value = 0;
+        s.connect(f); f.connect(gain); gain.connect(out);
+        s.start();
+      }
+      gain.gain.setTargetAtTime(on ? vol : 0, ac.currentTime, 0.03);
+    };
+  }
+
+  function setMuted(on) {
+    muted = on;
+    if (out) out.gain.value = on ? 0 : 1;
+    try { localStorage.setItem(muteKey, on ? '1' : '0'); } catch {}
+  }
+
+  return {
+    wake, note, tune, noise, drone,
+    get muted() { return muted; },
+    toggleMute() { setMuted(!muted); return muted; },
+  };
+}
+
+// ---- engine/input.js
+// Keyboard and touch in one place. `held` is what a game polls each tick;
+// `onDir` fires once per press (menus, initials); `onAction` carries the
+// buttons: start, pause, back, crt, mute.
+//
+// A word game passes `onLetter`: then every letter key is a letter (WASD stop
+// being directions, P/C/M stop being shortcuts; those stay on the buttons) and
+// only the arrows move. `onKey(code)` gets any other key and returns true if
+// it used it. `onPoint(x, y)` receives taps on the screen in GAME
+// pixels; returning true means the game used the tap, otherwise it is START.
+function makeInput({ screen, onAction, onDir, onAny, onLetter = null, onPoint = null, onKey = null }) {
+  // `fire` is Space, Enter or the START button while held, for games that
+  // hold a trigger down; every other game ignores it.
+  const held = { up: false, down: false, left: false, right: false, fire: false };
+  const KEYS = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
+  const ACTIONS = { Space: 'start', Enter: 'start', Escape: 'back' };
+  if (!onLetter) {
+    Object.assign(KEYS, { KeyW: 'up', KeyS: 'down', KeyA: 'left', KeyD: 'right' });
+    Object.assign(ACTIONS, { KeyP: 'pause', KeyC: 'crt', KeyM: 'mute' });
+  }
+
+  let touch = matchMedia('(pointer: coarse)').matches;
+  const markTouch = on => {
+    touch = on;
+    document.body.classList.toggle('touch', on);
+  };
+  markTouch(touch);
+  addEventListener('touchstart', () => { if (!touch) markTouch(true); }, { passive: true });
+
+  addEventListener('keydown', e => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const dir = KEYS[e.code];
+    if (dir) {
+      e.preventDefault();
+      onAny();
+      if (!e.repeat) onDir(dir);
+      held[dir] = true;
+      return;
+    }
+    const action = ACTIONS[e.code];
+    if (action) {
+      if (action === 'start') held.fire = true;
+      // Space and Enter on a focused button or link belong to that control.
+      if ((e.code === 'Space' || e.code === 'Enter') && e.target.closest && e.target.closest('button, a')) return;
+      e.preventDefault();
+      onAny();
+      if (!e.repeat) onAction(action);
+      return;
+    }
+    // e.key, not e.code: the letter printed on the key, whatever the layout.
+    // Digits come through the same door, for games that number their keys.
+    if (onLetter && /^[a-z0-9]$/i.test(e.key)) {
+      e.preventDefault();
+      onAny();
+      if (!e.repeat) onLetter(e.key.toUpperCase());
+    }
+    // Anything else a game asked for by code (Z for undo, R for restart).
+    else if (onKey && !e.repeat && onKey(e.code)) { e.preventDefault(); onAny(); }
+  });
+  addEventListener('keyup', e => {
+    const dir = KEYS[e.code];
+    if (dir) held[dir] = false;
+    if (ACTIONS[e.code] === 'start') held.fire = false;
+  });
+  addEventListener('blur', () => { held.up = held.down = held.left = held.right = held.fire = false; });
+
+  for (const b of document.querySelectorAll('[data-dir]')) {
+    const dir = b.dataset.dir;
+    const down = e => {
+      e.preventDefault();
+      onAny();
+      held.up = held.down = held.left = held.right = false;
+      held[dir] = true;
+      onDir(dir);
+    };
+    const up = () => { held[dir] = false; };
+    b.addEventListener('pointerdown', down);
+    b.addEventListener('pointerup', up);
+    b.addEventListener('pointerleave', up);
+    b.addEventListener('pointercancel', up);
+    b.addEventListener('contextmenu', e => e.preventDefault());
+  }
+  // Buttons that send a letter (Sorted's left loop is A and D).
+  for (const b of document.querySelectorAll('[data-letter]')) {
+    b.addEventListener('pointerdown', e => { e.preventDefault(); onAny(); if (onLetter) onLetter(b.dataset.letter); });
+    b.addEventListener('contextmenu', e => e.preventDefault());
+  }
+  for (const b of document.querySelectorAll('[data-action]')) {
+    const action = b.dataset.action;
+    // pointerdown for the START button, so it answers as fast as the d-pad;
+    // click for the toggles, so keyboard users can press them too.
+    if (b.classList.contains('start')) {
+      b.addEventListener('pointerdown', e => { e.preventDefault(); onAny(); held.fire = true; onAction(action); });
+      for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(ev, () => { held.fire = false; });
+    } else {
+      b.addEventListener('click', () => { onAny(); onAction(action); });
+    }
+  }
+  screen.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    onAny();
+    if (onPoint) {
+      const r = screen.getBoundingClientRect();
+      const x = ((e.clientX - r.left) * screen.width) / r.width;
+      const y = ((e.clientY - r.top) * screen.height) / r.height;
+      if (onPoint(x, y)) return;
+    }
+    onAction('start');
+  });
+
+  return { held, get touch() { return touch; } };
+}
+
+// ---- games/two-hills/rules.js
+// Two Hills' ground, shells and damage, with no drawing, so the tests can
+// fire them. Carried over from the Qlaim cabinet unchanged: the same 960x540
+// world, gravity, wind, crater and blast. The game draws it at a third of the
+// size. New here: aimShot(), the computer's gunner.
+const WORLD_W = 960, WORLD_H = 540;
+const GRAVITY = 0.16, SHELL_STEP = 1 / 2, CRATER = 26, KILL = 30, ROUNDS_TO_WIN = 3;
+const TANK_X = [Math.round(WORLD_W * 0.18), Math.round(WORLD_W * 0.82)];
+
+function buildTerrain(rand = Math.random) {
+  const ground = new Float32Array(WORLD_W);
+  const base = WORLD_H * 0.8;
+  const seedA = rand() * 6.28, seedB = rand() * 6.28;
+  const leftPeak = 150 + rand() * 70, rightPeak = 150 + rand() * 70;
+  for (let x = 0; x < WORLD_W; x++) {
+    const hill = (cx, peak, spread) => peak * Math.exp(-(((x - cx) / spread) ** 2));
+    const y = base - hill(WORLD_W * 0.18, leftPeak, WORLD_W * 0.13) - hill(WORLD_W * 0.82, rightPeak, WORLD_W * 0.13)
+      - 14 * Math.sin(x / 90 + seedA) - 8 * Math.sin(x / 37 + seedB);
+    ground[x] = Math.max(70, Math.min(WORLD_H - 12, y));
+  }
+  return ground;
+}
+
+const groundAt = (ground, x) => ground[Math.max(0, Math.min(WORLD_W - 1, Math.round(x)))];
+
+// Only earth actually inside the blast circle is removed. A surface above the
+// circle is untouched (the shell went off in mid-air below it) and a surface
+// already below it stays where it is, or craters would fill hollows back in.
+function crater(ground, cx, cy) {
+  for (let x = Math.max(0, Math.floor(cx - CRATER)); x < Math.min(WORLD_W, cx + CRATER); x++) {
+    const dx = x - cx;
+    const depth = Math.sqrt(Math.max(0, CRATER * CRATER - dx * dx));
+    const top = cy - depth, bottom = cy + depth;
+    if (ground[x] >= top && ground[x] < bottom) ground[x] = Math.min(WORLD_H - 4, bottom);
+  }
+}
+
+function launch(ground, x, angle, power) {
+  const rad = (angle * Math.PI) / 180, speed = power * 0.16, muzzle = 22;
+  return { x: x + Math.cos(rad) * muzzle, y: groundAt(ground, x) - 14 - Math.sin(rad) * muzzle, vx: Math.cos(rad) * speed, vy: -Math.sin(rad) * speed };
+}
+
+// One frame of flight, as two half-steps: a fast shell must not tunnel through
+// a thin ridge, the one thing that reads as the game cheating. Returns null
+// while flying, 'out' when it has left the world, or { x, y } where it burst.
+function flyShell(shell, wind, ground, tankXs) {
+  for (let s = 0; s < 2; s++) {
+    shell.vy += GRAVITY * SHELL_STEP;
+    shell.vx += wind * 0.012 * SHELL_STEP;
+    shell.x += shell.vx * SHELL_STEP * 2;
+    shell.y += shell.vy * SHELL_STEP * 2;
+    if (shell.y > WORLD_H + 200 || shell.x < -400 || shell.x > WORLD_W + 400) return 'out';
+    for (const tx of tankXs) if (Math.hypot(shell.x - tx, shell.y - (groundAt(ground, tx) - 10)) < 12) return { x: shell.x, y: shell.y };
+    if (shell.x >= 0 && shell.x < WORLD_W && shell.y >= groundAt(ground, shell.x)) return { x: shell.x, y: groundAt(ground, shell.x) };
+  }
+  return null;
+}
+
+// Damage falls off with distance: 85 at the centre, 25 at the edge of KILL.
+function blastDamage(ground, tx, x, y) {
+  const d = Math.hypot(tx - x, groundAt(ground, tx) - 10 - y);
+  return d < KILL ? Math.round(60 * (1 - d / KILL) + 25) : 0;
+}
+
+// The computer's gunner: try every angle and power on a copy of the field
+// and keep the shot that lands nearest the other tank, then miss a little,
+// the way a person does. `slop` is how much (degrees and power points).
+function aimShot(ground, wind, me, rand = Math.random, slop = 4) {
+  const myX = TANK_X[me], theirX = TANK_X[1 - me];
+  const target = { x: theirX, y: groundAt(ground, theirX) - 10 };
+  let best = null;
+  for (let a = 15; a <= 80; a += 2) {
+    const angle = me === 0 ? a : 180 - a;
+    for (let power = 20; power <= 100; power += 2) {
+      const shell = launch(ground, myX, angle, power);
+      let r = null;
+      for (let t = 0; t < 600 && !r; t++) r = flyShell(shell, wind, ground, [myX, theirX]);
+      if (!r || r === 'out') continue;
+      const d = Math.hypot(r.x - target.x, r.y - target.y);
+      if (!best || d < best.d) best = { angle, power, d };
+    }
+  }
+  if (!best) return { angle: me === 0 ? 45 : 135, power: 60 };
+  const jitter = () => Math.round((rand() * 2 - 1) * slop);
+  return {
+    angle: Math.max(0, Math.min(180, best.angle + jitter())),
+    power: Math.max(5, Math.min(100, best.power + jitter())),
+  };
+}
+
+// ---- games/two-hills/game.js
+// The 960x540 world at a third of the size, under a 20px bar.
+const SCALE = 3, TOP = 20;
+const W = WORLD_W / SCALE, H = TOP + WORLD_H / SCALE; // 320 x 200
+const TICK_MS = 1000 / 60;
+
+const INK = {
+  red: '#ff3b3b', white: '#ffffff', yellow: '#ffd23f', orange: '#ff8a1e', green: '#3fd46b',
+  cyan: '#5eeaf5', grey: '#8f8fb0', dim: '#4a4a6a',
+};
+const SIDE_INK = [INK.cyan, INK.orange];
+const LOGO_INK = ['#ffffff', '#c8f8d4', '#3fd46b', '#3fd46b', '#1f7a3a', '#8a4b22', '#5a2e12'];
+const BLAST_INKS = ['#ffffff', '#ffd23f', '#ff8a1e', '#e8302f', '#ff5fb8', '#ffd23f'];
+
+const TANK = ['....TTTT....', '...TTTTTT...', '.BBBBBBBBBB.', 'BBBBBBBBBBBB', 'BWBWBWBWBWBW', '.BBBBBBBBBB.'];
+const TANK_PALS = [
+  { T: '#a0f8ff', B: '#5eeaf5', W: '#2a4a5a' },
+  { T: '#ffd8a8', B: '#ff8a1e', W: '#5a2e12' },
+];
+const TANK_DEAD = { T: '#4a4a6a', B: '#3a3a55', W: '#24243a' };
+
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const canvas = document.getElementById('c');
+const screen = makeScreen({ canvas, stage: document.getElementById('stage'), frame: document.getElementById('screen'), w: W, h: H, crtKey: 'lk.arcade.crt' });
+const ctx = screen.ctx;
+const sound = makeSound('lk.arcade.mute');
+const tanks = TANK_PALS.map(p => sprite(TANK, p));
+const deadTank = sprite(TANK, TANK_DEAD);
+
+let ground = buildTerrain(), groundLayer = null;
+let players = [], turn = 0, wind = 0, shell = null, trail = [], sparks = [], blast = null, round = 1;
+let mode = 'attract', page = 'title', pageT = 0, t = 0, clock = 0, timer = 0, choice = 0, message = '';
+let cpuPlan = null, demo = false, pausedFrom = null;
+
+const SFX = {
+  start: () => sound.tune([[392, 0.12], [523, 0.12], [659, 0.12], [784, 0.3]], { vol: 0.045 }),
+  fire: () => sound.note(180, 0.18, { type: 'sawtooth', to: 120, vol: 0.06 }),
+  boom: () => { sound.noise(0.45, { vol: 0.28, cutoff: 700 }); sound.note(90, 0.3, { to: 45, vol: 0.06 }); },
+  hit: () => sound.note(90, 0.3, { vol: 0.05 }),
+  aim: () => sound.note(1400, 0.015, { vol: 0.012 }),
+  round: () => sound.tune([[784, 0.1], [988, 0.1], [1175, 0.1], [1568, 0.35]], { vol: 0.045 }),
+  blip: () => sound.note(988, 0.05, { vol: 0.04 }),
+};
+// The demo plays silently: nobody asked for noise from a screen they are not using.
+function sfx(name) { if (!demo) SFX[name](); }
+
+// ---------------------------------------------------------------- the game
+
+function newMatch(vsCpu, isDemo) {
+  demo = isDemo;
+  players = [
+    { x: TANK_X[0], angle: 45, power: 55, hp: 100, wins: 0, cpu: isDemo },
+    { x: TANK_X[1], angle: 135, power: 55, hp: 100, wins: 0, cpu: isDemo || vsCpu },
+  ];
+  round = 1;
+  newRound();
+  if (!isDemo) sfx('start');
+}
+
+function newRound() {
+  ground = buildTerrain();
+  groundLayer = null;
+  for (const p of players) p.hp = 100;
+  wind = (Math.random() * 2 - 1) * 0.9;
+  shell = null; trail = []; sparks = []; blast = null; cpuPlan = null;
+  turn = Math.random() < 0.5 ? 0 : 1;
+  mode = 'ready'; timer = 90;
+}
+
+function fire() {
+  if (mode !== 'aiming') return;
+  const p = players[turn];
+  shell = launch(ground, p.x, p.angle, p.power);
+  trail = [];
+  mode = 'flying';
+  sfx('fire');
+}
+
+function detonate(x, y) {
+  sfx('boom');
+  crater(ground, x, y);
+  groundLayer = null;
+  blast = { x, y, t: 0 };
+  for (let i = 0; i < (reduceMotion ? 8 : 26); i++) {
+    const a = Math.random() * Math.PI * 2, s = 0.3 + Math.random() * 1.4;
+    sparks.push({ x: x / SCALE, y: TOP + y / SCALE, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 0.4, life: 1 });
+  }
+  let hit = false;
+  for (const p of players) {
+    const dmg = blastDamage(ground, p.x, x, y);
+    if (dmg) { p.hp = Math.max(0, p.hp - dmg); hit = true; }
+  }
+  if (hit) sfx('hit');
+  shell = null;
+  mode = 'boom'; t = 0;
+}
+
+function afterBoom() {
+  const dead = players.filter(p => p.hp <= 0);
+  if (!dead.length) { turn = 1 - turn; cpuPlan = null; mode = 'aiming'; t = 0; return; }
+  const winner = players.find(p => p.hp > 0);
+  if (!winner) message = 'BOTH GONE. NOBODY TAKES IT.';
+  else {
+    winner.wins++;
+    const who = name(players.indexOf(winner));
+    message = who + (winner.wins >= ROUNDS_TO_WIN ? ' TAKES THE MATCH' : ' TAKES THE ROUND');
+  }
+  mode = winner && winner.wins >= ROUNDS_TO_WIN ? 'match' : 'round';
+  t = 0;
+  sfx('round');
+}
+
+function name(i) {
+  if (demo) return i === 0 ? 'LEFT' : 'RIGHT';
+  return i === 0 ? 'PLAYER ONE' : players[1].cpu ? 'THE CPU' : 'PLAYER TWO';
+}
+
+function toAttract(p) { mode = 'attract'; page = p; pageT = 0; demo = false; }
+
+// The computer: work out a shot, then turn the barrel and set the power to
+// it a step at a time, so it can be watched aiming.
+function cpuTick() {
+  const p = players[turn];
+  if (!cpuPlan) { cpuPlan = aimShot(ground, wind, turn); t = 0; return; }
+  if (++t % 2) return;
+  if (p.angle !== cpuPlan.angle) p.angle += Math.sign(cpuPlan.angle - p.angle);
+  else if (p.power !== cpuPlan.power) p.power += Math.sign(cpuPlan.power - p.power);
+  else if (t > 40) fire();
+}
+
+function aimTick() {
+  const p = players[turn];
+  if (p.cpu) { cpuTick(); return; }
+  const h = input.held;
+  // Left swings the barrel left, right swings it right.
+  if (h.left) { p.angle = Math.min(180, p.angle + 1); if (clock % 4 === 0) sfx('aim'); }
+  if (h.right) { p.angle = Math.max(0, p.angle - 1); if (clock % 4 === 0) sfx('aim'); }
+  if (h.up) p.power = Math.min(100, p.power + 1);
+  if (h.down) p.power = Math.max(5, p.power - 1);
+}
+
+function flyTick() {
+  const r = flyShell(shell, wind, ground, players.map(p => p.x));
+  if (r === 'out') { shell = null; turn = 1 - turn; cpuPlan = null; mode = 'aiming'; t = 0; return; }
+  if (r) { detonate(r.x, r.y); return; }
+  trail.push({ x: shell.x, y: shell.y });
+  if (trail.length > 160) trail.shift();
+}
+
+// ---------------------------------------------------------------- input
+
+const modeRow = i => ({ x: 70, y: 100 + i * 24, w: 180, h: 20 });
+
+function onAction(action) {
+  if (action === 'crt') { screen.toggleCrt(); syncToggles(); return; }
+  if (action === 'mute') { sound.toggleMute(); syncToggles(); return; }
+  if (action === 'back') { toAttract('title'); return; }
+  if (action === 'pause') {
+    if (mode === 'paused') { mode = pausedFrom; return; }
+    if (!demo && ['aiming', 'flying', 'ready'].includes(mode)) { pausedFrom = mode; mode = 'paused'; }
+    return;
+  }
+  if (mode === 'attract' || demo) { newMatch(choice === 0, false); return; }
+  if (mode === 'paused') { mode = pausedFrom; return; }
+  if (mode === 'aiming' && !players[turn].cpu) { fire(); return; }
+  if (mode === 'round' && t >= 40) { round++; newRound(); return; }
+  if (mode === 'match' && t >= 40) toAttract('title');
+}
+
+function onDir(dir) {
+  if (mode !== 'attract') return;
+  if (page !== 'title') { page = 'title'; pageT = 0; }
+  if (dir === 'up' || dir === 'down') { choice = 1 - choice; pageT = 0; sfx('blip'); }
+}
+
+function onPoint(x, y) {
+  if (mode === 'attract' && page === 'title') {
+    for (let i = 0; i < 2; i++) {
+      const r = modeRow(i);
+      if (x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h) { choice = i; newMatch(i === 0, false); return true; }
+    }
+  }
+  return false;
+}
+
+const input = makeInput({ screen: canvas, onAction, onDir, onPoint, onAny: () => sound.wake() });
+
+const crtBtn = document.querySelector('[data-action="crt"]');
+const muteBtn = document.querySelector('[data-action="mute"]');
+function syncToggles() {
+  crtBtn.textContent = 'CRT ' + (screen.crt ? 'on' : 'off');
+  crtBtn.setAttribute('aria-pressed', String(screen.crt));
+  muteBtn.textContent = 'Sound ' + (sound.muted ? 'off' : 'on');
+  muteBtn.setAttribute('aria-pressed', String(!sound.muted));
+}
+syncToggles();
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && !demo && ['aiming', 'flying'].includes(mode)) { pausedFrom = mode; mode = 'paused'; }
+});
+
+// ---------------------------------------------------------------- drawing
+
+const blinkOn = (rate = 32) => reduceMotion || ((clock / rate) | 0) % 2 === 0;
+const prompt = () => (input.touch ? 'TAP START' : 'PRESS SPACE');
+
+function disc(g, cx, cy, r, col) {
+  g.fillStyle = col;
+  const R = Math.floor(r);
+  for (let dy = -R; dy <= R; dy++) { const w = Math.floor(Math.sqrt(r * r - dy * dy)); g.fillRect(Math.round(cx) - w, Math.round(cy) + dy, w * 2 + 1, 1); }
+}
+
+function line(g, x0, y0, x1, y1, col) {
+  x0 = Math.round(x0); y0 = Math.round(y0); x1 = Math.round(x1); y1 = Math.round(y1);
+  const dx = Math.abs(x1 - x0), dy = -Math.abs(y1 - y0), sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
+  let err = dx + dy;
+  g.fillStyle = col;
+  for (let n = 0; n < 200; n++) {
+    g.fillRect(x0, y0, 1, 1);
+    if (x0 === x1 && y0 === y1) break;
+    const e2 = 2 * err;
+    if (e2 >= dy) { err += dy; x0 += sx; }
+    if (e2 <= dx) { err += dx; y0 += sy; }
+  }
+}
+
+const STARS = [];
+for (let i = 0; i < 50; i++) STARS.push({ x: (i * 157) % W, y: TOP + 2 + ((i * 71) % 90), c: i % 3 ? '#4a4a6a' : '#c8c8d8' });
+
+function sky(g, top) {
+  const bands = ['#06061a', '#0a0a24', '#100e30', '#16123c', '#1e1648', '#281a54'];
+  for (let y = top; y < g.canvas.height; y++) {
+    const k = Math.min(bands.length - 1, Math.floor(((y - top) / (WORLD_H / SCALE)) * bands.length * 1.2));
+    const k2 = Math.min(bands.length - 1, k + 1);
+    // two-colour dither at each band edge, the way a 16-colour board blended
+    g.fillStyle = bands[k];
+    g.fillRect(0, y, g.canvas.width, 1);
+    if (((y - top) % 12) > 8) for (let x = (y % 2); x < g.canvas.width; x += 2) { g.fillStyle = bands[k2]; g.fillRect(x, y, 1, 1); }
+  }
+  for (const s of STARS) { g.fillStyle = s.c; g.fillRect(s.x, s.y - TOP + top, 1, 1); }
+}
+
+function renderGround(gr, width, top, height) {
+  const c = document.createElement('canvas');
+  c.width = width; c.height = height;
+  const g = c.getContext('2d');
+  for (let x = 0; x < width; x++) {
+    const y0 = Math.round(top + groundAt(gr, x * SCALE + 1) / SCALE);
+    for (let y = y0; y < height; y++) {
+      const d = y - y0;
+      g.fillStyle = d < 1 ? '#3fd46b' : d < 3 ? '#1f7a3a' : d < 16 ? ((x + y) % 3 === 0 ? '#5a2e12' : '#8a4b22') : ((x * 3 + y) % 4 === 0 ? '#5a2e12' : '#3a1e0e');
+      g.fillRect(x, y, 1, 1);
+    }
+  }
+  return c;
+}
+
+function drawTank(g, i, p, top, active) {
+  const x = Math.round(p.x / SCALE), y = Math.round(top + groundAt(ground, p.x) / SCALE);
+  const rad = (p.angle * Math.PI) / 180;
+  line(g, x, y - 5, x + Math.cos(rad) * 8, y - 5 - Math.sin(rad) * 8, p.hp > 0 ? '#ffffff' : '#4a4a6a');
+  g.drawImage(p.hp > 0 ? tanks[i] : deadTank, x - 6, y - 6);
+  g.fillStyle = '#1a1a2a'; g.fillRect(x - 7, y - 14, 14, 2);
+  g.fillStyle = SIDE_INK[i]; g.fillRect(x - 7, y - 14, Math.round((14 * p.hp) / 100), 2);
+  if (active && blinkOn(16)) {
+    g.fillStyle = SIDE_INK[i];
+    for (let r = 0; r < 3; r++) g.fillRect(x - 2 + r, y - 20 + r, 5 - r * 2, 1);
+  }
+}
+
+function drawField() {
+  sky(ctx, TOP);
+  if (!groundLayer) groundLayer = renderGround(ground, W, TOP, H);
+  ctx.drawImage(groundLayer, 0, 0);
+  players.forEach((p, i) => drawTank(ctx, i, p, TOP, i === turn && (mode === 'aiming' || mode === 'flying')));
+  trail.forEach((pt, i) => { if (i % 2 === 0) { ctx.fillStyle = i > trail.length - 20 ? INK.orange : '#7a4a10'; ctx.fillRect(Math.round(pt.x / SCALE), Math.round(TOP + pt.y / SCALE), 1, 1); } });
+  if (shell) { ctx.fillStyle = INK.white; ctx.fillRect(Math.round(shell.x / SCALE) - 1, Math.round(TOP + shell.y / SCALE) - 1, 2, 2); }
+  if (blast) {
+    const life = blast.t < 15 ? blast.t / 15 : Math.max(0, 1 - (blast.t - 15) / 30);
+    disc(ctx, blast.x / SCALE, TOP + blast.y / SCALE, (KILL / SCALE) * life, BLAST_INKS[(clock >> 1) % BLAST_INKS.length]);
+  }
+  for (const s of sparks) { ctx.fillStyle = s.life > 0.5 ? INK.white : INK.orange; ctx.fillRect(Math.round(s.x), Math.round(s.y), 1, 1); }
+}
+
+function drawHud() {
+  if (mode === 'attract') return;
+  for (let i = 0; i < 2; i++) {
+    const p = players[i], left = i === 0;
+    const label = demo ? (left ? 'LEFT' : 'RIGHT') : left ? 'ONE' : p.cpu ? 'CPU' : 'TWO';
+    const x = left ? 6 : W - 6;
+    text(ctx, label, x, 3, SIDE_INK[i], { align: left ? 'left' : 'right' });
+    for (let k = 0; k < ROUNDS_TO_WIN; k++) {
+      ctx.fillStyle = k < p.wins ? SIDE_INK[i] : '#24243a';
+      ctx.fillRect(left ? 36 + k * 6 : W - 40 - k * 6, 4, 4, 5);
+    }
+    text(ctx, 'ANG ' + Math.round(left ? p.angle : 180 - p.angle) + ' POW ' + p.power, x, 12, i === turn ? INK.white : INK.dim, { align: left ? 'left' : 'right' });
+  }
+  text(ctx, 'WIND', W / 2, 3, INK.grey, { align: 'center' });
+  ctx.fillStyle = '#24243a'; ctx.fillRect(W / 2 - 24, 13, 48, 3);
+  const len = Math.round(wind * 24);
+  ctx.fillStyle = INK.orange; ctx.fillRect(len >= 0 ? W / 2 : W / 2 + len, 13, Math.abs(len), 3);
+  ctx.fillStyle = INK.white; ctx.fillRect(W / 2, 12, 1, 5);
+}
+
+function banner(lines, y) {
+  const wide = Math.max(...lines.map(([s]) => s.length)) * 6 + 10;
+  ctx.fillStyle = '#000';
+  ctx.fillRect(Math.floor((W - wide) / 2), y - 5, wide, lines.length * 12 + 7);
+  lines.forEach(([s, ink], i) => text(ctx, s, W / 2, y + i * 12, ink, { align: 'center' }));
+}
+
+function drawTitle() {
+  sky(ctx, 0);
+  if (!groundLayer) groundLayer = renderGround(ground, W, TOP, H);
+  ctx.drawImage(groundLayer, 0, 0);
+  text(ctx, 'TWO HILLS', W / 2 + 2, 34, '#1c2870', { align: 'center', scale: 4 });
+  text(ctx, 'TWO HILLS', W / 2, 32, LOGO_INK, { align: 'center', scale: 4 });
+  text(ctx, 'ANGLE, POWER, WIND, FIRE', W / 2, 68, INK.white, { align: 'center' });
+  ['1 PLAYER VS THE CPU', '2 PLAYERS, ONE SCREEN'].forEach((s, i) => {
+    const r = modeRow(i), on = i === choice;
+    ctx.fillStyle = on ? '#1c2870' : '#000'; ctx.fillRect(r.x, r.y, r.w, r.h);
+    text(ctx, s, W / 2, r.y + 7, on ? INK.yellow : INK.grey, { align: 'center' });
+  });
+  ctx.fillStyle = '#000'; ctx.fillRect(80, 151, 160, 22);
+  if (blinkOn()) text(ctx, input.touch ? 'TAP ONE TO PLAY' : 'UP / DOWN, THEN SPACE', W / 2, 154, INK.yellow, { align: 'center' });
+  text(ctx, 'LEON KARSTEN 2026', W / 2, 164, INK.dim, { align: 'center' });
+}
+
+function drawHowTo() {
+  text(ctx, 'HOW TO PLAY', W / 2, 14, INK.cyan, { align: 'center' });
+  const rows = input.touch
+    ? [['LEFT / RIGHT', 'SWING THE BARREL'], ['UP / DOWN', 'POWER'], ['START', 'FIRE']]
+    : [['LEFT / RIGHT', 'SWING THE BARREL'], ['UP / DOWN', 'POWER'], ['SPACE', 'FIRE']];
+  rows.forEach(([k, v], i) => { text(ctx, k, 60, 34 + i * 12, INK.yellow); text(ctx, v, 150, 34 + i * 12, INK.white); });
+  text(ctx, 'THE WIND BENDS EVERY SHOT.', W / 2, 80, INK.orange, { align: 'center' });
+  text(ctx, 'THE GROUND GIVES WAY WHERE YOU MISS,', W / 2, 96, INK.white, { align: 'center' });
+  text(ctx, 'AND A TANK RIDES IT DOWN.', W / 2, 108, INK.white, { align: 'center' });
+  text(ctx, 'A DIRECT HIT TAKES 85. A NEAR MISS', W / 2, 124, INK.grey, { align: 'center' });
+  text(ctx, 'STILL HURTS. FIRST TO ' + ROUNDS_TO_WIN + ' ROUNDS WINS.', W / 2, 136, INK.grey, { align: 'center' });
+  if (blinkOn()) text(ctx, prompt(), W / 2, 164, INK.yellow, { align: 'center' });
+}
+
+function draw() {
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, W, H);
+  if (mode === 'attract') { if (page === 'title') drawTitle(); else drawHowTo(); return; }
+  drawField();
+  drawHud();
+  const mid = TOP + 30;
+  if (mode === 'ready') banner([['ROUND ' + round, INK.cyan], [name(turn) + ' FIRES FIRST', SIDE_INK[turn]]], mid);
+  else if (mode === 'paused') banner([['PAUSED', INK.white]], mid);
+  else if (mode === 'round' || mode === 'match') {
+    const lines = [[message, INK.yellow], [players[0].wins + ' - ' + players[1].wins, INK.white]];
+    if (t >= 40 && !demo && blinkOn()) lines.push([mode === 'match' ? prompt() : prompt() + ' FOR THE NEXT ROUND', INK.cyan]);
+    banner(lines, mid);
+  } else if (mode === 'aiming' && !players[turn].cpu && t < 90 && !demo) {
+    text(ctx, name(turn) + ' TO FIRE', W / 2, TOP + 6, SIDE_INK[turn], { align: 'center' });
+  }
+  if (demo && blinkOn()) text(ctx, 'DEMO PLAY', W / 2, TOP + 6, INK.yellow, { align: 'center' });
+}
+
+// ---------------------------------------------------------------- card art
+
+function drawCard() {
+  const c = document.createElement('canvas');
+  c.width = 320; c.height = 240;
+  const g = c.getContext('2d');
+  let seed = 5;
+  const rnd = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+  const keep = ground; ground = buildTerrain(rnd);
+  crater(ground, 560, groundAt(ground, 560));
+  sky(g, 0);
+  g.drawImage(renderGround(ground, 320, 60, 240), 0, 0);
+  const ps = [{ x: TANK_X[0], angle: 50, hp: 70 }, { x: TANK_X[1], angle: 128, hp: 40 }];
+  ps.forEach((p, i) => drawTank(g, i, p, 60, false));
+  const s = launch(ground, ps[0].x, 50, 46);
+  for (let k = 0; k < 95; k++) { flyShell(s, 0.2, ground, []); if (k % 2 === 0) { g.fillStyle = k > 70 ? INK.orange : '#7a4a10'; g.fillRect(Math.round(s.x / 3), Math.round(60 + s.y / 3), 1, 1); } }
+  g.fillStyle = '#fff'; g.fillRect(Math.round(s.x / 3) - 1, Math.round(60 + s.y / 3) - 1, 2, 2);
+  ground = keep;
+  text(g, 'TWO HILLS', 162, 12, '#1c2870', { align: 'center', scale: 4 });
+  text(g, 'TWO HILLS', 160, 10, LOGO_INK, { align: 'center', scale: 4 });
+  return c;
+}
+
+// ---------------------------------------------------------------- loop
+
+const PAGES = { title: ['howto', 600], howto: ['demo', 540] };
+function attractTick() {
+  pageT++;
+  const [next, length] = PAGES[page];
+  if (pageT < length) return;
+  if (next === 'demo') { newMatch(true, true); return; }
+  toAttract(next);
+}
+
+let demoTicks = 0;
+function tick() {
+  clock++;
+  for (const s of sparks) { s.x += s.vx; s.y += s.vy; s.vy += 0.05; s.life -= 0.02; }
+  sparks = sparks.filter(s => s.life > 0);
+  if (blast && ++blast.t > 45) blast = null;
+  if (demo && ++demoTicks > 60 * 45) { demoTicks = 0; toAttract('title'); return; }
+  if (!demo) demoTicks = 0;
+  switch (mode) {
+    case 'attract': attractTick(); break;
+    case 'ready': if (--timer <= 0) { mode = 'aiming'; t = 0; } break;
+    case 'aiming': t++; aimTick(); break;
+    case 'flying': flyTick(); break;
+    case 'boom': if (++t >= 50) afterBoom(); break;
+    case 'round': if (++t >= (demo ? 150 : 60 * 20)) { if (demo) toAttract('title'); else { round++; newRound(); } } break;
+    case 'match': if (++t >= (demo ? 150 : 60 * 20)) toAttract('title'); break;
+  }
+}
+
+let acc = 0, lastT = 0;
+function frame(now) {
+  requestAnimationFrame(frame);
+  if (!lastT) lastT = now;
+  acc += Math.min(100, now - lastT);
+  lastT = now;
+  while (acc >= TICK_MS) { tick(); acc -= TICK_MS; }
+  draw();
+}
+requestAnimationFrame(frame);
+
+window.__twohills = {
+  get mode() { return mode; },
+  get page() { return page; },
+  get demo() { return demo; },
+  get turn() { return turn; },
+  get players() { return players.map(p => ({ angle: p.angle, power: p.power, hp: p.hp, wins: p.wins, cpu: p.cpu })); },
+  attract(p) { toAttract(p); },
+  // Set up a sure kill: the other tank at 1 hp and this one aimed dead on.
+  sureShot() { players[1 - turn].hp = 1; const a = aimShot(ground, wind, turn, Math.random, 0); players[turn].angle = a.angle; players[turn].power = a.power; },
+};
+window.__arcade = { card: drawCard };
+})();
+</script>
+</body>
+</html>
