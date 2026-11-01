@@ -1,0 +1,8 @@
+{
+  "name": "Kings Row",
+  "slug": "kings-row",
+  "summary": "Checkers by the English rules: captures are compulsory, and the far row crowns a king. Play the CPU or a friend on one screen.",
+  "app": "/play/kings-row/",
+  "image": "/play/kings-row/card.png",
+  "tags": ["checkers", "1 or 2 players"]
+}

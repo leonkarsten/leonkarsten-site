@@ -39,7 +39,8 @@ Nothing personal: interests, facts, instructions, coaching, experiences only.
   moved to head height because the Qlaim height was unreachable) and **Sorted** (`/play/sorted/`,
   bead puzzle) and **Two Hills** (`/play/two-hills/`, artillery, CPU opponent added) and **No Crossing**
   (`/play/no-crossing/`, light-trail duel, CPU opponent added) and **Last Line** (`/play/last-line/`,
-  dots and boxes, CPU opponent added), all ten
+  dots and boxes, CPU opponent added) and **Kings Row** (`/play/kings-row/`, checkers, CPU opponent
+  added), all eleven
   built overnight 1-2 Nov while Leon slept. Leon has
   seen Lamplight live; neither has been played through on his iPhone yet. Card pictures: each game draws its own 4:3 card (`npm run cards` in the arcade repo
   saves `cards/<slug>.png`); the import copies it to `public/play/<slug>/card.png` and the
