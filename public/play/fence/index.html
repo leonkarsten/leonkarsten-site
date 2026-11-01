@@ -1,0 +1,1289 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Fence</title>
+<meta name="description" content="Claim ground by drawing into open space. You are only vulnerable while the line is unfinished.">
+<meta name="theme-color" content="#000000">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2016%2016'%20shape-rendering='crispEdges'%3E%3Crect%20width='16'%20height='16'%20fill='%23000'/%3E%3Crect%20x='0'%20y='0'%20width='9'%20height='16'%20fill='%232b4cff'/%3E%3Crect%20x='8'%20y='0'%20width='1'%20height='16'%20fill='%235eeaf5'/%3E%3Crect%20x='9'%20y='6'%20width='5'%20height='1'%20fill='%23ff8a1e'/%3E%3Crect%20x='12'%20y='11'%20width='2'%20height='2'%20fill='%23ff5fb8'/%3E%3C/svg%3E">
+<style>
+:root {
+  --void: #000;
+  --chrome: #8f8fb0;
+  --chrome-hi: #5eeaf5;
+  --edge: #2a2a40;
+  --start: #e8302f;
+  --ui: ui-monospace, 'Cascadia Mono', Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; height: 100%; background: var(--void); color: var(--chrome); }
+body {
+  font-family: var(--ui);
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  height: 100dvh;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: 'bar' 'stage' 'pad';
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.bar {
+  grid-area: bar;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+}
+.bar a, .bar button {
+  font: 700 12px/1 var(--ui);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--chrome);
+  background: none;
+  border: 1px solid transparent;
+  padding: 9px 10px;
+  text-decoration: none;
+  cursor: pointer;
+  border-radius: 0;
+}
+.bar a:hover, .bar button:hover, .bar a:focus-visible, .bar button:focus-visible {
+  color: var(--chrome-hi);
+  border-color: var(--edge);
+  outline: none;
+}
+.bar button[aria-pressed='true'] { color: var(--chrome-hi); }
+.toggles { display: flex; gap: 2px; }
+
+.stage {
+  grid-area: stage;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  padding: 8px 16px;
+}
+/* A faint edge, so an unexplored black playfield still has a size. */
+.screen { position: relative; line-height: 0; touch-action: none; box-shadow: 0 0 0 1px #1c1c2c; }
+.screen canvas {
+  display: block;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+/* The CRT switch. Off by default: sharp pixels are the honest picture, the
+   tube is a costume. Scanlines are one per game pixel row (--px is set by
+   the screen fit), so they never beat against the art. */
+.screen.crt { border-radius: 3% / 4%; overflow: hidden; box-shadow: 0 0 0 4px #0b0b14, 0 0 36px rgba(94, 234, 245, 0.12); }
+.screen.crt canvas { filter: saturate(1.25) brightness(1.12) contrast(1.05) blur(calc(var(--px) * 0.18)); }
+.screen.crt::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background:
+    radial-gradient(ellipse at center, rgba(0, 0, 0, 0) 58%, rgba(0, 0, 0, 0.6) 100%),
+    repeating-linear-gradient(to bottom,
+      rgba(0, 0, 0, 0) 0, rgba(0, 0, 0, 0) calc(var(--px) * 0.55),
+      rgba(0, 0, 0, 0.38) calc(var(--px) * 0.55), rgba(0, 0, 0, 0.38) var(--px));
+  box-shadow: inset 0 0 48px rgba(0, 0, 0, 0.75);
+}
+
+/* Touch controls: shown on touch screens only. */
+.pad {
+  grid-area: pad;
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  max-width: 380px;
+  margin: 0 auto;
+  padding: 4px 20px 16px;
+}
+body.touch .pad { display: flex; }
+.dpad {
+  display: grid;
+  grid-template-columns: repeat(3, 54px);
+  grid-template-rows: repeat(3, 50px);
+  gap: 3px;
+}
+.dpad button, .start {
+  font: 700 18px/1 var(--ui);
+  color: var(--chrome);
+  background: #12121e;
+  border: 2px solid var(--edge);
+  border-radius: 6px;
+  padding: 0;
+  touch-action: none;
+  cursor: pointer;
+}
+.dpad button:active { background: #24243a; color: var(--chrome-hi); }
+.dpad .up { grid-area: 1 / 2; }
+.dpad .left { grid-area: 2 / 1; }
+.dpad .right { grid-area: 2 / 3; }
+.dpad .down { grid-area: 3 / 2; }
+.start {
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  background: var(--start);
+  border: 4px solid #7a1414;
+  color: #fff;
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  box-shadow: inset 0 -6px 0 rgba(0, 0, 0, 0.25);
+}
+.start:active { transform: translateY(2px); box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.25); }
+
+/* A phone on its side: d-pad left of the screen, START right of it. A game
+   with no d-pad (its keys are on the screen) moves the bar to a column
+   instead, so an upright screen gets the full height. */
+@media (orientation: landscape) and (max-height: 520px) {
+  body.no-pad {
+    grid-template-rows: minmax(0, 1fr);
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas: 'bar stage';
+  }
+  body.no-pad .bar { flex-direction: column; justify-content: flex-start; align-items: flex-start; }
+  body.no-pad .toggles { flex-direction: column; }
+  .stage { padding: 4px 8px; }
+  body.touch:not(.no-pad) {
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas: 'bar bar bar' 'dpad stage start';
+  }
+  body.touch:not(.no-pad) .pad { display: contents; }
+  body.touch .dpad { grid-area: dpad; align-self: center; margin-left: 12px; }
+  body.touch .start { grid-area: start; align-self: center; margin-right: 16px; }
+}
+</style>
+</head>
+<body>
+
+<header class="bar">
+  <a href="/games/">&larr; Games</a>
+  <div class="toggles">
+    <button type="button" data-action="crt" aria-pressed="false">CRT off</button>
+    <button type="button" data-action="mute" aria-pressed="true">Sound on</button>
+    <button type="button" data-action="pause">Pause</button>
+  </div>
+</header>
+
+<main class="stage" id="stage">
+  <div class="screen" id="screen">
+    <canvas id="c" role="img" aria-label="Fence game screen. Arrow keys or WASD to draw, Space to start, P to pause."></canvas>
+  </div>
+</main>
+
+<div class="pad">
+  <div class="dpad">
+    <button type="button" class="up" data-dir="up" aria-label="Up">&#9650;</button>
+    <button type="button" class="left" data-dir="left" aria-label="Left">&#9664;</button>
+    <button type="button" class="right" data-dir="right" aria-label="Right">&#9654;</button>
+    <button type="button" class="down" data-dir="down" aria-label="Down">&#9660;</button>
+  </div>
+  <button type="button" class="start" data-action="start">Start</button>
+</div>
+
+<script>
+(() => {
+'use strict';
+// ---- engine/font.js
+// 5x7 bitmap font, one string per glyph, rows separated by spaces. Drawn with
+// fillRect so it stays on the pixel grid at any scale; there is no web font.
+const GLYPHS = {
+  A: '.###. #...# #...# ##### #...# #...# #...#',
+  B: '####. #...# #...# ####. #...# #...# ####.',
+  C: '.###. #...# #.... #.... #.... #...# .###.',
+  D: '####. #...# #...# #...# #...# #...# ####.',
+  E: '##### #.... #.... ####. #.... #.... #####',
+  F: '##### #.... #.... ####. #.... #.... #....',
+  G: '.###. #...# #.... #.### #...# #...# .####',
+  H: '#...# #...# #...# ##### #...# #...# #...#',
+  I: '.###. ..#.. ..#.. ..#.. ..#.. ..#.. .###.',
+  J: '..### ...#. ...#. ...#. ...#. #..#. .##..',
+  K: '#...# #..#. #.#.. ##... #.#.. #..#. #...#',
+  L: '#.... #.... #.... #.... #.... #.... #####',
+  M: '#...# ##.## #.#.# #.#.# #...# #...# #...#',
+  N: '#...# #...# ##..# #.#.# #..## #...# #...#',
+  O: '.###. #...# #...# #...# #...# #...# .###.',
+  P: '####. #...# #...# ####. #.... #.... #....',
+  Q: '.###. #...# #...# #...# #.#.# #..#. .##.#',
+  R: '####. #...# #...# ####. #.#.. #..#. #...#',
+  S: '.###. #...# #.... .###. ....# #...# .###.',
+  T: '##### ..#.. ..#.. ..#.. ..#.. ..#.. ..#..',
+  U: '#...# #...# #...# #...# #...# #...# .###.',
+  V: '#...# #...# #...# #...# #...# .#.#. ..#..',
+  W: '#...# #...# #...# #.#.# #.#.# #.#.# .#.#.',
+  X: '#...# #...# .#.#. ..#.. .#.#. #...# #...#',
+  Y: '#...# #...# .#.#. ..#.. ..#.. ..#.. ..#..',
+  Z: '##### ....# ...#. ..#.. .#... #.... #####',
+  0: '.###. #...# #..## #.#.# ##..# #...# .###.',
+  1: '..#.. .##.. ..#.. ..#.. ..#.. ..#.. .###.',
+  2: '.###. #...# ....# ...#. ..#.. .#... #####',
+  3: '##### ...#. ..#.. ...#. ....# #...# .###.',
+  4: '...#. ..##. .#.#. #..#. ##### ...#. ...#.',
+  5: '##### #.... ####. ....# ....# #...# .###.',
+  6: '..##. .#... #.... ####. #...# #...# .###.',
+  7: '##### ....# ...#. ..#.. .#... .#... .#...',
+  8: '.###. #...# #...# .###. #...# #...# .###.',
+  9: '.###. #...# #...# .#### ....# ...#. .##..',
+  ' ': '..... ..... ..... ..... ..... ..... .....',
+  '.': '..... ..... ..... ..... ..... .##.. .##..',
+  ',': '..... ..... ..... ..... .##.. ..#.. .#...',
+  '!': '..#.. ..#.. ..#.. ..#.. ..#.. ..... ..#..',
+  '?': '.###. #...# ....# ...#. ..#.. ..... ..#..',
+  '-': '..... ..... ..... .###. ..... ..... .....',
+  '+': '..... ..#.. ..#.. ##### ..#.. ..#.. .....',
+  '=': '..... ..... ##### ..... ##### ..... .....',
+  ':': '..... .##.. .##.. ..... .##.. .##.. .....',
+  '/': '....# ...#. ...#. ..#.. .#... .#... #....',
+  "'": '..#.. ..#.. .#... ..... ..... ..... .....',
+  '<': '...#. ..#.. .#... #.... .#... ..#.. ...#.',
+  '>': '.#... ..#.. ...#. ....# ...#. ..#.. .#...',
+  '*': '..... #...# .#.#. ..#.. .#.#. #...# .....',
+  '%': '##..# ##.#. ...#. ..#.. .#... .#.## #..##',
+};
+const FONT_CHARS = Object.keys(GLYPHS).join('');
+
+const FONT_BITS = {};
+for (const [ch, rows] of Object.entries(GLYPHS)) FONT_BITS[ch] = rows.split(' ');
+
+const GLYPH_W = 5, GLYPH_H = 7, ADVANCE = 6;
+
+function textWidth(str, scale = 1) {
+  return str.length ? (str.length * ADVANCE - 1) * scale : 0;
+}
+
+// `color` is one colour, or an array of seven (one per glyph row) for the
+// striped logos arcade title screens used.
+function text(ctx, str, x, y, color, opts = {}) {
+  const scale = opts.scale || 1;
+  const s = String(str).toUpperCase();
+  let left = x;
+  if (opts.align === 'center') left = x - Math.floor(textWidth(s, scale) / 2);
+  else if (opts.align === 'right') left = x - textWidth(s, scale);
+  for (let i = 0; i < s.length; i++) {
+    const rows = FONT_BITS[s[i]] || FONT_BITS['?'];
+    const gx = left + i * ADVANCE * scale;
+    for (let r = 0; r < GLYPH_H; r++) {
+      ctx.fillStyle = Array.isArray(color) ? color[r] : color;
+      const row = rows[r];
+      for (let c = 0; c < GLYPH_W; c++) {
+        if (row[c] === '#') ctx.fillRect(gx + c * scale, y + r * scale, scale, scale);
+      }
+    }
+  }
+}
+
+// ---- engine/screen.js
+// The arcade screen: a small fixed-resolution canvas, scaled up in whole
+// DEVICE pixels so every game pixel is the same size and stays sharp. A 336px
+// screen on a 3x phone is drawn at exactly 3 device pixels per game pixel,
+// never 3.35, which is what makes uneven, shimmering pixels.
+function makeScreen({ canvas, stage, frame, w, h, crtKey }) {
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+
+  function fit() {
+    const dpr = window.devicePixelRatio || 1;
+    // clientWidth/Height include the stage's padding; the screen gets only
+    // what is inside it.
+    const cs = getComputedStyle(stage);
+    const aw = stage.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    const ah = stage.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+    const s = Math.max(1, Math.floor(Math.min((aw * dpr) / w, (ah * dpr) / h)));
+    canvas.style.width = (s * w) / dpr + 'px';
+    canvas.style.height = (s * h) / dpr + 'px';
+    frame.style.setProperty('--px', s / dpr + 'px');
+  }
+  addEventListener('resize', fit);
+  if (window.visualViewport) visualViewport.addEventListener('resize', fit);
+  fit();
+
+  let crt = false;
+  try { crt = localStorage.getItem(crtKey) === '1'; } catch { crt = false; }
+  function setCrt(on) {
+    crt = on;
+    frame.classList.toggle('crt', on);
+    try { localStorage.setItem(crtKey, on ? '1' : '0'); } catch {}
+  }
+  setCrt(crt);
+
+  return {
+    ctx, w, h, fit,
+    get crt() { return crt; },
+    toggleCrt() { setCrt(!crt); return crt; },
+  };
+}
+
+// ---- engine/sound.js
+// Chip sound: square, triangle and noise voices made in the browser. No audio
+// files. Browsers only allow sound after a tap or key, so `wake()` is called
+// from every input handler and does nothing until then.
+function makeSound(muteKey) {
+  let ac = null, out = null;
+  let muted = false;
+  try { muted = localStorage.getItem(muteKey) === '1'; } catch { muted = false; }
+
+  function wake() {
+    if (ac) { if (ac.state === 'suspended') ac.resume(); return; }
+    const Ctor = window.AudioContext || window.webkitAudioContext;
+    if (!Ctor) return;
+    ac = new Ctor();
+    out = ac.createGain();
+    out.gain.value = muted ? 0 : 1;
+    out.connect(ac.destination);
+  }
+
+  // One note. `at` is seconds from now, `to` slides the pitch.
+  function note(freq, dur, { type = 'square', vol = 0.05, at = 0, to = null } = {}) {
+    if (!ac) return;
+    const t = ac.currentTime + at;
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(freq, t);
+    if (to) o.frequency.exponentialRampToValueAtTime(to, t + dur);
+    g.gain.setValueAtTime(vol, t);
+    g.gain.setValueAtTime(vol, t + dur * 0.7);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(out);
+    o.start(t); o.stop(t + dur + 0.02);
+  }
+
+  // A run of notes: [[freq, dur], ...], each after the last; 0 is a rest.
+  function tune(notes, opts = {}) {
+    let at = opts.at || 0;
+    for (const [f, d] of notes) {
+      if (f) note(f, d * 0.92, { ...opts, at });
+      at += d;
+    }
+  }
+
+  function noise(dur, { vol = 0.2, cutoff = 900, at = 0 } = {}) {
+    if (!ac) return;
+    const len = Math.floor(ac.sampleRate * dur);
+    const buf = ac.createBuffer(1, len, ac.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len) ** 2;
+    const s = ac.createBufferSource(); s.buffer = buf;
+    const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = cutoff;
+    const g = ac.createGain(); g.gain.value = vol;
+    s.connect(f); f.connect(g); g.connect(out);
+    s.start(ac.currentTime + at);
+  }
+
+  // A held sound (an engine): filtered noise that runs for the whole session
+  // and is gated by its gain. Starting a source every frame is what makes
+  // engine sound crackle. Returns set(on); safe to call before wake().
+  function drone({ cutoff = 420, vol = 0.16 } = {}) {
+    let gain = null;
+    return on => {
+      if (!ac) return;
+      if (!gain) {
+        const len = ac.sampleRate * 2;
+        const buf = ac.createBuffer(1, len, ac.sampleRate);
+        const d = buf.getChannelData(0);
+        for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+        const s = ac.createBufferSource(); s.buffer = buf; s.loop = true;
+        const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = cutoff;
+        gain = ac.createGain(); gain.gain.value = 0;
+        s.connect(f); f.connect(gain); gain.connect(out);
+        s.start();
+      }
+      gain.gain.setTargetAtTime(on ? vol : 0, ac.currentTime, 0.03);
+    };
+  }
+
+  function setMuted(on) {
+    muted = on;
+    if (out) out.gain.value = on ? 0 : 1;
+    try { localStorage.setItem(muteKey, on ? '1' : '0'); } catch {}
+  }
+
+  return {
+    wake, note, tune, noise, drone,
+    get muted() { return muted; },
+    toggleMute() { setMuted(!muted); return muted; },
+  };
+}
+
+// ---- engine/input.js
+// Keyboard and touch in one place. `held` is what a game polls each tick;
+// `onDir` fires once per press (menus, initials); `onAction` carries the
+// buttons: start, pause, back, crt, mute.
+//
+// A word game passes `onLetter`: then every letter key is a letter (WASD stop
+// being directions, P/C/M stop being shortcuts; those stay on the buttons) and
+// only the arrows move. `onPoint(x, y)` receives taps on the screen in GAME
+// pixels; returning true means the game used the tap, otherwise it is START.
+function makeInput({ screen, onAction, onDir, onAny, onLetter = null, onPoint = null }) {
+  const held = { up: false, down: false, left: false, right: false };
+  const KEYS = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
+  const ACTIONS = { Space: 'start', Enter: 'start', Escape: 'back' };
+  if (!onLetter) {
+    Object.assign(KEYS, { KeyW: 'up', KeyS: 'down', KeyA: 'left', KeyD: 'right' });
+    Object.assign(ACTIONS, { KeyP: 'pause', KeyC: 'crt', KeyM: 'mute' });
+  }
+
+  let touch = matchMedia('(pointer: coarse)').matches;
+  const markTouch = on => {
+    touch = on;
+    document.body.classList.toggle('touch', on);
+  };
+  markTouch(touch);
+  addEventListener('touchstart', () => { if (!touch) markTouch(true); }, { passive: true });
+
+  addEventListener('keydown', e => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const dir = KEYS[e.code];
+    if (dir) {
+      e.preventDefault();
+      onAny();
+      if (!e.repeat) onDir(dir);
+      held[dir] = true;
+      return;
+    }
+    const action = ACTIONS[e.code];
+    if (action) {
+      // Space and Enter on a focused button or link belong to that control.
+      if ((e.code === 'Space' || e.code === 'Enter') && e.target.closest && e.target.closest('button, a')) return;
+      e.preventDefault();
+      onAny();
+      if (!e.repeat) onAction(action);
+      return;
+    }
+    // e.key, not e.code: the letter printed on the key, whatever the layout.
+    if (onLetter && /^[a-z]$/i.test(e.key)) {
+      e.preventDefault();
+      onAny();
+      if (!e.repeat) onLetter(e.key.toUpperCase());
+    }
+  });
+  addEventListener('keyup', e => {
+    const dir = KEYS[e.code];
+    if (dir) held[dir] = false;
+  });
+  addEventListener('blur', () => { held.up = held.down = held.left = held.right = false; });
+
+  for (const b of document.querySelectorAll('[data-dir]')) {
+    const dir = b.dataset.dir;
+    const down = e => {
+      e.preventDefault();
+      onAny();
+      held.up = held.down = held.left = held.right = false;
+      held[dir] = true;
+      onDir(dir);
+    };
+    const up = () => { held[dir] = false; };
+    b.addEventListener('pointerdown', down);
+    b.addEventListener('pointerup', up);
+    b.addEventListener('pointerleave', up);
+    b.addEventListener('pointercancel', up);
+    b.addEventListener('contextmenu', e => e.preventDefault());
+  }
+  for (const b of document.querySelectorAll('[data-action]')) {
+    const action = b.dataset.action;
+    // pointerdown for the START button, so it answers as fast as the d-pad;
+    // click for the toggles, so keyboard users can press them too.
+    if (b.classList.contains('start')) {
+      b.addEventListener('pointerdown', e => { e.preventDefault(); onAny(); onAction(action); });
+    } else {
+      b.addEventListener('click', () => { onAny(); onAction(action); });
+    }
+  }
+  screen.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    onAny();
+    if (onPoint) {
+      const r = screen.getBoundingClientRect();
+      const x = ((e.clientX - r.left) * screen.width) / r.width;
+      const y = ((e.clientY - r.top) * screen.height) / r.height;
+      if (onPoint(x, y)) return;
+    }
+    onAction('start');
+  });
+
+  return { held, get touch() { return touch; } };
+}
+
+// ---- engine/scores.js
+// The top-ten table, kept on this device only. A new browser starts with a
+// table of invented initials so the attract mode has something to show.
+const ENTRY_LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ.';
+
+function makeScores(key, defaults) {
+  let table = defaults.map(r => ({ ...r }));
+  try {
+    const saved = JSON.parse(localStorage.getItem(key) || 'null');
+    if (Array.isArray(saved) && saved.length === 10 && saved.every(r => typeof r.s === 'number' && typeof r.n === 'string')) table = saved;
+  } catch {}
+
+  return {
+    get table() { return table; },
+    get top() { return table[0].s; },
+    qualifies(score) { return score > 0 && score > table[9].s; },
+    // Returns the rank (0-9) the new row landed on.
+    add(n, s) {
+      let rank = table.findIndex(r => s > r.s);
+      if (rank === -1) return -1;
+      table.splice(rank, 0, { n, s });
+      table.length = 10;
+      try { localStorage.setItem(key, JSON.stringify(table)); } catch {}
+      return rank;
+    },
+  };
+}
+
+// ---- games/fence/field.js
+// Fence's field and rules, with no drawing, so the tests can run them.
+// Carried over from the Qlaim cabinet unchanged: an 80x60 field, the same
+// speeds, the 75% target and the scoring.
+const COLS = 80, ROWS = 60;
+const OPEN = 0, HELD = 1, TRAIL = 2;
+const TARGET = 0.75;
+const DIRS = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
+
+const inside = (x, y) => x >= 0 && y >= 0 && x < COLS && y < ROWS;
+
+function newField(level, rand = Math.random) {
+  const f = { grid: new Uint8Array(COLS * ROWS), level, score: 0, claimed: 0, roamers: [], player: { x: Math.floor(COLS / 2), y: 0, drawing: false } };
+  const g = f.grid;
+  for (let x = 0; x < COLS; x++) { g[x] = HELD; g[(ROWS - 1) * COLS + x] = HELD; }
+  for (let y = 0; y < ROWS; y++) { g[y * COLS] = HELD; g[y * COLS + COLS - 1] = HELD; }
+  for (let i = 0; i < 1 + Math.floor(level / 2); i++) {
+    f.roamers.push({
+      x: 10 + rand() * (COLS - 20), y: 10 + rand() * (ROWS - 20),
+      vx: (rand() < 0.5 ? -1 : 1) * (0.28 + level * 0.035),
+      vy: (rand() < 0.5 ? -1 : 1) * (0.28 + level * 0.035),
+    });
+  }
+  recount(f);
+  return f;
+}
+
+function recount(f) {
+  let held = 0;
+  for (let y = 1; y < ROWS - 1; y++) for (let x = 1; x < COLS - 1; x++) if (f.grid[y * COLS + x] === HELD) held++;
+  f.claimed = held / ((COLS - 2) * (ROWS - 2));
+}
+
+// The real rule: after a line closes, flood from where the roamers actually
+// are. Anything open they cannot reach is enclosed, and becomes yours. Not
+// "keep the smaller half", which is the usual shortcut and is wrong: trap a
+// roamer in a small pocket and the whole rest of the field is yours.
+function close(f) {
+  const g = f.grid, reach = new Uint8Array(COLS * ROWS), stack = [];
+  for (const r of f.roamers) {
+    const rx = Math.floor(r.x), ry = Math.floor(r.y);
+    if (inside(rx, ry) && g[ry * COLS + rx] === OPEN && !reach[ry * COLS + rx]) { reach[ry * COLS + rx] = 1; stack.push(rx, ry); }
+  }
+  while (stack.length) {
+    const y = stack.pop(), x = stack.pop();
+    for (const [nx, ny] of [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]]) {
+      if (!inside(nx, ny) || g[ny * COLS + nx] !== OPEN || reach[ny * COLS + nx]) continue;
+      reach[ny * COLS + nx] = 1;
+      stack.push(nx, ny);
+    }
+  }
+  let gained = 0;
+  for (let i = 0; i < g.length; i++) {
+    if (g[i] === TRAIL) { g[i] = HELD; gained++; }
+    else if (g[i] === OPEN && !reach[i]) { g[i] = HELD; gained++; }
+  }
+  f.player.drawing = false;
+  f.score += gained * f.level;
+  recount(f);
+  return gained;
+}
+
+// One step of the player in a direction. Returns 'closed' when a line was
+// finished, 'moved', or null when the move was refused.
+function movePlayer(f, dir) {
+  const p = f.player, g = f.grid;
+  const [dx, dy] = DIRS[dir];
+  const nx = p.x + dx, ny = p.y + dy;
+  if (!inside(nx, ny)) return null;
+  const cell = g[ny * COLS + nx];
+  if (cell === TRAIL) return null; // never cross your own line
+  const from = g[p.y * COLS + p.x];
+  if (cell === OPEN) {
+    if (from === HELD) p.drawing = true;
+    g[p.y * COLS + p.x] = from === HELD ? HELD : TRAIL;
+    p.x = nx; p.y = ny;
+    g[ny * COLS + nx] = TRAIL;
+    return 'moved';
+  }
+  const wasDrawing = p.drawing;
+  p.x = nx; p.y = ny;
+  if (wasDrawing) { close(f); return 'closed'; }
+  return 'moved';
+}
+
+// Roamers bounce off held ground. Returns 'line' if one touched the
+// unfinished line, 'player' if it reached the player while drawing, or null.
+function stepRoamers(f) {
+  const g = f.grid, p = f.player;
+  for (const r of f.roamers) {
+    for (let s = 0; s < 2; s++) {
+      let nx = r.x + r.vx / 2, ny = r.y + r.vy / 2;
+      const cx = Math.floor(nx), cy = Math.floor(r.y);
+      if (!inside(cx, cy) || g[cy * COLS + cx] === HELD) { r.vx *= -1; nx = r.x; }
+      const cx2 = Math.floor(r.x), cy2 = Math.floor(ny);
+      if (!inside(cx2, cy2) || g[cy2 * COLS + cx2] === HELD) { r.vy *= -1; ny = r.y; }
+      r.x = nx; r.y = ny;
+      const tx = Math.floor(r.x), ty = Math.floor(r.y);
+      if (inside(tx, ty) && g[ty * COLS + tx] === TRAIL) return 'line';
+      if (tx === p.x && ty === p.y && p.drawing) return 'player';
+    }
+  }
+  return null;
+}
+
+// A death wipes the unfinished line and puts the player back on the nearest
+// held ground.
+function loseLine(f) {
+  const g = f.grid, p = f.player;
+  for (let i = 0; i < g.length; i++) if (g[i] === TRAIL) g[i] = OPEN;
+  p.drawing = false;
+  let bestD = Infinity, bx = Math.floor(COLS / 2), by = 0;
+  for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) {
+    if (g[y * COLS + x] !== HELD) continue;
+    const d = (x - p.x) ** 2 + (y - p.y) ** 2;
+    if (d < bestD) { bestD = d; bx = x; by = y; }
+  }
+  p.x = bx; p.y = by;
+}
+
+function clearBonus(f) {
+  return Math.round((f.claimed - TARGET) * 1000) + f.level * 250;
+}
+
+// The demo's player: from held ground, cut a rectangle into the open and
+// come back. It does not watch the roamers, which is why demos end.
+function makePilot(rand = Math.random) {
+  let plan = [], back = null;
+  const opposite = { up: 'down', down: 'up', left: 'right', right: 'left' };
+  const turn = { up: 'left', down: 'right', left: 'down', right: 'up' };
+  return function next(f) {
+    const p = f.player, g = f.grid;
+    if (plan.length) return plan.shift();
+    if (p.drawing) return back; // keep heading home until the line closes
+    const inward = Object.keys(DIRS).filter(d => {
+      const [dx, dy] = DIRS[d];
+      return inside(p.x + dx, p.y + dy) && g[(p.y + dy) * COLS + p.x + dx] === OPEN;
+    });
+    if (inward.length) {
+      const d = inward[Math.floor(rand() * inward.length)];
+      const deep = 4 + Math.floor(rand() * 8), wide = 4 + Math.floor(rand() * 10);
+      const side = rand() < 0.5 ? turn[d] : opposite[turn[d]];
+      plan = [...Array(deep).fill(d), ...Array(wide).fill(side)];
+      back = opposite[d];
+      return plan.shift();
+    }
+    const along = Object.keys(DIRS).filter(d => {
+      const [dx, dy] = DIRS[d];
+      return inside(p.x + dx, p.y + dy) && g[(p.y + dy) * COLS + p.x + dx] === HELD;
+    });
+    const d = along[Math.floor(rand() * along.length)];
+    plan = Array(3 + Math.floor(rand() * 6)).fill(d);
+    return plan.shift();
+  };
+}
+
+// ---- engine/sprites.js
+// Sprites are drawn as text: one character per pixel, '.' is transparent and
+// every other character is looked up in a palette. Swapping the palette is how
+// a sprite changes state (lit, remembered, alerted) — the way the hardware did it.
+function sprite(rows, palette) {
+  const w = rows[0].length, h = rows.length;
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const g = c.getContext('2d');
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const ch = rows[y][x];
+    if (ch === '.' || !palette[ch]) continue;
+    g.fillStyle = palette[ch];
+    g.fillRect(x, y, 1, 1);
+  }
+  return c;
+}
+
+function mirrored(src) {
+  const c = document.createElement('canvas');
+  c.width = src.width; c.height = src.height;
+  const g = c.getContext('2d');
+  g.translate(src.width, 0);
+  g.scale(-1, 1);
+  g.drawImage(src, 0, 0);
+  return c;
+}
+
+// A 16x16 tile painted by a function of (x, y) -> colour or null.
+function tile(size, paint) {
+  const c = document.createElement('canvas');
+  c.width = size; c.height = size;
+  const g = c.getContext('2d');
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    const col = paint(x, y);
+    if (!col) continue;
+    g.fillStyle = col;
+    g.fillRect(x, y, 1, 1);
+  }
+  return c;
+}
+
+// ---- games/fence/art.js
+// The roamer: a spark that turns between an X and a cross, its colours cycling.
+const SPARK_X = [
+  'A.........A',
+  '.B.......B.',
+  '..C.....C..',
+  '...B...B...',
+  '....AWA....',
+  '....WWW....',
+  '....AWA....',
+  '...B...B...',
+  '..C.....C..',
+  '.B.......B.',
+  'A.........A',
+];
+const SPARK_PLUS = [
+  '.....A.....',
+  '.....B.....',
+  '.....C.....',
+  '.....B.....',
+  '....AWA....',
+  'ABCBWWWBCBA',
+  '....AWA....',
+  '.....B.....',
+  '.....C.....',
+  '.....B.....',
+  '.....A.....',
+];
+const SPARK_PALS = [
+  { A: '#ff5fb8', B: '#ffd23f', C: '#ffffff', W: '#ffffff' },
+  { A: '#ffd23f', B: '#ffffff', C: '#ff5fb8', W: '#ffffff' },
+  { A: '#ffffff', B: '#ff5fb8', C: '#ffd23f', W: '#ffffff' },
+];
+
+const MARKER = [
+  'WWWWWW',
+  'WCCCCW',
+  'WCCCCW',
+  'WCCCCW',
+  'WCCCCW',
+  'WWWWWW',
+];
+
+function makeArt() {
+  const sparks = [];
+  for (const pal of SPARK_PALS) { sparks.push(sprite(SPARK_X, pal)); sparks.push(sprite(SPARK_PLUS, pal)); }
+  return {
+    spark: sparks, // pairs of X / cross per palette
+    marker: sprite(MARKER, { W: '#ffffff', C: '#5eeaf5' }),
+    markerDrawing: sprite(MARKER, { W: '#ffffff', C: '#ff3b3b' }),
+    life: sprite(MARKER.slice(1, 6).map(r => r.slice(0, 5)), { W: '#ffffff', C: '#5eeaf5' }),
+  };
+}
+
+// ---- games/fence/game.js
+// The 80x60 field at 4 pixels a cell, under a 20px score bar.
+const PX = 4, TOP = 20;
+const W = COLS * PX, H = TOP + ROWS * PX; // 320 x 260
+const LIVES = 3, MAX_LIVES = 5;
+const TICK_MS = 1000 / 60;
+const DEMO_TICKS = 60 * 30;
+
+const INK = {
+  red: '#ff3b3b', white: '#ffffff', yellow: '#ffd23f', orange: '#ff8a1e', green: '#3fd46b',
+  cyan: '#5eeaf5', pink: '#ff5fb8', grey: '#8f8fb0', dim: '#4a4a6a',
+};
+const ROW_INKS = ['#ff3b3b', '#ff8a1e', '#ffd23f', '#3fd46b', '#5eeaf5', '#8f7bff', '#ff5fb8', '#ff8a1e', '#ffd23f', '#3fd46b'];
+const LOGO_INK = ['#ffffff', '#d0f8ff', '#5eeaf5', '#5eeaf5', '#2b4cff', '#2b4cff', '#14206e'];
+const RANKS = ['1ST', '2ND', '3RD', '4TH', '5TH', '6TH', '7TH', '8TH', '9TH', '10TH'];
+// Each field wears its own colours, the way a new board did.
+const FIELD_INKS = [
+  { base: '#14206e', hi: '#2b4cff', edge: '#5eeaf5' },
+  { base: '#3a1858', hi: '#8f4bff', edge: '#ff5fb8' },
+  { base: '#0f3a1e', hi: '#1f7a3a', edge: '#3fd46b' },
+  { base: '#4a2410', hi: '#a3501e', edge: '#ffd23f' },
+];
+
+// Invented initials, so a first visit has a table to beat.
+const DEFAULT_SCORES = [
+  ['ACR', 30000], ['LOT', 22000], ['PEN', 16000], ['RUN', 12000], ['YRD', 9000],
+  ['RAL', 6000], ['GAP', 4000], ['NET', 2500], ['TIE', 1500], ['ROD', 800],
+].map(([n, s]) => ({ n, s }));
+
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const canvas = document.getElementById('c');
+const screen = makeScreen({ canvas, stage: document.getElementById('stage'), frame: document.getElementById('screen'), w: W, h: H, crtKey: 'lk.arcade.crt' });
+const ctx = screen.ctx;
+const sound = makeSound('lk.arcade.mute');
+const scores = makeScores('lk.fence.scores', DEFAULT_SCORES);
+const art = makeArt();
+
+let field = newField(1);
+let layer = null, layerDirty = true;
+let mode = 'attract', page = 'title', pageT = 0, timer = 0, t = 0, clock = 0;
+let level = 1, lives = LIVES, banked = 0, sparks = [], shake = 0, why = '';
+let demo = false, demoT = 0, pilot = null, tally = null, entry = null, highlight = -1, pausedFrom = null;
+
+const SFX = {
+  start: () => {
+    sound.tune([[523, 0.12], [659, 0.12], [784, 0.12], [1047, 0.12], [0, 0.06], [784, 0.12], [1047, 0.36]], { vol: 0.045 });
+    sound.tune([[131, 0.36], [196, 0.36], [262, 0.48]], { type: 'triangle', vol: 0.12 });
+  },
+  step: () => sound.note(1100, 0.03, { vol: 0.015 }),
+  close: () => sound.tune([[520, 0.12], [780, 0.18]], { type: 'triangle', vol: 0.1 }),
+  die: () => { sound.noise(0.5, { vol: 0.28, cutoff: 600 }); sound.note(330, 0.5, { to: 82, vol: 0.05 }); },
+  clear: () => sound.tune([[784, 0.1], [988, 0.1], [1175, 0.1], [1568, 0.1], [0, 0.06], [1175, 0.1], [1568, 0.4]], { vol: 0.045 }),
+  tick: () => sound.note(1760, 0.03, { vol: 0.025 }),
+  blip: () => sound.note(988, 0.05, { vol: 0.04 }),
+  over: () => sound.tune([[392, 0.22], [370, 0.22], [349, 0.22], [330, 0.7]], { type: 'triangle', vol: 0.12 }),
+};
+// The demo plays silently: nobody asked for noise from a screen they are not using.
+function play(name) { if (!demo) SFX[name](); }
+
+const total = () => banked + field.score;
+
+// ---------------------------------------------------------------- the game
+
+function startField() {
+  field = newField(level);
+  layerDirty = true;
+  sparks = []; shake = 0; tally = null;
+}
+
+function newGame() {
+  demo = false; highlight = -1;
+  level = 1; lives = LIVES; banked = 0;
+  startField();
+  mode = 'ready'; timer = 120;
+  play('start');
+}
+
+function startDemo() {
+  demo = true; demoT = 0; pilot = makePilot();
+  level = 1; lives = LIVES; banked = 0;
+  startField();
+  mode = 'playing';
+}
+
+function endDemo() {
+  demo = false;
+  toAttract('scores');
+}
+
+function toAttract(p) {
+  mode = 'attract'; page = p; pageT = 0; demo = false; tally = null; entry = null;
+}
+
+function heldDir() {
+  const h = input.held;
+  return h.up ? 'up' : h.down ? 'down' : h.left ? 'left' : h.right ? 'right' : null;
+}
+
+function die(reason) {
+  why = reason;
+  lives--;
+  const cx = field.player.x * PX + 2, cy = TOP + field.player.y * PX + 2;
+  for (let i = 0; i < (reduceMotion ? 8 : 26); i++) {
+    const a = Math.random() * Math.PI * 2, s = 0.3 + Math.random() * 1.5;
+    sparks.push({ x: cx, y: cy, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 1 });
+  }
+  shake = reduceMotion ? 0 : 10;
+  loseLine(field);
+  layerDirty = true;
+  play('die');
+  mode = 'dying'; t = 0;
+}
+
+function playTick() {
+  if (demo && ++demoT > DEMO_TICKS) { endDemo(); return; }
+  if (clock % 2 === 0) {
+    const dir = demo ? pilot(field) : heldDir();
+    if (dir) {
+      const r = movePlayer(field, dir);
+      if (r === 'closed') {
+        layerDirty = true;
+        play('close');
+        if (field.claimed >= TARGET) {
+          if (demo) { endDemo(); return; }
+          const bonus = clearBonus(field);
+          tally = { claimed: field.claimed, over: Math.round((field.claimed - TARGET) * 1000), levelPts: level * 250, bonus, from: total(), extra: lives < MAX_LIVES };
+          field.score += bonus;
+          mode = 'cleared'; t = 0;
+          play('clear');
+          return;
+        }
+      } else if (r === 'moved' && field.player.drawing && Math.random() < 0.25) play('step');
+    }
+  }
+  const hit = stepRoamers(field);
+  if (hit === 'line') die('THE LINE WAS CUT');
+  else if (hit === 'player') die('CAUGHT WHILE DRAWING');
+}
+
+function afterDying() {
+  if (demo) { if (lives <= 0) endDemo(); else mode = 'playing'; return; }
+  if (lives <= 0) { mode = 'over'; timer = 200; play('over'); return; }
+  mode = 'playing';
+}
+
+function nextField() {
+  banked = total();
+  level++;
+  lives = Math.min(MAX_LIVES, lives + 1);
+  startField();
+  mode = 'ready'; timer = 90;
+}
+
+function afterOver() {
+  if (scores.qualifies(total())) {
+    entry = { letters: [0, 0, 0], pos: 0, timer: 60 * 30 };
+    mode = 'entry';
+  } else {
+    toAttract('scores');
+  }
+}
+
+function saveEntry() {
+  const name = entry.letters.map(i => ENTRY_LETTERS[i]).join('');
+  highlight = scores.add(name, total());
+  toAttract('scores');
+}
+
+// ---------------------------------------------------------------- input
+
+function onAction(action) {
+  if (action === 'crt') { screen.toggleCrt(); syncToggles(); return; }
+  if (action === 'mute') { sound.toggleMute(); syncToggles(); return; }
+  if (action === 'back') { toAttract('title'); return; }
+  if (action === 'pause') {
+    if (mode === 'paused') { mode = pausedFrom; return; }
+    if (!demo && ['ready', 'playing', 'dying', 'cleared'].includes(mode)) { pausedFrom = mode; mode = 'paused'; }
+    return;
+  }
+  if (mode === 'attract' || demo) { newGame(); return; }
+  if (mode === 'paused') { mode = pausedFrom; return; }
+  if (mode === 'cleared' && t >= 60) { nextField(); return; }
+  if (mode === 'over') { timer = 0; return; }
+  if (mode === 'entry') confirmLetter();
+}
+
+function confirmLetter() {
+  play('blip');
+  entry.pos++;
+  if (entry.pos >= 3) saveEntry();
+}
+
+function onDir(dir) {
+  if (mode !== 'entry') return;
+  const n = ENTRY_LETTERS.length, i = entry.pos;
+  if (dir === 'up') { entry.letters[i] = (entry.letters[i] + 1) % n; play('blip'); }
+  else if (dir === 'down') { entry.letters[i] = (entry.letters[i] + n - 1) % n; play('blip'); }
+  else if (dir === 'right') confirmLetter();
+  else if (dir === 'left' && entry.pos > 0) { entry.pos--; play('blip'); }
+}
+
+const input = makeInput({ screen: canvas, onAction, onDir, onAny: () => sound.wake() });
+
+const crtBtn = document.querySelector('[data-action="crt"]');
+const muteBtn = document.querySelector('[data-action="mute"]');
+function syncToggles() {
+  crtBtn.textContent = 'CRT ' + (screen.crt ? 'on' : 'off');
+  crtBtn.setAttribute('aria-pressed', String(screen.crt));
+  muteBtn.textContent = 'Sound ' + (sound.muted ? 'off' : 'on');
+  muteBtn.setAttribute('aria-pressed', String(!sound.muted));
+}
+syncToggles();
+
+// A phone that locks or switches app mid-line comes back paused.
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && !demo && (mode === 'playing' || mode === 'ready')) { pausedFrom = mode; mode = 'paused'; }
+});
+
+// ---------------------------------------------------------------- drawing
+
+const blinkOn = (rate = 32) => reduceMotion || ((clock / rate) | 0) % 2 === 0;
+const prompt = () => (input.touch ? 'TAP START' : 'PRESS SPACE');
+
+// The held ground is drawn into its own canvas and only redrawn when it
+// changes: a textured fill with a bright edge wherever it meets open ground.
+function renderHeld(f, inks) {
+  const c = document.createElement('canvas');
+  c.width = COLS * PX; c.height = ROWS * PX;
+  const g = c.getContext('2d');
+  const open = (x, y) => x >= 0 && y >= 0 && x < COLS && y < ROWS && f.grid[y * COLS + x] !== HELD;
+  for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) {
+    if (f.grid[y * COLS + x] !== HELD) continue;
+    const px = x * PX, py = y * PX;
+    g.fillStyle = inks.base; g.fillRect(px, py, PX, PX);
+    g.fillStyle = inks.hi;
+    for (let k = 0; k < PX; k++) g.fillRect(px + k, py + ((PX - 1 - k + x + y) % PX), 1, 1);
+    g.fillStyle = inks.edge;
+    if (open(x, y - 1)) g.fillRect(px, py, PX, 1);
+    if (open(x, y + 1)) g.fillRect(px, py + PX - 1, PX, 1);
+    if (open(x - 1, y)) g.fillRect(px, py, 1, PX);
+    if (open(x + 1, y)) g.fillRect(px + PX - 1, py, 1, PX);
+  }
+  return c;
+}
+
+function drawField(g, f, top, lv, showPlayer, cached = false) {
+  if (cached) {
+    if (layerDirty) { layer = renderHeld(f, FIELD_INKS[(lv - 1) % FIELD_INKS.length]); layerDirty = false; }
+    g.drawImage(layer, 0, top);
+  } else {
+    g.drawImage(renderHeld(f, FIELD_INKS[(lv - 1) % FIELD_INKS.length]), 0, top);
+  }
+  for (let i = 0; i < f.grid.length; i++) {
+    if (f.grid[i] !== TRAIL) continue;
+    const x = (i % COLS) * PX, y = top + ((i / COLS) | 0) * PX;
+    g.fillStyle = INK.orange; g.fillRect(x, y, PX, PX);
+    g.fillStyle = '#fff3a0'; g.fillRect(x + 1, y + 1, 2, 2);
+  }
+  const frame = reduceMotion ? 0 : (clock >> 3) % 2, pal = reduceMotion ? 0 : (clock >> 2) % 3;
+  for (const r of f.roamers) g.drawImage(art.spark[pal * 2 + frame], Math.round(r.x * PX) - 5, Math.round(top + r.y * PX) - 5);
+  if (showPlayer) {
+    const img = f.player.drawing && blinkOn(8) ? art.markerDrawing : art.marker;
+    g.drawImage(img, f.player.x * PX - 1, top + f.player.y * PX - 1);
+  }
+}
+
+function banner(lines, y) {
+  const wide = Math.max(...lines.map(([s]) => s.length)) * 6 + 10;
+  ctx.fillStyle = '#000';
+  ctx.fillRect(Math.floor((W - wide) / 2), y - 5, wide, lines.length * 12 + 7);
+  lines.forEach(([s, ink], i) => text(ctx, s, W / 2, y + i * 12, ink, { align: 'center' }));
+}
+
+function drawHud() {
+  const shown = tally ? tally.from + Math.round(tally.bonus * Math.max(0, Math.min(1, (t - 60) / 40))) : total();
+  const hi = Math.max(scores.top, demo ? 0 : total());
+  if (!(mode === 'playing' && !demo) || blinkOn(24)) text(ctx, '1UP', 8, 3, INK.red);
+  text(ctx, String(mode === 'attract' ? 0 : shown).padStart(2, '0'), 50, 12, INK.white, { align: 'right' });
+  text(ctx, 'HI-SCORE', W / 2, 3, INK.red, { align: 'center' });
+  text(ctx, String(hi), W / 2, 12, INK.white, { align: 'center' });
+  if (mode === 'attract' || mode === 'entry') return;
+  const pct = Math.floor(field.claimed * 100);
+  text(ctx, 'CLAIMED', 290, 3, INK.red, { align: 'right' });
+  text(ctx, pct + '%', 316, 3, field.claimed >= TARGET ? INK.green : INK.white, { align: 'right' });
+  ctx.fillStyle = '#1a1a2a'; ctx.fillRect(256, 12, 60, 5);
+  ctx.fillStyle = field.claimed >= TARGET ? INK.green : INK.cyan;
+  ctx.fillRect(256, 12, Math.round(60 * Math.min(1, field.claimed)), 5);
+  ctx.fillStyle = INK.yellow; ctx.fillRect(256 + Math.round(60 * TARGET), 11, 1, 7);
+  for (let i = 0; i < lives; i++) ctx.drawImage(art.life, 246 - i * 8, 12);
+}
+
+function drawCleared() {
+  const w = 200, h = 92, x0 = (W - w) / 2, y0 = TOP + 60;
+  ctx.fillStyle = '#000'; ctx.fillRect(x0, y0, w, h);
+  ctx.fillStyle = INK.cyan;
+  ctx.fillRect(x0, y0, w, 1); ctx.fillRect(x0, y0 + h - 1, w, 1); ctx.fillRect(x0, y0, 1, h); ctx.fillRect(x0 + w - 1, y0, 1, h);
+  text(ctx, 'FIELD TAKEN', W / 2, y0 + 8, INK.yellow, { align: 'center', scale: 2 });
+  const row = (i, label, value) => {
+    const y = y0 + 32 + i * 12;
+    text(ctx, label, x0 + 10, y, INK.grey);
+    text(ctx, value, x0 + w - 10, y, INK.white, { align: 'right' });
+  };
+  if (t >= 20) row(0, 'CLAIMED', Math.floor(tally.claimed * 100) + '%');
+  if (t >= 35) row(1, 'OVER THE TARGET', String(tally.over));
+  if (t >= 50) row(2, 'FIELD ' + level + ' X 250', String(tally.levelPts));
+  if (t >= 65 && tally.extra) text(ctx, 'EXTRA LIFE', W / 2, y0 + 70, INK.green, { align: 'center' });
+  if (t >= 80 && blinkOn()) text(ctx, prompt(), W / 2, y0 + h + 6, INK.yellow, { align: 'center' });
+}
+
+function drawTitle() {
+  text(ctx, 'FENCE', W / 2 + 2, 44, '#1c2870', { align: 'center', scale: 5 });
+  text(ctx, 'FENCE', W / 2, 42, LOGO_INK, { align: 'center', scale: 5 });
+  text(ctx, 'CLAIM THE FIELD, ONE LINE AT A TIME', W / 2, 88, INK.grey, { align: 'center' });
+  const demoField = { grid: new Uint8Array(COLS * ROWS), roamers: [{ x: 40 + Math.sin(clock / 50) * 10, y: 41 + Math.cos(clock / 37) * 4 }], player: { x: 26, y: 34, drawing: false } };
+  for (let y = 34; y < 50; y++) for (let x = 18; x < 62; x++) demoField.grid[y * COLS + x] = y === 34 || y === 49 || x === 18 || x === 61 ? HELD : OPEN;
+  for (let y = 34; y < 44; y++) demoField.grid[y * COLS + 26] = TRAIL;
+  ctx.save(); ctx.beginPath(); ctx.rect(0, TOP + 34 * PX, W, 16 * PX); ctx.clip();
+  drawField(ctx, demoField, TOP, 1, true);
+  ctx.restore();
+  if (blinkOn()) text(ctx, prompt(), W / 2, 236, INK.yellow, { align: 'center' });
+  text(ctx, 'LEON KARSTEN 2026', W / 2, 250, INK.dim, { align: 'center' });
+}
+
+function drawHowTo() {
+  text(ctx, 'HOW TO PLAY', W / 2, 30, INK.cyan, { align: 'center' });
+  text(ctx, 'PUSH OUT INTO THE OPEN AND COME BACK', W / 2, 48, INK.white, { align: 'center' });
+  text(ctx, 'TO KEEP EVERYTHING YOU ENCLOSED.', W / 2, 60, INK.white, { align: 'center' });
+  text(ctx, 'WHILE THE LINE IS UNFINISHED YOU CAN', W / 2, 80, INK.orange, { align: 'center' });
+  text(ctx, 'BE CAUGHT. ON YOUR OWN GROUND YOU CANNOT.', W / 2, 92, INK.orange, { align: 'center' });
+  text(ctx, 'TRAP A SPARK IN A SMALL POCKET AND', W / 2, 112, INK.white, { align: 'center' });
+  text(ctx, 'THE REST OF THE FIELD IS YOURS.', W / 2, 124, INK.white, { align: 'center' });
+  text(ctx, 'CLAIM ' + Math.round(TARGET * 100) + '% TO TAKE THE FIELD.', W / 2, 144, INK.cyan, { align: 'center' });
+  text(ctx, 'SCORING', W / 2, 166, INK.yellow, { align: 'center' });
+  const row = (y, label, value) => { text(ctx, label, 50, y, INK.grey); text(ctx, value, 270, y, INK.white, { align: 'right' }); };
+  row(180, 'EACH CELL CLAIMED', '1 X FIELD');
+  row(190, 'EACH 0.1% OVER THE TARGET', '1');
+  row(200, 'EACH FIELD TAKEN', '250 X FIELD');
+  if (blinkOn()) text(ctx, prompt(), W / 2, 236, INK.yellow, { align: 'center' });
+}
+
+function drawScores() {
+  text(ctx, 'HIGH SCORES', W / 2, 30, INK.yellow, { align: 'center' });
+  text(ctx, 'RANK', 80, 48, INK.grey);
+  text(ctx, 'SCORE', 196, 48, INK.grey, { align: 'right' });
+  text(ctx, 'NAME', 220, 48, INK.grey);
+  scores.table.forEach((r, i) => {
+    if (i === highlight && !blinkOn(16)) return;
+    const y = 64 + i * 16;
+    const ink = i === highlight ? INK.white : ROW_INKS[i];
+    text(ctx, RANKS[i], 80, y, ink);
+    text(ctx, String(r.s), 196, y, ink, { align: 'right' });
+    text(ctx, r.n, 220, y, ink);
+  });
+  if (blinkOn()) text(ctx, prompt(), W / 2, 240, INK.yellow, { align: 'center' });
+}
+
+function drawEntry() {
+  text(ctx, 'YOU MADE THE TOP TEN', W / 2, 40, INK.cyan, { align: 'center' });
+  text(ctx, String(total()), W / 2, 56, INK.yellow, { align: 'center', scale: 2 });
+  text(ctx, 'ENTER YOUR INITIALS', W / 2, 90, INK.white, { align: 'center' });
+  for (let i = 0; i < 3; i++) {
+    const x = W / 2 - 39 + i * 30;
+    const current = i === entry.pos;
+    if (!current || blinkOn(16)) text(ctx, ENTRY_LETTERS[entry.letters[i]], x, 110, current ? INK.yellow : INK.white, { scale: 3 });
+    ctx.fillStyle = current ? INK.yellow : INK.dim;
+    ctx.fillRect(x - 2, 136, 18, 2);
+  }
+  text(ctx, 'UP / DOWN   CHANGE LETTER', W / 2, 160, INK.grey, { align: 'center' });
+  text(ctx, (input.touch ? 'RIGHT OR START' : 'RIGHT OR SPACE') + '   NEXT', W / 2, 172, INK.grey, { align: 'center' });
+  text(ctx, 'LEFT   BACK', W / 2, 184, INK.grey, { align: 'center' });
+  text(ctx, 'TIME ' + Math.ceil(entry.timer / 60), W / 2, 212, INK.orange, { align: 'center' });
+}
+
+function draw() {
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, W, H);
+  drawHud();
+  if (mode === 'attract') {
+    if (page === 'title') drawTitle();
+    else if (page === 'howto') drawHowTo();
+    else drawScores();
+    return;
+  }
+  if (mode === 'entry') { drawEntry(); return; }
+  ctx.save();
+  if (shake > 0) ctx.translate(Math.round((Math.random() - 0.5) * shake / 2), Math.round((Math.random() - 0.5) * shake / 2));
+  drawField(ctx, field, TOP, level, mode !== 'dying' || (t >> 2) % 2 === 0, true);
+  for (const s of sparks) {
+    ctx.fillStyle = s.life > 0.6 ? INK.white : s.life > 0.3 ? INK.yellow : INK.orange;
+    ctx.fillRect(Math.round(s.x), Math.round(s.y), 1, 1);
+  }
+  ctx.restore();
+  const mid = TOP + 100;
+  if (mode === 'ready') banner(demo ? [['DEMO PLAY', INK.cyan]] : [['FIELD ' + level, INK.cyan], ['CLAIM ' + Math.round(TARGET * 100) + '%', INK.yellow]], mid);
+  else if (mode === 'paused') banner([['PAUSED', INK.white], [input.touch ? 'TAP START' : 'PRESS P', INK.grey]], mid);
+  else if (mode === 'dying' && t > 10) banner([[why, INK.red], [lives > 0 ? (lives === 1 ? '1 LIFE LEFT' : lives + ' LIVES LEFT') : '', INK.grey]], mid);
+  else if (mode === 'over') banner([['GAME OVER', INK.red]], mid);
+  else if (mode === 'cleared') drawCleared();
+  if (demo && mode === 'playing' && blinkOn()) text(ctx, 'DEMO PLAY', W / 2, TOP + 8, INK.yellow, { align: 'center' });
+}
+
+// ---------------------------------------------------------------- card art
+
+// The picture on the site's Games page, 320x240 (the card is 4:3): a field
+// part-claimed by the demo pilot, a line half drawn, the logo on a band.
+function drawCard() {
+  const c = document.createElement('canvas');
+  c.width = 320; c.height = 240;
+  const g = c.getContext('2d');
+  g.fillStyle = '#000'; g.fillRect(0, 0, 320, 240);
+  const f = newField(2, () => 0.5);
+  const fill = (x0, y0, x1, y1, v) => { for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) f.grid[y * COLS + x] = v; };
+  fill(0, 0, 22, 59, HELD); fill(23, 40, 40, 59, HELD); fill(60, 0, 79, 18, HELD); fill(66, 19, 79, 30, HELD);
+  for (let y = 19; y <= 34; y++) f.grid[y * COLS + 62] = TRAIL;
+  for (let x = 52; x <= 62; x++) f.grid[34 * COLS + x] = TRAIL;
+  f.player = { x: 52, y: 34, drawing: true };
+  f.roamers = [{ x: 36, y: 28 }, { x: 64, y: 48 }];
+  drawField(g, f, 0, 2, true);
+  g.fillStyle = '#000'; g.fillRect(84, 6, 152, 44);
+  text(g, 'FENCE', 162, 14, '#1c2870', { align: 'center', scale: 5 });
+  text(g, 'FENCE', 160, 12, LOGO_INK, { align: 'center', scale: 5 });
+  return c;
+}
+
+// ---------------------------------------------------------------- loop
+
+const PAGES = { title: ['howto', 420], howto: ['demo', 600], scores: ['title', 420] };
+function attractTick() {
+  pageT++;
+  const [next, length] = PAGES[page];
+  if (pageT < length) return;
+  if (next === 'demo') { startDemo(); return; }
+  if (next === 'title') highlight = -1;
+  toAttract(next);
+}
+
+function tick() {
+  clock++;
+  for (const s of sparks) { s.x += s.vx; s.y += s.vy; s.life -= 0.02; }
+  sparks = sparks.filter(s => s.life > 0);
+  if (shake > 0) shake--;
+  switch (mode) {
+    case 'attract': attractTick(); break;
+    case 'ready': if (--timer <= 0) mode = 'playing'; break;
+    case 'playing': playTick(); break;
+    case 'dying': if (++t >= 90) afterDying(); break;
+    case 'cleared':
+      t++;
+      if (t > 60 && t <= 100 && t % 3 === 0) play('tick');
+      if (t >= 600) nextField();
+      break;
+    case 'over': if (--timer <= 0) afterOver(); break;
+    case 'entry': if (--entry.timer <= 0) saveEntry(); break;
+  }
+}
+
+// A fixed 60 ticks a second whatever the display's refresh rate.
+let acc = 0, lastT = 0;
+function frame(now) {
+  requestAnimationFrame(frame);
+  if (!lastT) lastT = now;
+  acc += Math.min(100, now - lastT);
+  lastT = now;
+  while (acc >= TICK_MS) { tick(); acc -= TICK_MS; }
+  draw();
+}
+requestAnimationFrame(frame);
+
+// Read-only view for the page checks, plus shortcuts so a check can reach the
+// later screens without playing a whole game.
+window.__fence = {
+  get mode() { return mode; },
+  get page() { return page; },
+  get demo() { return demo; },
+  get score() { return total(); },
+  get lives() { return lives; },
+  get claimed() { return field.claimed; },
+  get player() { return { ...field.player }; },
+  attract(p) { toAttract(p); },
+  endGame(s) { demo = false; banked = s; field.score = 0; lives = 0; mode = 'over'; timer = 1; },
+  // Park every roamer in the bottom-right corner, so a line cut near the top
+  // is safe and closing it claims the big side.
+  corner() { for (const r of field.roamers) { r.x = COLS - 3.5; r.y = ROWS - 3.5; r.vx = 0.01; r.vy = 0.01; } },
+  dropRoamer(x, y) { Object.assign(field.roamers[0], { x: x + 0.5, y: y + 0.5 }); },
+};
+window.__arcade = { card: drawCard };
+})();
+</script>
+</body>
+</html>

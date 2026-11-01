@@ -1,0 +1,8 @@
+{
+  "name": "Fence",
+  "slug": "fence",
+  "summary": "Claim ground by drawing into open space and coming home. You can only be caught while the line is unfinished.",
+  "app": "/play/fence/",
+  "image": "/play/fence/card.png",
+  "tags": ["territory", "keyboard or touch"]
+}

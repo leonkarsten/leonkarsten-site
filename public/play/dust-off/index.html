@@ -251,7 +251,9 @@ const GLYPHS = {
   '<': '...#. ..#.. .#... #.... .#... ..#.. ...#.',
   '>': '.#... ..#.. ...#. ....# ...#. ..#.. .#...',
   '*': '..... #...# .#.#. ..#.. .#.#. #...# .....',
+  '%': '##..# ##.#. ...#. ..#.. .#... .#.## #..##',
 };
+const FONT_CHARS = Object.keys(GLYPHS).join('');
 
 const FONT_BITS = {};
 for (const [ch, rows] of Object.entries(GLYPHS)) FONT_BITS[ch] = rows.split(' ');
