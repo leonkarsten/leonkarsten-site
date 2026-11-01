@@ -1,0 +1,1268 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>House Call</title>
+<meta name="description" content="You have a spray can and a house full of rooms. They come down on threads.">
+<meta name="theme-color" content="#000000">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2016%2016'%20shape-rendering='crispEdges'%3E%3Crect%20width='16'%20height='16'%20fill='%23000'/%3E%3Crect%20x='5'%20y='6'%20width='6'%20height='5'%20fill='%23c8f048'/%3E%3Crect%20x='6'%20y='8'%20width='1'%20height='1'%20fill='%23ff3b3b'/%3E%3Crect%20x='9'%20y='8'%20width='1'%20height='1'%20fill='%23ff3b3b'/%3E%3Crect%20x='2'%20y='5'%20width='3'%20height='1'%20fill='%236a8a10'/%3E%3Crect%20x='11'%20y='5'%20width='3'%20height='1'%20fill='%236a8a10'/%3E%3Crect%20x='2'%20y='11'%20width='3'%20height='1'%20fill='%236a8a10'/%3E%3Crect%20x='11'%20y='11'%20width='3'%20height='1'%20fill='%236a8a10'/%3E%3Crect%20x='8'%20y='0'%20width='1'%20height='6'%20fill='%23a0a090'/%3E%3C/svg%3E">
+<style>
+:root {
+  --void: #000;
+  --chrome: #8f8fb0;
+  --chrome-hi: #5eeaf5;
+  --edge: #2a2a40;
+  --start: #e8302f;
+  --ui: ui-monospace, 'Cascadia Mono', Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; height: 100%; background: var(--void); color: var(--chrome); }
+body {
+  font-family: var(--ui);
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  height: 100dvh;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: 'bar' 'stage' 'pad';
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.bar {
+  grid-area: bar;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+}
+.bar a, .bar button {
+  font: 700 12px/1 var(--ui);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--chrome);
+  background: none;
+  border: 1px solid transparent;
+  padding: 9px 10px;
+  text-decoration: none;
+  cursor: pointer;
+  border-radius: 0;
+}
+.bar a:hover, .bar button:hover, .bar a:focus-visible, .bar button:focus-visible {
+  color: var(--chrome-hi);
+  border-color: var(--edge);
+  outline: none;
+}
+.bar button[aria-pressed='true'] { color: var(--chrome-hi); }
+.toggles { display: flex; gap: 2px; }
+
+.stage {
+  grid-area: stage;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  padding: 8px 16px;
+}
+/* A faint edge, so an unexplored black playfield still has a size. */
+.screen { position: relative; line-height: 0; touch-action: none; box-shadow: 0 0 0 1px #1c1c2c; }
+.screen canvas {
+  display: block;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+/* The CRT switch. Off by default: sharp pixels are the honest picture, the
+   tube is a costume. Scanlines are one per game pixel row (--px is set by
+   the screen fit), so they never beat against the art. */
+.screen.crt { border-radius: 3% / 4%; overflow: hidden; box-shadow: 0 0 0 4px #0b0b14, 0 0 36px rgba(94, 234, 245, 0.12); }
+.screen.crt canvas { filter: saturate(1.25) brightness(1.12) contrast(1.05) blur(calc(var(--px) * 0.18)); }
+.screen.crt::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background:
+    radial-gradient(ellipse at center, rgba(0, 0, 0, 0) 58%, rgba(0, 0, 0, 0.6) 100%),
+    repeating-linear-gradient(to bottom,
+      rgba(0, 0, 0, 0) 0, rgba(0, 0, 0, 0) calc(var(--px) * 0.55),
+      rgba(0, 0, 0, 0.38) calc(var(--px) * 0.55), rgba(0, 0, 0, 0.38) var(--px));
+  box-shadow: inset 0 0 48px rgba(0, 0, 0, 0.75);
+}
+
+/* Touch controls: shown on touch screens only. */
+.pad {
+  grid-area: pad;
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  max-width: 380px;
+  margin: 0 auto;
+  padding: 4px 20px 16px;
+}
+body.touch .pad { display: flex; }
+.dpad {
+  display: grid;
+  grid-template-columns: repeat(3, 54px);
+  grid-template-rows: repeat(3, 50px);
+  gap: 3px;
+}
+.dpad button, .start {
+  font: 700 18px/1 var(--ui);
+  color: var(--chrome);
+  background: #12121e;
+  border: 2px solid var(--edge);
+  border-radius: 6px;
+  padding: 0;
+  touch-action: none;
+  cursor: pointer;
+}
+.dpad button:active { background: #24243a; color: var(--chrome-hi); }
+.dpad .up { grid-area: 1 / 2; }
+.dpad .left { grid-area: 2 / 1; }
+.dpad .right { grid-area: 2 / 3; }
+.dpad .down { grid-area: 3 / 2; }
+.start {
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  background: var(--start);
+  border: 4px solid #7a1414;
+  color: #fff;
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  box-shadow: inset 0 -6px 0 rgba(0, 0, 0, 0.25);
+}
+.start:active { transform: translateY(2px); box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.25); }
+
+/* A phone on its side: d-pad left of the screen, START right of it. A game
+   with no d-pad (its keys are on the screen) moves the bar to a column
+   instead, so an upright screen gets the full height. */
+@media (orientation: landscape) and (max-height: 520px) {
+  body.no-pad {
+    grid-template-rows: minmax(0, 1fr);
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas: 'bar stage';
+  }
+  body.no-pad .bar { flex-direction: column; justify-content: flex-start; align-items: flex-start; }
+  body.no-pad .toggles { flex-direction: column; }
+  .stage { padding: 4px 8px; }
+  body.touch:not(.no-pad) {
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas: 'bar bar bar' 'dpad stage start';
+  }
+  body.touch:not(.no-pad) .pad { display: contents; }
+  body.touch .dpad { grid-area: dpad; align-self: center; margin-left: 12px; }
+  body.touch .start { grid-area: start; align-self: center; margin-right: 16px; }
+}
+</style>
+</head>
+<body>
+
+<header class="bar">
+  <a href="/games/">&larr; Games</a>
+  <div class="toggles">
+    <button type="button" data-action="crt" aria-pressed="false">CRT off</button>
+    <button type="button" data-action="mute" aria-pressed="true">Sound on</button>
+    <button type="button" data-action="pause">Pause</button>
+  </div>
+</header>
+
+<main class="stage" id="stage">
+  <div class="screen" id="screen">
+    <canvas id="c" role="img" aria-label="House Call game screen. Left and right to walk, hold Space or up to spray, P to pause."></canvas>
+  </div>
+</main>
+
+<div class="pad">
+  <div class="dpad">
+    <button type="button" class="up" data-dir="up" aria-label="Up">&#9650;</button>
+    <button type="button" class="left" data-dir="left" aria-label="Left">&#9664;</button>
+    <button type="button" class="right" data-dir="right" aria-label="Right">&#9654;</button>
+    <button type="button" class="down" data-dir="down" aria-label="Down">&#9660;</button>
+  </div>
+  <button type="button" class="start" data-action="start">Start</button>
+</div>
+
+<script>
+(() => {
+'use strict';
+// ---- engine/font.js
+// 5x7 bitmap font, one string per glyph, rows separated by spaces. Drawn with
+// fillRect so it stays on the pixel grid at any scale; there is no web font.
+const GLYPHS = {
+  A: '.###. #...# #...# ##### #...# #...# #...#',
+  B: '####. #...# #...# ####. #...# #...# ####.',
+  C: '.###. #...# #.... #.... #.... #...# .###.',
+  D: '####. #...# #...# #...# #...# #...# ####.',
+  E: '##### #.... #.... ####. #.... #.... #####',
+  F: '##### #.... #.... ####. #.... #.... #....',
+  G: '.###. #...# #.... #.### #...# #...# .####',
+  H: '#...# #...# #...# ##### #...# #...# #...#',
+  I: '.###. ..#.. ..#.. ..#.. ..#.. ..#.. .###.',
+  J: '..### ...#. ...#. ...#. ...#. #..#. .##..',
+  K: '#...# #..#. #.#.. ##... #.#.. #..#. #...#',
+  L: '#.... #.... #.... #.... #.... #.... #####',
+  M: '#...# ##.## #.#.# #.#.# #...# #...# #...#',
+  N: '#...# #...# ##..# #.#.# #..## #...# #...#',
+  O: '.###. #...# #...# #...# #...# #...# .###.',
+  P: '####. #...# #...# ####. #.... #.... #....',
+  Q: '.###. #...# #...# #...# #.#.# #..#. .##.#',
+  R: '####. #...# #...# ####. #.#.. #..#. #...#',
+  S: '.###. #...# #.... .###. ....# #...# .###.',
+  T: '##### ..#.. ..#.. ..#.. ..#.. ..#.. ..#..',
+  U: '#...# #...# #...# #...# #...# #...# .###.',
+  V: '#...# #...# #...# #...# #...# .#.#. ..#..',
+  W: '#...# #...# #...# #.#.# #.#.# #.#.# .#.#.',
+  X: '#...# #...# .#.#. ..#.. .#.#. #...# #...#',
+  Y: '#...# #...# .#.#. ..#.. ..#.. ..#.. ..#..',
+  Z: '##### ....# ...#. ..#.. .#... #.... #####',
+  0: '.###. #...# #..## #.#.# ##..# #...# .###.',
+  1: '..#.. .##.. ..#.. ..#.. ..#.. ..#.. .###.',
+  2: '.###. #...# ....# ...#. ..#.. .#... #####',
+  3: '##### ...#. ..#.. ...#. ....# #...# .###.',
+  4: '...#. ..##. .#.#. #..#. ##### ...#. ...#.',
+  5: '##### #.... ####. ....# ....# #...# .###.',
+  6: '..##. .#... #.... ####. #...# #...# .###.',
+  7: '##### ....# ...#. ..#.. .#... .#... .#...',
+  8: '.###. #...# #...# .###. #...# #...# .###.',
+  9: '.###. #...# #...# .#### ....# ...#. .##..',
+  ' ': '..... ..... ..... ..... ..... ..... .....',
+  '.': '..... ..... ..... ..... ..... .##.. .##..',
+  ',': '..... ..... ..... ..... .##.. ..#.. .#...',
+  '!': '..#.. ..#.. ..#.. ..#.. ..#.. ..... ..#..',
+  '?': '.###. #...# ....# ...#. ..#.. ..... ..#..',
+  '-': '..... ..... ..... .###. ..... ..... .....',
+  '+': '..... ..#.. ..#.. ##### ..#.. ..#.. .....',
+  '=': '..... ..... ##### ..... ##### ..... .....',
+  ':': '..... .##.. .##.. ..... .##.. .##.. .....',
+  '/': '....# ...#. ...#. ..#.. .#... .#... #....',
+  "'": '..#.. ..#.. .#... ..... ..... ..... .....',
+  '<': '...#. ..#.. .#... #.... .#... ..#.. ...#.',
+  '>': '.#... ..#.. ...#. ....# ...#. ..#.. .#...',
+  '*': '..... #...# .#.#. ..#.. .#.#. #...# .....',
+  '%': '##..# ##.#. ...#. ..#.. .#... .#.## #..##',
+};
+const FONT_CHARS = Object.keys(GLYPHS).join('');
+
+const FONT_BITS = {};
+for (const [ch, rows] of Object.entries(GLYPHS)) FONT_BITS[ch] = rows.split(' ');
+
+const GLYPH_W = 5, GLYPH_H = 7, ADVANCE = 6;
+
+function textWidth(str, scale = 1) {
+  return str.length ? (str.length * ADVANCE - 1) * scale : 0;
+}
+
+// `color` is one colour, or an array of seven (one per glyph row) for the
+// striped logos arcade title screens used.
+function text(ctx, str, x, y, color, opts = {}) {
+  const scale = opts.scale || 1;
+  const s = String(str).toUpperCase();
+  let left = x;
+  if (opts.align === 'center') left = x - Math.floor(textWidth(s, scale) / 2);
+  else if (opts.align === 'right') left = x - textWidth(s, scale);
+  for (let i = 0; i < s.length; i++) {
+    const rows = FONT_BITS[s[i]] || FONT_BITS['?'];
+    const gx = left + i * ADVANCE * scale;
+    for (let r = 0; r < GLYPH_H; r++) {
+      ctx.fillStyle = Array.isArray(color) ? color[r] : color;
+      const row = rows[r];
+      for (let c = 0; c < GLYPH_W; c++) {
+        if (row[c] === '#') ctx.fillRect(gx + c * scale, y + r * scale, scale, scale);
+      }
+    }
+  }
+}
+
+// ---- engine/screen.js
+// The arcade screen: a small fixed-resolution canvas, scaled up in whole
+// DEVICE pixels so every game pixel is the same size and stays sharp. A 336px
+// screen on a 3x phone is drawn at exactly 3 device pixels per game pixel,
+// never 3.35, which is what makes uneven, shimmering pixels.
+function makeScreen({ canvas, stage, frame, w, h, crtKey }) {
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+
+  function fit() {
+    const dpr = window.devicePixelRatio || 1;
+    // clientWidth/Height include the stage's padding; the screen gets only
+    // what is inside it.
+    const cs = getComputedStyle(stage);
+    const aw = stage.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    const ah = stage.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+    const s = Math.max(1, Math.floor(Math.min((aw * dpr) / w, (ah * dpr) / h)));
+    canvas.style.width = (s * w) / dpr + 'px';
+    canvas.style.height = (s * h) / dpr + 'px';
+    frame.style.setProperty('--px', s / dpr + 'px');
+  }
+  addEventListener('resize', fit);
+  if (window.visualViewport) visualViewport.addEventListener('resize', fit);
+  fit();
+
+  let crt = false;
+  try { crt = localStorage.getItem(crtKey) === '1'; } catch { crt = false; }
+  function setCrt(on) {
+    crt = on;
+    frame.classList.toggle('crt', on);
+    try { localStorage.setItem(crtKey, on ? '1' : '0'); } catch {}
+  }
+  setCrt(crt);
+
+  return {
+    ctx, w, h, fit,
+    get crt() { return crt; },
+    toggleCrt() { setCrt(!crt); return crt; },
+  };
+}
+
+// ---- engine/sound.js
+// Chip sound: square, triangle and noise voices made in the browser. No audio
+// files. Browsers only allow sound after a tap or key, so `wake()` is called
+// from every input handler and does nothing until then.
+function makeSound(muteKey) {
+  let ac = null, out = null;
+  let muted = false;
+  try { muted = localStorage.getItem(muteKey) === '1'; } catch { muted = false; }
+
+  function wake() {
+    if (ac) { if (ac.state === 'suspended') ac.resume(); return; }
+    const Ctor = window.AudioContext || window.webkitAudioContext;
+    if (!Ctor) return;
+    ac = new Ctor();
+    out = ac.createGain();
+    out.gain.value = muted ? 0 : 1;
+    out.connect(ac.destination);
+  }
+
+  // One note. `at` is seconds from now, `to` slides the pitch.
+  function note(freq, dur, { type = 'square', vol = 0.05, at = 0, to = null } = {}) {
+    if (!ac) return;
+    const t = ac.currentTime + at;
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(freq, t);
+    if (to) o.frequency.exponentialRampToValueAtTime(to, t + dur);
+    g.gain.setValueAtTime(vol, t);
+    g.gain.setValueAtTime(vol, t + dur * 0.7);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(out);
+    o.start(t); o.stop(t + dur + 0.02);
+  }
+
+  // A run of notes: [[freq, dur], ...], each after the last; 0 is a rest.
+  function tune(notes, opts = {}) {
+    let at = opts.at || 0;
+    for (const [f, d] of notes) {
+      if (f) note(f, d * 0.92, { ...opts, at });
+      at += d;
+    }
+  }
+
+  function noise(dur, { vol = 0.2, cutoff = 900, at = 0 } = {}) {
+    if (!ac) return;
+    const len = Math.floor(ac.sampleRate * dur);
+    const buf = ac.createBuffer(1, len, ac.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len) ** 2;
+    const s = ac.createBufferSource(); s.buffer = buf;
+    const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = cutoff;
+    const g = ac.createGain(); g.gain.value = vol;
+    s.connect(f); f.connect(g); g.connect(out);
+    s.start(ac.currentTime + at);
+  }
+
+  // A held sound (an engine): filtered noise that runs for the whole session
+  // and is gated by its gain. Starting a source every frame is what makes
+  // engine sound crackle. Returns set(on); safe to call before wake().
+  function drone({ cutoff = 420, vol = 0.16 } = {}) {
+    let gain = null;
+    return on => {
+      if (!ac) return;
+      if (!gain) {
+        const len = ac.sampleRate * 2;
+        const buf = ac.createBuffer(1, len, ac.sampleRate);
+        const d = buf.getChannelData(0);
+        for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+        const s = ac.createBufferSource(); s.buffer = buf; s.loop = true;
+        const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = cutoff;
+        gain = ac.createGain(); gain.gain.value = 0;
+        s.connect(f); f.connect(gain); gain.connect(out);
+        s.start();
+      }
+      gain.gain.setTargetAtTime(on ? vol : 0, ac.currentTime, 0.03);
+    };
+  }
+
+  function setMuted(on) {
+    muted = on;
+    if (out) out.gain.value = on ? 0 : 1;
+    try { localStorage.setItem(muteKey, on ? '1' : '0'); } catch {}
+  }
+
+  return {
+    wake, note, tune, noise, drone,
+    get muted() { return muted; },
+    toggleMute() { setMuted(!muted); return muted; },
+  };
+}
+
+// ---- engine/input.js
+// Keyboard and touch in one place. `held` is what a game polls each tick;
+// `onDir` fires once per press (menus, initials); `onAction` carries the
+// buttons: start, pause, back, crt, mute.
+//
+// A word game passes `onLetter`: then every letter key is a letter (WASD stop
+// being directions, P/C/M stop being shortcuts; those stay on the buttons) and
+// only the arrows move. `onKey(code)` gets any other key and returns true if
+// it used it. `onPoint(x, y)` receives taps on the screen in GAME
+// pixels; returning true means the game used the tap, otherwise it is START.
+function makeInput({ screen, onAction, onDir, onAny, onLetter = null, onPoint = null, onKey = null }) {
+  // `fire` is Space, Enter or the START button while held, for games that
+  // hold a trigger down; every other game ignores it.
+  const held = { up: false, down: false, left: false, right: false, fire: false };
+  const KEYS = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
+  const ACTIONS = { Space: 'start', Enter: 'start', Escape: 'back' };
+  if (!onLetter) {
+    Object.assign(KEYS, { KeyW: 'up', KeyS: 'down', KeyA: 'left', KeyD: 'right' });
+    Object.assign(ACTIONS, { KeyP: 'pause', KeyC: 'crt', KeyM: 'mute' });
+  }
+
+  let touch = matchMedia('(pointer: coarse)').matches;
+  const markTouch = on => {
+    touch = on;
+    document.body.classList.toggle('touch', on);
+  };
+  markTouch(touch);
+  addEventListener('touchstart', () => { if (!touch) markTouch(true); }, { passive: true });
+
+  addEventListener('keydown', e => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const dir = KEYS[e.code];
+    if (dir) {
+      e.preventDefault();
+      onAny();
+      if (!e.repeat) onDir(dir);
+      held[dir] = true;
+      return;
+    }
+    const action = ACTIONS[e.code];
+    if (action) {
+      if (action === 'start') held.fire = true;
+      // Space and Enter on a focused button or link belong to that control.
+      if ((e.code === 'Space' || e.code === 'Enter') && e.target.closest && e.target.closest('button, a')) return;
+      e.preventDefault();
+      onAny();
+      if (!e.repeat) onAction(action);
+      return;
+    }
+    // e.key, not e.code: the letter printed on the key, whatever the layout.
+    // Digits come through the same door, for games that number their keys.
+    if (onLetter && /^[a-z0-9]$/i.test(e.key)) {
+      e.preventDefault();
+      onAny();
+      if (!e.repeat) onLetter(e.key.toUpperCase());
+    }
+    // Anything else a game asked for by code (Z for undo, R for restart).
+    else if (onKey && !e.repeat && onKey(e.code)) { e.preventDefault(); onAny(); }
+  });
+  addEventListener('keyup', e => {
+    const dir = KEYS[e.code];
+    if (dir) held[dir] = false;
+    if (ACTIONS[e.code] === 'start') held.fire = false;
+  });
+  addEventListener('blur', () => { held.up = held.down = held.left = held.right = held.fire = false; });
+
+  for (const b of document.querySelectorAll('[data-dir]')) {
+    const dir = b.dataset.dir;
+    const down = e => {
+      e.preventDefault();
+      onAny();
+      held.up = held.down = held.left = held.right = false;
+      held[dir] = true;
+      onDir(dir);
+    };
+    const up = () => { held[dir] = false; };
+    b.addEventListener('pointerdown', down);
+    b.addEventListener('pointerup', up);
+    b.addEventListener('pointerleave', up);
+    b.addEventListener('pointercancel', up);
+    b.addEventListener('contextmenu', e => e.preventDefault());
+  }
+  for (const b of document.querySelectorAll('[data-action]')) {
+    const action = b.dataset.action;
+    // pointerdown for the START button, so it answers as fast as the d-pad;
+    // click for the toggles, so keyboard users can press them too.
+    if (b.classList.contains('start')) {
+      b.addEventListener('pointerdown', e => { e.preventDefault(); onAny(); held.fire = true; onAction(action); });
+      for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(ev, () => { held.fire = false; });
+    } else {
+      b.addEventListener('click', () => { onAny(); onAction(action); });
+    }
+  }
+  screen.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    onAny();
+    if (onPoint) {
+      const r = screen.getBoundingClientRect();
+      const x = ((e.clientX - r.left) * screen.width) / r.width;
+      const y = ((e.clientY - r.top) * screen.height) / r.height;
+      if (onPoint(x, y)) return;
+    }
+    onAction('start');
+  });
+
+  return { held, get touch() { return touch; } };
+}
+
+// ---- engine/scores.js
+// The top-ten table, kept on this device only. A new browser starts with a
+// table of invented initials so the attract mode has something to show.
+const ENTRY_LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ.';
+
+function makeScores(key, defaults) {
+  let table = defaults.map(r => ({ ...r }));
+  try {
+    const saved = JSON.parse(localStorage.getItem(key) || 'null');
+    if (Array.isArray(saved) && saved.length === 10 && saved.every(r => typeof r.s === 'number' && typeof r.n === 'string')) table = saved;
+  } catch {}
+
+  return {
+    get table() { return table; },
+    get top() { return table[0].s; },
+    qualifies(score) { return score > 0 && score > table[9].s; },
+    // Returns the rank (0-9) the new row landed on.
+    add(n, s) {
+      let rank = table.findIndex(r => s > r.s);
+      if (rank === -1) return -1;
+      table.splice(rank, 0, { n, s });
+      table.length = 10;
+      try { localStorage.setItem(key, JSON.stringify(table)); } catch {}
+      return rank;
+    },
+  };
+}
+
+// ---- games/house-call/rules.js
+// House Call's rooms and rules, with no drawing, so the tests can run them.
+// Carried over from the Qlaim cabinet: the same room, speeds, spray, canister,
+// spiders, threads and scoring, with ONE change, below.
+//
+// The change: in the Qlaim version the egg sacs hung 8-34 units under the
+// ceiling, and the spray leaves the can at head height and only falls. No sac
+// could ever be hit, so the +50 for one was unreachable and every sac hatched.
+// Here they hang on long threads down to head height, where the spray reaches
+// (scripts/test-house.mjs proves both: the old heights unreachable, the new
+// ones hittable).
+const ROOM_W = 256, ROOM_H = 176, FLOOR = ROOM_H - 24, CEIL = 22, DOOR_W = 18;
+const OLD_SAC_Y = [CEIL + 8, CEIL + 34];
+const SAC_Y = [FLOOR - 18, FLOOR - 11];
+const MAN_SPEED = 62, SPRAY_Y = 9;
+
+function newGame(rand = Math.random) {
+  const g = {
+    man: { x: ROOM_W / 2, y: FLOOR, face: 1, spraying: false },
+    spiders: [], sacs: [], mist: [], threads: [], cans: [], kills: [],
+    room: 1, lives: 3, score: 0, canister: 100, hurt: 0, doorOpen: false, over: false,
+  };
+  makeRoom(g, 1, rand);
+  return g;
+}
+
+const between = (rand, a, b) => a + rand() * (b - a);
+
+function spawnSpider(g, x, y, rand = Math.random) {
+  g.spiders.push({
+    x, y, vx: rand() < 0.5 ? -1 : 1,
+    speed: between(rand, 16, 26) + g.room * 1.6,
+    size: between(rand, 3.4, 4.6), gait: between(rand, 0, 10), health: 1,
+  });
+}
+
+function makeRoom(g, n, rand = Math.random) {
+  g.room = n;
+  g.spiders = []; g.sacs = []; g.mist = []; g.threads = []; g.cans = [];
+  g.doorOpen = false;
+  const walkers = Math.min(2 + Math.floor(n / 2), 6);
+  for (let i = 0; i < walkers; i++) spawnSpider(g, between(rand, 30, ROOM_W - 30), FLOOR - 5, rand);
+  const sacCount = Math.min(1 + Math.floor(n / 2), 4);
+  for (let i = 0; i < sacCount; i++) {
+    g.sacs.push({ x: between(rand, 28, ROOM_W - 28), y: between(rand, SAC_Y[0], SAC_Y[1]), hatch: between(rand, 9, 17) - n * 0.4, health: 3 });
+  }
+  if (n % 4 === 0) g.spiders.push({ x: ROOM_W / 2, y: CEIL + 14, vx: 1, speed: 14 + n, size: 9, gait: 0, health: 6, big: true });
+  // A spare in nearly every room. Without one, an empty canister in a room
+  // full of spiders is not a challenge, it is a dead end.
+  if (n >= 2) g.cans.push({ x: between(rand, 30, ROOM_W - 30), y: FLOOR - 5, taken: false });
+  if (n >= 5) g.cans.push({ x: between(rand, 30, ROOM_W - 30), y: FLOOR - 5, taken: false });
+}
+
+function walkSpider(g, s, dt, rand) {
+  s.gait += dt * 11;
+  // They drift toward you rather than home in, which is worse: you can
+  // outrun one and be surrounded by three.
+  if (rand() < 0.02) s.vx = g.man.x > s.x ? 1 : -1;
+  if (s.y < FLOOR - 6) s.y = Math.min(FLOOR - 5, s.y + 34 * dt);
+  s.x += s.vx * s.speed * dt;
+  if (s.x < 8) { s.x = 8; s.vx = 1; }
+  if (s.x > ROOM_W - 8) { s.x = ROOM_W - 8; s.vx = -1; }
+}
+
+// Advance by dt seconds. `held` is { left, right, spray }. Returns events
+// for the sound and the drawing.
+function update(g, dt, held, rand = Math.random) {
+  const ev = [];
+  if (g.over) return ev;
+  if (g.hurt > 0) g.hurt -= dt;
+  const m = g.man;
+  if (held.left) { m.x -= MAN_SPEED * dt; m.face = -1; }
+  if (held.right) { m.x += MAN_SPEED * dt; m.face = 1; }
+  m.x = Math.max(10, Math.min(ROOM_W - 10, m.x));
+  m.spraying = !!held.spray && g.canister > 0;
+  if (m.spraying) {
+    g.canister = Math.max(0, g.canister - 13 * dt);
+    if (rand() < 0.7) g.mist.push({ x: m.x + m.face * 7, y: m.y - SPRAY_Y + between(rand, -1.5, 1.5), vx: m.face * between(rand, 85, 125), vy: between(rand, -16, 8), life: between(rand, 0.28, 0.46) });
+    if (rand() < 0.25) ev.push('spray');
+  } else {
+    // The can recovers when the trigger is off, so running dry is a mistake
+    // you can come back from rather than the end of the game.
+    g.canister = Math.min(100, g.canister + 6 * dt);
+  }
+  for (let i = g.mist.length - 1; i >= 0; i--) {
+    const p = g.mist[i];
+    p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= 0.94; p.vy += 34 * dt; p.life -= dt;
+    if (p.life <= 0 || p.x < 4 || p.x > ROOM_W - 4) g.mist.splice(i, 1);
+  }
+  for (let i = g.threads.length - 1; i >= 0; i--) {
+    const t = g.threads[i];
+    t.length += 46 * dt;
+    if (t.length >= t.target - CEIL) { spawnSpider(g, t.x, t.target, rand); g.threads.splice(i, 1); }
+  }
+  for (let i = g.sacs.length - 1; i >= 0; i--) {
+    const sac = g.sacs[i];
+    sac.hatch -= dt;
+    for (let j = g.mist.length - 1; j >= 0; j--) {
+      const p = g.mist[j];
+      if (Math.abs(p.x - sac.x) < 6 && Math.abs(p.y - sac.y) < 6) { g.mist.splice(j, 1); sac.health -= 1; }
+    }
+    if (sac.health <= 0) { g.sacs.splice(i, 1); g.score += 50; ev.push('sac'); continue; }
+    if (sac.hatch <= 0) {
+      // Left too long, and it becomes three problems. The thread comes down
+      // before they do: that pause is the whole point of the game.
+      g.sacs.splice(i, 1); ev.push('hatch');
+      for (let k = 0; k < 3; k++) g.threads.push({ x: sac.x + between(rand, -10, 10), length: 0, target: between(rand, FLOOR - 40, FLOOR - 8) });
+    }
+  }
+  for (let i = g.spiders.length - 1; i >= 0; i--) {
+    const s = g.spiders[i];
+    walkSpider(g, s, dt, rand);
+    for (let j = g.mist.length - 1; j >= 0; j--) {
+      const p = g.mist[j];
+      if (Math.abs(p.x - s.x) < s.size + 2 && Math.abs(p.y - s.y) < s.size + 2) {
+        g.mist.splice(j, 1);
+        s.health -= 1;
+        if (s.health <= 0) { g.spiders.splice(i, 1); g.score += s.big ? 300 : 25; g.kills.push({ x: s.x, y: s.y, big: !!s.big }); ev.push(s.big ? 'bigsquelch' : 'squelch'); }
+        break;
+      }
+    }
+  }
+  for (const s of g.spiders) {
+    if (g.hurt <= 0 && Math.abs(s.x - m.x) < s.size + 5 && Math.abs(s.y - m.y) < 12) {
+      g.hurt = 2.0; g.lives--; ev.push('hurt');
+      if (g.lives <= 0) { g.over = true; ev.push('over'); return ev; }
+      m.x = ROOM_W / 2;
+      break;
+    }
+  }
+  for (const can of g.cans) {
+    if (!can.taken && Math.abs(can.x - m.x) < 9 && Math.abs(can.y - m.y) < 12) { can.taken = true; g.canister = 100; g.score += 25; ev.push('refill'); }
+  }
+  if (!g.doorOpen && !g.spiders.length && !g.sacs.length && !g.threads.length) {
+    g.doorOpen = true;
+    g.score += 100 + g.room * 25;
+    ev.push('clear');
+  }
+  if (g.doorOpen && m.x > ROOM_W - DOOR_W - 4) {
+    g.canister = Math.min(100, g.canister + 45);
+    makeRoom(g, g.room + 1, rand);
+    m.x = 14;
+    ev.push('door');
+  }
+  return ev;
+}
+
+// The demo's exterminator: walk to a spot a little short of the nearest
+// target, face it, spray. Make for the door when the room is clear.
+function pilot(g) {
+  const m = g.man;
+  if (g.doorOpen) return { right: true };
+  let best = null, bd = Infinity;
+  for (const s of g.spiders) if (s.y > FLOOR - 12) { const d = Math.abs(s.x - m.x); if (d < bd) { bd = d; best = s; } }
+  for (const sac of g.sacs) { const d = Math.abs(sac.x - m.x); if (d < bd) { bd = d; best = sac; } }
+  if (!best) return {};
+  const side = best.x > m.x ? 1 : -1;
+  const gap = Math.abs(best.x - m.x);
+  const want = { spray: gap < 44 && g.canister > 3 };
+  if (gap > 30) want[side > 0 ? 'right' : 'left'] = true;
+  else if (gap < 14) want[side > 0 ? 'left' : 'right'] = true;
+  else if (m.face !== side) want[side > 0 ? 'right' : 'left'] = true;
+  return want;
+}
+
+// ---- engine/sprites.js
+// Sprites are drawn as text: one character per pixel, '.' is transparent and
+// every other character is looked up in a palette. Swapping the palette is how
+// a sprite changes state (lit, remembered, alerted) — the way the hardware did it.
+function sprite(rows, palette) {
+  const w = rows[0].length, h = rows.length;
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const g = c.getContext('2d');
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const ch = rows[y][x];
+    if (ch === '.' || !palette[ch]) continue;
+    g.fillStyle = palette[ch];
+    g.fillRect(x, y, 1, 1);
+  }
+  return c;
+}
+
+function mirrored(src) {
+  const c = document.createElement('canvas');
+  c.width = src.width; c.height = src.height;
+  const g = c.getContext('2d');
+  g.translate(src.width, 0);
+  g.scale(-1, 1);
+  g.drawImage(src, 0, 0);
+  return c;
+}
+
+// A 16x16 tile painted by a function of (x, y) -> colour or null.
+function tile(size, paint) {
+  const c = document.createElement('canvas');
+  c.width = size; c.height = size;
+  const g = c.getContext('2d');
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    const col = paint(x, y);
+    if (!col) continue;
+    g.fillStyle = col;
+    g.fillRect(x, y, 1, 1);
+  }
+  return c;
+}
+
+// ---- games/house-call/art.js
+const SPIDER_A = [
+  '.L.L...L.L.',
+  '..L.BBB.L..',
+  'LL.BBBBB.LL',
+  '..BBEBEBB..',
+  'LL.BBBBB.LL',
+  '..L.BBB.L..',
+  '.L.......L.',
+];
+const SPIDER_B = [
+  'L..L...L..L',
+  '.L..BBB..L.',
+  '..LBBBBBL..',
+  'LLBBEBEBBLL',
+  '..LBBBBBL..',
+  '.L..BBB..L.',
+  'L.........L',
+];
+const SPIDER_PAL = { L: '#6a8a10', B: '#c8f048', E: '#ff3b3b' };
+const BIG_PAL = { L: '#a3501e', B: '#ff8a1e', E: '#ffffff' };
+
+const MAN_A = [
+  '...HHHH...',
+  '..HHHHHH..',
+  '..HSSSSH..',
+  '..SSSKSS..',
+  '..SSSSSS..',
+  '...SSSS...',
+  '..CCCCCC..',
+  '.CCCCCCCSG',
+  '.CCCCCC.GG',
+  '.CCCCCC.GG',
+  '..CCCCC...',
+  '..PPPPP...',
+  '..PP.PP...',
+  '..PP.PP...',
+  '..PP.PP...',
+  '.KKK.KKK..',
+];
+const MAN_B = MAN_A.slice(0, 12).concat(['.PP...PP..', '.PP...PP..', 'PP.....PP.', 'KK.....KK.']);
+const MAN_PAL = { H: '#8a4b22', S: '#f2b880', K: '#000000', C: '#5eeaf5', P: '#2b4cff', G: '#c8c8d8' };
+const MAN_HURT = { ...MAN_PAL, C: '#ff3b3b', S: '#ff8a1e' };
+
+const SAC = [
+  '...TTT...',
+  '..TWWWT..',
+  '.TWWWWWT.',
+  'TWWWWWWWT',
+  'TWWWWWWWT',
+  'TWWWWWWWT',
+  '.TWWWWWT.',
+  '..TWWWT..',
+  '...TTT...',
+];
+const SAC_PAL = { T: '#a0a090', W: '#e8e8d0' };
+const SAC_URGENT = { T: '#a3501e', W: '#ff8a1e' };
+
+const CAN = [
+  '..GG..',
+  '.RRRR.',
+  '.RWWR.',
+  '.RWWR.',
+  '.RRRR.',
+  '.RRRR.',
+  '.RRRR.',
+  '.RRRR.',
+];
+
+function makeArt() {
+  const man = pal => { const a = sprite(MAN_A, pal), b = sprite(MAN_B, pal); return { 1: [a, b], '-1': [mirrored(a), mirrored(b)] }; };
+  return {
+    spider: [sprite(SPIDER_A, SPIDER_PAL), sprite(SPIDER_B, SPIDER_PAL)],
+    big: [sprite(SPIDER_A, BIG_PAL), sprite(SPIDER_B, BIG_PAL)],
+    man: man(MAN_PAL),
+    manHurt: man(MAN_HURT),
+    sac: sprite(SAC, SAC_PAL),
+    sacUrgent: sprite(SAC, SAC_URGENT),
+    can: sprite(CAN, { G: '#c8c8d8', R: '#e8302f', W: '#ffffff' }),
+    life: sprite(MAN_A.slice(0, 6).map(r => r.slice(1, 9)), MAN_PAL),
+  };
+}
+
+// ---- games/house-call/game.js
+// The room is 256x176 units, drawn one unit to the pixel under a 20px bar.
+const TOP = 20, W = ROOM_W, H = TOP + ROOM_H;
+const TICK_MS = 1000 / 60, DT = 1 / 120;
+const DEMO_TICKS = 60 * 40;
+
+const INK = {
+  red: '#ff3b3b', white: '#ffffff', yellow: '#ffd23f', orange: '#ff8a1e', green: '#3fd46b',
+  cyan: '#5eeaf5', grey: '#8f8fb0', dim: '#4a4a6a',
+};
+const ROW_INKS = ['#ff3b3b', '#ff8a1e', '#ffd23f', '#3fd46b', '#5eeaf5', '#8f7bff', '#ff5fb8', '#ff8a1e', '#ffd23f', '#3fd46b'];
+const LOGO_INK = ['#f0ffc8', '#c8f048', '#c8f048', '#8ab020', '#6a8a10', '#3f5a08', '#2a3a04'];
+const RANKS = ['1ST', '2ND', '3RD', '4TH', '5TH', '6TH', '7TH', '8TH', '9TH', '10TH'];
+
+// Invented initials, so a first visit has a table to beat.
+const DEFAULT_SCORES = [
+  ['EXT', 6000], ['BUG', 5000], ['WEB', 4000], ['NET', 3200], ['DUS', 2500],
+  ['MOP', 1800], ['FLY', 1200], ['ANT', 800], ['SPR', 500], ['MIT', 250],
+].map(([n, s]) => ({ n, s }));
+
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const canvas = document.getElementById('c');
+const screen = makeScreen({ canvas, stage: document.getElementById('stage'), frame: document.getElementById('screen'), w: W, h: H, crtKey: 'lk.arcade.crt' });
+const ctx = screen.ctx;
+const sound = makeSound('lk.arcade.mute');
+const hiss = sound.drone({ cutoff: 5200, vol: 0.05 });
+const scores = makeScores('lk.housecall.scores', DEFAULT_SCORES);
+const art = makeArt();
+
+let g = newGame();
+let mode = 'attract', page = 'title', pageT = 0, t = 0, timer = 0, clock = 0;
+let banner = null, splats = [];
+let demo = false, demoT = 0, entry = null, highlight = -1, pausedFrom = null;
+
+const SFX = {
+  start: () => {
+    sound.tune([[523, 0.12], [659, 0.12], [784, 0.12], [1047, 0.12], [0, 0.06], [784, 0.12], [1047, 0.36]], { vol: 0.045 });
+    sound.tune([[131, 0.36], [196, 0.36], [262, 0.48]], { type: 'triangle', vol: 0.12 });
+  },
+  squelch: () => { sound.noise(0.16, { vol: 0.2, cutoff: 900 }); sound.note(160, 0.16, { to: 40, vol: 0.06 }); },
+  bigsquelch: () => { sound.noise(0.4, { vol: 0.3, cutoff: 700 }); sound.note(120, 0.4, { to: 30, vol: 0.08 }); },
+  sac: () => { sound.noise(0.3, { vol: 0.22, cutoff: 600 }); sound.note(90, 0.3, { to: 50, vol: 0.06 }); },
+  hatch: () => sound.tune([[1400, 0.1], [1100, 0.1], [800, 0.15]], { type: 'triangle', vol: 0.06 }),
+  hurt: () => { sound.noise(0.5, { vol: 0.3, cutoff: 500 }); sound.note(200, 0.5, { to: 50, vol: 0.08 }); },
+  clear: () => sound.tune([[523, 0.11], [784, 0.18]], { vol: 0.06 }),
+  refill: () => sound.note(440, 0.14, { to: 880, vol: 0.05 }),
+  door: () => sound.tune([[392, 0.1], [523, 0.1], [659, 0.1], [784, 0.25]], { vol: 0.045 }),
+  blip: () => sound.note(988, 0.05, { vol: 0.04 }),
+  over: () => sound.tune([[392, 0.22], [370, 0.22], [349, 0.22], [330, 0.7]], { type: 'triangle', vol: 0.12 }),
+};
+// The demo plays silently: nobody asked for noise from a screen they are not using.
+function play(name) { if (!demo && SFX[name]) SFX[name](); }
+
+// ---------------------------------------------------------------- the game
+
+function begin(isDemo) {
+  demo = isDemo; demoT = 0; highlight = -1;
+  g = newGame();
+  splats = []; banner = null;
+  mode = isDemo ? 'playing' : 'ready'; timer = 120;
+  if (!isDemo) play('start');
+}
+
+function endDemo() { demo = false; hiss(false); toAttract('scores'); }
+
+function toAttract(p) {
+  mode = 'attract'; page = p; pageT = 0; demo = false; entry = null; banner = null;
+  hiss(false);
+  g = newGame();
+}
+
+function playTick() {
+  if (demo && ++demoT > DEMO_TICKS) { endDemo(); return; }
+  const h = input.held;
+  const want = demo ? pilot(g) : { left: h.left, right: h.right, spray: h.fire || h.up };
+  for (let k = 0; k < 2; k++) {
+    for (const e of update(g, DT, want)) {
+      if (e === 'clear') banner = { lines: [['ALL CLEAR', INK.green], ['OUT BY THE DOOR', INK.white]], t: 120 };
+      if (e === 'door') banner = { lines: [['ROOM ' + g.room, INK.cyan]], t: 90 };
+      if (e === 'over') { hiss(false); if (demo) { endDemo(); return; } mode = 'over'; timer = 200; play('over'); return; }
+      if (e !== 'spray') play(e);
+    }
+  }
+  for (const k of g.kills) splats.push({ ...k, life: 1 });
+  g.kills.length = 0;
+  if (!demo) hiss(g.man.spraying);
+}
+
+function afterOver() {
+  if (scores.qualifies(g.score)) { entry = { letters: [0, 0, 0], pos: 0, timer: 60 * 30 }; mode = 'entry'; }
+  else toAttract('scores');
+}
+
+function saveEntry() {
+  const name = entry.letters.map(i => ENTRY_LETTERS[i]).join('');
+  highlight = scores.add(name, g.score);
+  toAttract('scores');
+}
+
+function confirmLetter() {
+  play('blip');
+  entry.pos++;
+  if (entry.pos >= 3) saveEntry();
+}
+
+// ---------------------------------------------------------------- input
+
+function onAction(action) {
+  if (action === 'crt') { screen.toggleCrt(); syncToggles(); return; }
+  if (action === 'mute') { sound.toggleMute(); syncToggles(); return; }
+  if (action === 'back') { toAttract('title'); return; }
+  if (action === 'pause') {
+    if (mode === 'paused') { mode = pausedFrom; return; }
+    if (!demo && (mode === 'playing' || mode === 'ready')) { pausedFrom = mode; mode = 'paused'; hiss(false); }
+    return;
+  }
+  if (mode === 'attract' || demo) { begin(false); return; }
+  if (mode === 'paused') { mode = pausedFrom; return; }
+  if (mode === 'over') { timer = 0; return; }
+  if (mode === 'entry') confirmLetter();
+}
+
+function onDir(dir) {
+  if (mode !== 'entry') return;
+  const n = ENTRY_LETTERS.length, i = entry.pos;
+  if (dir === 'up') { entry.letters[i] = (entry.letters[i] + 1) % n; play('blip'); }
+  else if (dir === 'down') { entry.letters[i] = (entry.letters[i] + n - 1) % n; play('blip'); }
+  else if (dir === 'right') confirmLetter();
+  else if (dir === 'left' && entry.pos > 0) { entry.pos--; play('blip'); }
+}
+
+const input = makeInput({ screen: canvas, onAction, onDir, onAny: () => sound.wake() });
+
+const crtBtn = document.querySelector('[data-action="crt"]');
+const muteBtn = document.querySelector('[data-action="mute"]');
+function syncToggles() {
+  crtBtn.textContent = 'CRT ' + (screen.crt ? 'on' : 'off');
+  crtBtn.setAttribute('aria-pressed', String(screen.crt));
+  muteBtn.textContent = 'Sound ' + (sound.muted ? 'off' : 'on');
+  muteBtn.setAttribute('aria-pressed', String(!sound.muted));
+}
+syncToggles();
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && !demo && (mode === 'playing' || mode === 'ready')) { pausedFrom = mode; mode = 'paused'; hiss(false); }
+});
+
+// ---------------------------------------------------------------- drawing
+
+const blinkOn = (rate = 32) => reduceMotion || ((clock / rate) | 0) % 2 === 0;
+const prompt = () => (input.touch ? 'TAP START' : 'PRESS SPACE');
+
+// The room is the same every time, so it is painted once: a wood ceiling,
+// striped wallpaper, skirting, floorboards.
+let roomLayer = null;
+function room() {
+  if (roomLayer) return roomLayer;
+  const c = document.createElement('canvas');
+  c.width = ROOM_W; c.height = ROOM_H;
+  const r = c.getContext('2d');
+  r.fillStyle = '#24183a'; r.fillRect(0, CEIL, ROOM_W, FLOOR + 4 - CEIL);
+  for (let x = 0; x < ROOM_W; x += 8) { r.fillStyle = '#2e1f4a'; r.fillRect(x, CEIL, 3, FLOOR + 4 - CEIL); }
+  for (let y = CEIL + 6; y < FLOOR; y += 12) for (let x = 5 + ((y / 12) % 2) * 4; x < ROOM_W; x += 8) { r.fillStyle = '#4a3a6a'; r.fillRect(x, y, 1, 1); }
+  r.fillStyle = '#3a2416'; r.fillRect(0, 0, ROOM_W, CEIL);
+  r.fillStyle = '#8a4b22'; r.fillRect(0, CEIL - 2, ROOM_W, 2);
+  r.fillStyle = '#d9a066'; r.fillRect(0, FLOOR + 4, ROOM_W, 2);
+  r.fillStyle = '#5a2e12'; r.fillRect(0, FLOOR + 6, ROOM_W, ROOM_H - FLOOR - 6);
+  r.fillStyle = '#3a1e0e';
+  for (let y = FLOOR + 10; y < ROOM_H; y += 5) r.fillRect(0, y, ROOM_W, 1);
+  for (let y = FLOOR + 6, i = 0; y < ROOM_H; y += 5, i++) for (let x = (i * 23) % 40; x < ROOM_W; x += 40) r.fillRect(x, y, 1, 5);
+  r.fillStyle = '#14101e'; r.fillRect(0, CEIL, 4, FLOOR + 4 - CEIL); r.fillRect(ROOM_W - 4, CEIL, 4, FLOOR + 4 - CEIL);
+  roomLayer = c;
+  return c;
+}
+
+function drawDoor(gx, oy, open) {
+  const x = ROOM_W - DOOR_W - 4, y = oy + FLOOR + 4 - 34;
+  gx.fillStyle = '#d9a066'; gx.fillRect(x - 2, y - 2, DOOR_W + 2, 36);
+  if (open) {
+    gx.fillStyle = blinkOn(16) ? '#fff3a0' : '#ffd23f'; gx.fillRect(x, y, DOOR_W - 2, 34);
+    text(gx, 'OUT', x + DOOR_W / 2 - 1, y - 11, blinkOn(16) ? INK.green : INK.white, { align: 'center' });
+  } else {
+    gx.fillStyle = '#8a4b22'; gx.fillRect(x, y, DOOR_W - 2, 34);
+    gx.fillStyle = '#5a2e12'; gx.fillRect(x + 3, y + 4, DOOR_W - 8, 11); gx.fillRect(x + 3, y + 18, DOOR_W - 8, 12);
+    gx.fillStyle = '#ffd23f'; gx.fillRect(x + 2, y + 18, 2, 2);
+  }
+}
+
+function drawRoomContents(gx, s, oy, showMan) {
+  gx.drawImage(room(), 0, oy);
+  drawDoor(gx, oy, s.doorOpen);
+  for (const t of s.threads) {
+    gx.fillStyle = '#a0a090'; gx.fillRect(Math.round(t.x), oy + CEIL, 1, Math.round(t.length));
+    gx.fillStyle = '#c8f048'; gx.fillRect(Math.round(t.x) - 1, oy + CEIL + Math.round(t.length), 3, 2);
+  }
+  for (const sac of s.sacs) {
+    const sx = Math.round(sac.x), sy = Math.round(sac.y);
+    gx.fillStyle = '#a0a090'; gx.fillRect(sx, oy + CEIL, 1, sy - 4 - CEIL);
+    const urgent = sac.hatch < 3 && blinkOn(6);
+    gx.drawImage(urgent ? art.sacUrgent : art.sac, sx - 4, oy + sy - 4);
+  }
+  for (const c of s.cans) if (!c.taken) gx.drawImage(art.can, Math.round(c.x) - 3, oy + Math.round(c.y) - 3);
+  for (const p of splats) {
+    gx.fillStyle = p.big ? '#ff8a1e' : '#c8f048';
+    const r = p.big ? 6 : 3;
+    for (let k = -r; k <= r; k += 2) gx.fillRect(Math.round(p.x) + k, oy + Math.round(p.y) + 3, 1, 1);
+  }
+  for (const sp of s.spiders) {
+    const f = reduceMotion ? 0 : Math.floor(sp.gait) % 2;
+    const img = sp.big ? art.big[f] : art.spider[f];
+    const size = sp.big ? 22 : 11, hh = sp.big ? 14 : 7;
+    gx.drawImage(img, Math.round(sp.x) - size / 2, oy + Math.round(sp.y) - hh / 2, size, hh);
+  }
+  gx.fillStyle = '#d0f8ff';
+  for (const p of s.mist) gx.fillRect(Math.round(p.x), oy + Math.round(p.y), 1, 1);
+  if (showMan) {
+    const m = s.man;
+    const hurtFlash = s.hurt > 0 && Math.floor(s.hurt * 12) % 2 === 0;
+    const walking = (input.held.left || input.held.right || demo) && !reduceMotion;
+    const f = walking ? (clock >> 3) % 2 : 0;
+    gx.drawImage((hurtFlash ? art.manHurt : art.man)[m.face][f], Math.round(m.x) - 5, oy + FLOOR - 16 + 1);
+  }
+}
+
+function drawBanner(lines, y) {
+  const wide = Math.max(...lines.map(([s]) => s.length)) * 6 + 10;
+  ctx.fillStyle = '#000';
+  ctx.fillRect(Math.floor((W - wide) / 2), y - 5, wide, lines.length * 12 + 7);
+  lines.forEach(([s, ink], i) => text(ctx, s, W / 2, y + i * 12, ink, { align: 'center' }));
+}
+
+function drawHud() {
+  const hi = Math.max(scores.top, demo ? 0 : g.score);
+  if (!(mode === 'playing' && !demo) || blinkOn(24)) text(ctx, '1UP', 8, 3, INK.red);
+  text(ctx, String(mode === 'attract' ? 0 : g.score).padStart(2, '0'), 50, 12, INK.white, { align: 'right' });
+  text(ctx, 'HI-SCORE', 100, 3, INK.red, { align: 'center' });
+  text(ctx, String(hi), 100, 12, INK.white, { align: 'center' });
+  if (mode === 'attract' || mode === 'entry') return;
+  text(ctx, 'ROOM ' + g.room, 250, 3, INK.red, { align: 'right' });
+  text(ctx, 'CAN', 168, 12, INK.red);
+  ctx.fillStyle = '#1a1a2a'; ctx.fillRect(190, 12, 60, 6);
+  ctx.fillStyle = g.canister < 25 ? (blinkOn(12) ? INK.orange : '#7a4a10') : INK.cyan;
+  ctx.fillRect(190, 12, Math.round(0.6 * g.canister), 6);
+  for (let i = 0; i < g.lives - 1; i++) ctx.drawImage(art.life, 8 + i * 10, TOP + FLOOR + 10);
+}
+
+function drawTitle() {
+  ctx.drawImage(room(), 0, TOP);
+  text(ctx, 'HOUSE', W / 2 + 2, TOP + 32, '#1c2870', { align: 'center', scale: 4 });
+  text(ctx, 'HOUSE', W / 2, TOP + 30, LOGO_INK, { align: 'center', scale: 4 });
+  text(ctx, 'CALL', W / 2 + 2, TOP + 64, '#1c2870', { align: 'center', scale: 4 });
+  text(ctx, 'CALL', W / 2, TOP + 62, LOGO_INK, { align: 'center', scale: 4 });
+  const x = 40 + ((clock >> 1) % 176);
+  const f = reduceMotion ? 0 : (clock >> 3) % 2;
+  ctx.drawImage(art.spider[f], x, TOP + FLOOR - 8);
+  ctx.drawImage(art.spider[1 - f], (x + 90) % 216 + 20, TOP + FLOOR - 8);
+  ctx.fillStyle = '#a0a090'; ctx.fillRect(226, TOP + CEIL, 1, 58);
+  ctx.drawImage(art.sac, 222, TOP + CEIL + 58);
+  ctx.fillStyle = '#000'; ctx.fillRect(20, TOP + 96, 216, 34);
+  if (blinkOn()) text(ctx, prompt(), W / 2, TOP + 100, INK.yellow, { align: 'center' });
+  text(ctx, input.touch ? 'D-PAD WALKS, HOLD START SPRAYS' : 'ARROWS WALK, HOLD SPACE SPRAYS', W / 2, TOP + 116, INK.grey, { align: 'center' });
+  ctx.fillStyle = '#000'; ctx.fillRect(70, H - 11, 116, 10);
+  text(ctx, 'LEON KARSTEN 2026', W / 2, H - 10, INK.grey, { align: 'center' });
+}
+
+function drawHowTo() {
+  text(ctx, 'HOW TO PLAY', W / 2, 28, INK.cyan, { align: 'center' });
+  text(ctx, 'CLEAR EVERY SPIDER AND EGG SAC,', W / 2, 44, INK.white, { align: 'center' });
+  text(ctx, 'THEN LEAVE BY THE DOOR.', W / 2, 56, INK.white, { align: 'center' });
+  ctx.drawImage(art.spider[0], 30, 74); text(ctx, 'SPIDER', 50, 75, INK.white); text(ctx, '25', 226, 75, INK.white, { align: 'right' });
+  ctx.drawImage(art.big[0], 26, 88, 22, 14); text(ctx, 'BIG ONE, SIX SPRAYS', 50, 92, INK.orange); text(ctx, '300', 226, 92, INK.white, { align: 'right' });
+  ctx.drawImage(art.sac, 31, 106); text(ctx, 'EGG SAC, THREE SPRAYS', 50, 108, INK.white); text(ctx, '50', 226, 108, INK.white, { align: 'right' });
+  ctx.drawImage(art.can, 32, 122); text(ctx, 'SPARE CAN', 50, 123, INK.white); text(ctx, '25', 226, 123, INK.white, { align: 'right' });
+  text(ctx, 'A SAC LEFT TOO LONG HATCHES THREE.', W / 2, 144, INK.orange, { align: 'center' });
+  text(ctx, 'WATCH THE CEILING: THE THREAD', W / 2, 156, INK.grey, { align: 'center' });
+  text(ctx, 'COMES DOWN BEFORE THEY DO.', W / 2, 168, INK.grey, { align: 'center' });
+  if (blinkOn()) text(ctx, prompt(), W / 2, 186, INK.yellow, { align: 'center' });
+}
+
+function drawScores() {
+  text(ctx, 'HIGH SCORES', W / 2, 26, INK.yellow, { align: 'center' });
+  text(ctx, 'RANK', 48, 40, INK.grey);
+  text(ctx, 'SCORE', 160, 40, INK.grey, { align: 'right' });
+  text(ctx, 'NAME', 184, 40, INK.grey);
+  scores.table.forEach((r, i) => {
+    if (i === highlight && !blinkOn(16)) return;
+    const y = 52 + i * 13;
+    const ink = i === highlight ? INK.white : ROW_INKS[i];
+    text(ctx, RANKS[i], 48, y, ink);
+    text(ctx, String(r.s), 160, y, ink, { align: 'right' });
+    text(ctx, r.n, 184, y, ink);
+  });
+  if (blinkOn()) text(ctx, prompt(), W / 2, 186, INK.yellow, { align: 'center' });
+}
+
+function drawEntry() {
+  text(ctx, 'YOU MADE THE TOP TEN', W / 2, 30, INK.cyan, { align: 'center' });
+  text(ctx, String(g.score), W / 2, 44, INK.yellow, { align: 'center', scale: 2 });
+  text(ctx, 'ENTER YOUR INITIALS', W / 2, 72, INK.white, { align: 'center' });
+  for (let i = 0; i < 3; i++) {
+    const x = W / 2 - 39 + i * 30;
+    const current = i === entry.pos;
+    if (!current || blinkOn(16)) text(ctx, ENTRY_LETTERS[entry.letters[i]], x, 88, current ? INK.yellow : INK.white, { scale: 3 });
+    ctx.fillStyle = current ? INK.yellow : INK.dim;
+    ctx.fillRect(x - 2, 114, 18, 2);
+  }
+  text(ctx, 'UP / DOWN   CHANGE LETTER', W / 2, 134, INK.grey, { align: 'center' });
+  text(ctx, (input.touch ? 'RIGHT OR START' : 'RIGHT OR SPACE') + '   NEXT', W / 2, 146, INK.grey, { align: 'center' });
+  text(ctx, 'LEFT   BACK', W / 2, 158, INK.grey, { align: 'center' });
+  text(ctx, 'TIME ' + Math.ceil(entry.timer / 60), W / 2, 180, INK.orange, { align: 'center' });
+}
+
+function draw() {
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, W, H);
+  if (mode === 'attract') {
+    if (page === 'title') drawTitle();
+    else if (page === 'howto') drawHowTo();
+    else drawScores();
+    drawHud();
+    return;
+  }
+  if (mode === 'entry') { drawHud(); drawEntry(); return; }
+  drawRoomContents(ctx, g, TOP, true);
+  drawHud();
+  const mid = TOP + 60;
+  if (mode === 'ready') drawBanner([['PLAYER ONE', INK.cyan], ['ROOM 1', INK.yellow]], mid);
+  else if (mode === 'paused') drawBanner([['PAUSED', INK.white], [input.touch ? 'TAP START' : 'PRESS P', INK.grey]], mid);
+  else if (mode === 'over') drawBanner([['GAME OVER', INK.red], ['ROOM ' + g.room, INK.white]], mid);
+  else if (banner) drawBanner(banner.lines, mid);
+  if (demo && blinkOn()) text(ctx, 'DEMO PLAY', W / 2, TOP + 4, INK.yellow, { align: 'center' });
+}
+
+// ---------------------------------------------------------------- card art
+
+// The picture on the site's Games page, 320x240 (the card is 4:3): the room
+// at full size, a sac on its thread, spiders on the floor, spray in the air.
+function drawCard() {
+  const c = document.createElement('canvas');
+  c.width = 320; c.height = 240;
+  const gx = c.getContext('2d');
+  gx.imageSmoothingEnabled = false;
+  gx.fillStyle = '#000'; gx.fillRect(0, 0, 320, 240);
+  const s = newGame(() => 0.5);
+  s.spiders = [
+    { x: 150, y: FLOOR - 5, size: 4, gait: 0 }, { x: 196, y: FLOOR - 5, size: 4, gait: 1 },
+    { x: 60, y: FLOOR - 40, size: 4, gait: 0 }, { x: 228, y: FLOOR - 9, size: 9, gait: 0, big: true },
+  ];
+  s.threads = [{ x: 60, length: FLOOR - 40 - CEIL }];
+  s.sacs = [{ x: 104, y: FLOOR - 16, hatch: 9 }];
+  s.cans = [];
+  s.man = { x: 124, y: FLOOR, face: 1 };
+  s.mist = [];
+  for (let i = 0; i < 26; i++) s.mist.push({ x: 132 + i * 0.7 + (i % 3), y: FLOOR - 9 + ((i * 7) % 5) - 2 });
+  const save = clock; clock = 0;
+  gx.save(); gx.translate(32, 0);
+  drawRoomContents(gx, s, 52, true);
+  gx.restore();
+  clock = save;
+  text(gx, 'HOUSE CALL', 162, 12, '#1c2870', { align: 'center', scale: 4 });
+  text(gx, 'HOUSE CALL', 160, 10, LOGO_INK, { align: 'center', scale: 4 });
+  return c;
+}
+
+// ---------------------------------------------------------------- loop
+
+const PAGES = { title: ['howto', 420], howto: ['demo', 600], scores: ['title', 420] };
+function attractTick() {
+  pageT++;
+  const [next, length] = PAGES[page];
+  if (pageT < length) return;
+  if (next === 'demo') { begin(true); return; }
+  if (next === 'title') highlight = -1;
+  toAttract(next);
+}
+
+function tick() {
+  clock++;
+  for (const p of splats) p.life -= 0.01;
+  splats = splats.filter(p => p.life > 0);
+  if (banner && --banner.t <= 0) banner = null;
+  switch (mode) {
+    case 'attract': attractTick(); break;
+    case 'ready': if (--timer <= 0) mode = 'playing'; break;
+    case 'playing': playTick(); break;
+    case 'over': if (--timer <= 0) afterOver(); break;
+    case 'entry': if (--entry.timer <= 0) saveEntry(); break;
+  }
+}
+
+// A fixed 60 ticks a second whatever the display's refresh rate; the rules
+// run at 120 steps a second inside that, as they did in the Qlaim cabinet.
+let acc = 0, lastT = 0;
+function frame(now) {
+  requestAnimationFrame(frame);
+  if (!lastT) lastT = now;
+  acc += Math.min(100, now - lastT);
+  lastT = now;
+  while (acc >= TICK_MS) { tick(); acc -= TICK_MS; }
+  draw();
+}
+requestAnimationFrame(frame);
+
+// Read-only view for the page checks, plus shortcuts.
+window.__housecall = {
+  get mode() { return mode; },
+  get page() { return page; },
+  get demo() { return demo; },
+  get score() { return g.score; },
+  get lives() { return g.lives; },
+  get room() { return g.room; },
+  get canister() { return g.canister; },
+  get man() { return { ...g.man }; },
+  attract(p) { toAttract(p); },
+  clearRoom() { g.spiders = []; g.sacs = []; g.threads = []; },
+  endGame(s) { demo = false; g.score = s; g.over = true; mode = 'over'; timer = 1; },
+};
+window.__arcade = { card: drawCard };
+})();
+</script>
+</body>
+</html>

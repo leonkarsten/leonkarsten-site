@@ -418,7 +418,9 @@ function makeSound(muteKey) {
 // it used it. `onPoint(x, y)` receives taps on the screen in GAME
 // pixels; returning true means the game used the tap, otherwise it is START.
 function makeInput({ screen, onAction, onDir, onAny, onLetter = null, onPoint = null, onKey = null }) {
-  const held = { up: false, down: false, left: false, right: false };
+  // `fire` is Space, Enter or the START button while held, for games that
+  // hold a trigger down; every other game ignores it.
+  const held = { up: false, down: false, left: false, right: false, fire: false };
   const KEYS = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
   const ACTIONS = { Space: 'start', Enter: 'start', Escape: 'back' };
   if (!onLetter) {
@@ -446,6 +448,7 @@ function makeInput({ screen, onAction, onDir, onAny, onLetter = null, onPoint = 
     }
     const action = ACTIONS[e.code];
     if (action) {
+      if (action === 'start') held.fire = true;
       // Space and Enter on a focused button or link belong to that control.
       if ((e.code === 'Space' || e.code === 'Enter') && e.target.closest && e.target.closest('button, a')) return;
       e.preventDefault();
@@ -466,8 +469,9 @@ function makeInput({ screen, onAction, onDir, onAny, onLetter = null, onPoint = 
   addEventListener('keyup', e => {
     const dir = KEYS[e.code];
     if (dir) held[dir] = false;
+    if (ACTIONS[e.code] === 'start') held.fire = false;
   });
-  addEventListener('blur', () => { held.up = held.down = held.left = held.right = false; });
+  addEventListener('blur', () => { held.up = held.down = held.left = held.right = held.fire = false; });
 
   for (const b of document.querySelectorAll('[data-dir]')) {
     const dir = b.dataset.dir;
@@ -490,7 +494,8 @@ function makeInput({ screen, onAction, onDir, onAny, onLetter = null, onPoint = 
     // pointerdown for the START button, so it answers as fast as the d-pad;
     // click for the toggles, so keyboard users can press them too.
     if (b.classList.contains('start')) {
-      b.addEventListener('pointerdown', e => { e.preventDefault(); onAny(); onAction(action); });
+      b.addEventListener('pointerdown', e => { e.preventDefault(); onAny(); held.fire = true; onAction(action); });
+      for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(ev, () => { held.fire = false; });
     } else {
       b.addEventListener('click', () => { onAny(); onAction(action); });
     }
