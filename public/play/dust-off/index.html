@@ -1,0 +1,1309 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Dust Off</title>
+<meta name="description" content="Bring it down slowly. Fuel is the clock and a landing is a number.">
+<meta name="theme-color" content="#000000">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2016%2016'%20shape-rendering='crispEdges'%3E%3Crect%20width='16'%20height='16'%20fill='%23000'/%3E%3Crect%20x='5'%20y='3'%20width='6'%20height='4'%20fill='%23c8c8d8'/%3E%3Crect%20x='6'%20y='4'%20width='2'%20height='2'%20fill='%235eeaf5'/%3E%3Crect%20x='4'%20y='7'%20width='8'%20height='1'%20fill='%23c8c8d8'/%3E%3Crect%20x='3'%20y='8'%20width='1'%20height='3'%20fill='%23c8c8d8'/%3E%3Crect%20x='12'%20y='8'%20width='1'%20height='3'%20fill='%23c8c8d8'/%3E%3Crect%20x='7'%20y='9'%20width='2'%20height='3'%20fill='%23ffd23f'/%3E%3Crect%20x='0'%20y='14'%20width='16'%20height='2'%20fill='%23ff8a1e'/%3E%3C/svg%3E">
+<style>
+:root {
+  --void: #000;
+  --chrome: #8f8fb0;
+  --chrome-hi: #5eeaf5;
+  --edge: #2a2a40;
+  --start: #e8302f;
+  --ui: ui-monospace, 'Cascadia Mono', Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; height: 100%; background: var(--void); color: var(--chrome); }
+body {
+  font-family: var(--ui);
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  height: 100dvh;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: 'bar' 'stage' 'pad';
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.bar {
+  grid-area: bar;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+}
+.bar a, .bar button {
+  font: 700 12px/1 var(--ui);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--chrome);
+  background: none;
+  border: 1px solid transparent;
+  padding: 9px 10px;
+  text-decoration: none;
+  cursor: pointer;
+  border-radius: 0;
+}
+.bar a:hover, .bar button:hover, .bar a:focus-visible, .bar button:focus-visible {
+  color: var(--chrome-hi);
+  border-color: var(--edge);
+  outline: none;
+}
+.bar button[aria-pressed='true'] { color: var(--chrome-hi); }
+.toggles { display: flex; gap: 2px; }
+
+.stage {
+  grid-area: stage;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  padding: 8px 16px;
+}
+/* A faint edge, so an unexplored black playfield still has a size. */
+.screen { position: relative; line-height: 0; touch-action: none; box-shadow: 0 0 0 1px #1c1c2c; }
+.screen canvas {
+  display: block;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+/* The CRT switch. Off by default: sharp pixels are the honest picture, the
+   tube is a costume. Scanlines are one per game pixel row (--px is set by
+   the screen fit), so they never beat against the art. */
+.screen.crt { border-radius: 3% / 4%; overflow: hidden; box-shadow: 0 0 0 4px #0b0b14, 0 0 36px rgba(94, 234, 245, 0.12); }
+.screen.crt canvas { filter: saturate(1.25) brightness(1.12) contrast(1.05) blur(calc(var(--px) * 0.18)); }
+.screen.crt::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background:
+    radial-gradient(ellipse at center, rgba(0, 0, 0, 0) 58%, rgba(0, 0, 0, 0.6) 100%),
+    repeating-linear-gradient(to bottom,
+      rgba(0, 0, 0, 0) 0, rgba(0, 0, 0, 0) calc(var(--px) * 0.55),
+      rgba(0, 0, 0, 0.38) calc(var(--px) * 0.55), rgba(0, 0, 0, 0.38) var(--px));
+  box-shadow: inset 0 0 48px rgba(0, 0, 0, 0.75);
+}
+
+/* Touch controls: shown on touch screens only. */
+.pad {
+  grid-area: pad;
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  max-width: 380px;
+  margin: 0 auto;
+  padding: 4px 20px 16px;
+}
+body.touch .pad { display: flex; }
+.dpad {
+  display: grid;
+  grid-template-columns: repeat(3, 54px);
+  grid-template-rows: repeat(3, 50px);
+  gap: 3px;
+}
+.dpad button, .start {
+  font: 700 18px/1 var(--ui);
+  color: var(--chrome);
+  background: #12121e;
+  border: 2px solid var(--edge);
+  border-radius: 6px;
+  padding: 0;
+  touch-action: none;
+  cursor: pointer;
+}
+.dpad button:active { background: #24243a; color: var(--chrome-hi); }
+.dpad .up { grid-area: 1 / 2; }
+.dpad .left { grid-area: 2 / 1; }
+.dpad .right { grid-area: 2 / 3; }
+.dpad .down { grid-area: 3 / 2; }
+.start {
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  background: var(--start);
+  border: 4px solid #7a1414;
+  color: #fff;
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  box-shadow: inset 0 -6px 0 rgba(0, 0, 0, 0.25);
+}
+.start:active { transform: translateY(2px); box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.25); }
+
+/* A phone on its side: d-pad left of the screen, START right of it. A game
+   with no d-pad (its keys are on the screen) moves the bar to a column
+   instead, so an upright screen gets the full height. */
+@media (orientation: landscape) and (max-height: 520px) {
+  body.no-pad {
+    grid-template-rows: minmax(0, 1fr);
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas: 'bar stage';
+  }
+  body.no-pad .bar { flex-direction: column; justify-content: flex-start; align-items: flex-start; }
+  body.no-pad .toggles { flex-direction: column; }
+  .stage { padding: 4px 8px; }
+  body.touch:not(.no-pad) {
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas: 'bar bar bar' 'dpad stage start';
+  }
+  body.touch:not(.no-pad) .pad { display: contents; }
+  body.touch .dpad { grid-area: dpad; align-self: center; margin-left: 12px; }
+  body.touch .start { grid-area: start; align-self: center; margin-right: 16px; }
+}
+</style>
+</head>
+<body>
+
+<header class="bar">
+  <a href="/games/">&larr; Games</a>
+  <div class="toggles">
+    <button type="button" data-action="crt" aria-pressed="false">CRT off</button>
+    <button type="button" data-action="mute" aria-pressed="true">Sound on</button>
+    <button type="button" data-action="pause">Pause</button>
+  </div>
+</header>
+
+<main class="stage" id="stage">
+  <div class="screen" id="screen">
+    <canvas id="c" role="img" aria-label="Dust Off game screen. Up to burn, left and right to turn, Space to start, P to pause."></canvas>
+  </div>
+</main>
+
+<div class="pad">
+  <div class="dpad">
+    <button type="button" class="up" data-dir="up" aria-label="Up">&#9650;</button>
+    <button type="button" class="left" data-dir="left" aria-label="Left">&#9664;</button>
+    <button type="button" class="right" data-dir="right" aria-label="Right">&#9654;</button>
+    <button type="button" class="down" data-dir="down" aria-label="Down">&#9660;</button>
+  </div>
+  <button type="button" class="start" data-action="start">Start</button>
+</div>
+
+<script>
+(() => {
+'use strict';
+// ---- engine/font.js
+// 5x7 bitmap font, one string per glyph, rows separated by spaces. Drawn with
+// fillRect so it stays on the pixel grid at any scale; there is no web font.
+const GLYPHS = {
+  A: '.###. #...# #...# ##### #...# #...# #...#',
+  B: '####. #...# #...# ####. #...# #...# ####.',
+  C: '.###. #...# #.... #.... #.... #...# .###.',
+  D: '####. #...# #...# #...# #...# #...# ####.',
+  E: '##### #.... #.... ####. #.... #.... #####',
+  F: '##### #.... #.... ####. #.... #.... #....',
+  G: '.###. #...# #.... #.### #...# #...# .####',
+  H: '#...# #...# #...# ##### #...# #...# #...#',
+  I: '.###. ..#.. ..#.. ..#.. ..#.. ..#.. .###.',
+  J: '..### ...#. ...#. ...#. ...#. #..#. .##..',
+  K: '#...# #..#. #.#.. ##... #.#.. #..#. #...#',
+  L: '#.... #.... #.... #.... #.... #.... #####',
+  M: '#...# ##.## #.#.# #.#.# #...# #...# #...#',
+  N: '#...# #...# ##..# #.#.# #..## #...# #...#',
+  O: '.###. #...# #...# #...# #...# #...# .###.',
+  P: '####. #...# #...# ####. #.... #.... #....',
+  Q: '.###. #...# #...# #...# #.#.# #..#. .##.#',
+  R: '####. #...# #...# ####. #.#.. #..#. #...#',
+  S: '.###. #...# #.... .###. ....# #...# .###.',
+  T: '##### ..#.. ..#.. ..#.. ..#.. ..#.. ..#..',
+  U: '#...# #...# #...# #...# #...# #...# .###.',
+  V: '#...# #...# #...# #...# #...# .#.#. ..#..',
+  W: '#...# #...# #...# #.#.# #.#.# #.#.# .#.#.',
+  X: '#...# #...# .#.#. ..#.. .#.#. #...# #...#',
+  Y: '#...# #...# .#.#. ..#.. ..#.. ..#.. ..#..',
+  Z: '##### ....# ...#. ..#.. .#... #.... #####',
+  0: '.###. #...# #..## #.#.# ##..# #...# .###.',
+  1: '..#.. .##.. ..#.. ..#.. ..#.. ..#.. .###.',
+  2: '.###. #...# ....# ...#. ..#.. .#... #####',
+  3: '##### ...#. ..#.. ...#. ....# #...# .###.',
+  4: '...#. ..##. .#.#. #..#. ##### ...#. ...#.',
+  5: '##### #.... ####. ....# ....# #...# .###.',
+  6: '..##. .#... #.... ####. #...# #...# .###.',
+  7: '##### ....# ...#. ..#.. .#... .#... .#...',
+  8: '.###. #...# #...# .###. #...# #...# .###.',
+  9: '.###. #...# #...# .#### ....# ...#. .##..',
+  ' ': '..... ..... ..... ..... ..... ..... .....',
+  '.': '..... ..... ..... ..... ..... .##.. .##..',
+  ',': '..... ..... ..... ..... .##.. ..#.. .#...',
+  '!': '..#.. ..#.. ..#.. ..#.. ..#.. ..... ..#..',
+  '?': '.###. #...# ....# ...#. ..#.. ..... ..#..',
+  '-': '..... ..... ..... .###. ..... ..... .....',
+  '+': '..... ..#.. ..#.. ##### ..#.. ..#.. .....',
+  '=': '..... ..... ##### ..... ##### ..... .....',
+  ':': '..... .##.. .##.. ..... .##.. .##.. .....',
+  '/': '....# ...#. ...#. ..#.. .#... .#... #....',
+  "'": '..#.. ..#.. .#... ..... ..... ..... .....',
+  '<': '...#. ..#.. .#... #.... .#... ..#.. ...#.',
+  '>': '.#... ..#.. ...#. ....# ...#. ..#.. .#...',
+  '*': '..... #...# .#.#. ..#.. .#.#. #...# .....',
+};
+
+const FONT_BITS = {};
+for (const [ch, rows] of Object.entries(GLYPHS)) FONT_BITS[ch] = rows.split(' ');
+
+const GLYPH_W = 5, GLYPH_H = 7, ADVANCE = 6;
+
+function textWidth(str, scale = 1) {
+  return str.length ? (str.length * ADVANCE - 1) * scale : 0;
+}
+
+// `color` is one colour, or an array of seven (one per glyph row) for the
+// striped logos arcade title screens used.
+function text(ctx, str, x, y, color, opts = {}) {
+  const scale = opts.scale || 1;
+  const s = String(str).toUpperCase();
+  let left = x;
+  if (opts.align === 'center') left = x - Math.floor(textWidth(s, scale) / 2);
+  else if (opts.align === 'right') left = x - textWidth(s, scale);
+  for (let i = 0; i < s.length; i++) {
+    const rows = FONT_BITS[s[i]] || FONT_BITS['?'];
+    const gx = left + i * ADVANCE * scale;
+    for (let r = 0; r < GLYPH_H; r++) {
+      ctx.fillStyle = Array.isArray(color) ? color[r] : color;
+      const row = rows[r];
+      for (let c = 0; c < GLYPH_W; c++) {
+        if (row[c] === '#') ctx.fillRect(gx + c * scale, y + r * scale, scale, scale);
+      }
+    }
+  }
+}
+
+// ---- engine/screen.js
+// The arcade screen: a small fixed-resolution canvas, scaled up in whole
+// DEVICE pixels so every game pixel is the same size and stays sharp. A 336px
+// screen on a 3x phone is drawn at exactly 3 device pixels per game pixel,
+// never 3.35, which is what makes uneven, shimmering pixels.
+function makeScreen({ canvas, stage, frame, w, h, crtKey }) {
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+
+  function fit() {
+    const dpr = window.devicePixelRatio || 1;
+    // clientWidth/Height include the stage's padding; the screen gets only
+    // what is inside it.
+    const cs = getComputedStyle(stage);
+    const aw = stage.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    const ah = stage.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+    const s = Math.max(1, Math.floor(Math.min((aw * dpr) / w, (ah * dpr) / h)));
+    canvas.style.width = (s * w) / dpr + 'px';
+    canvas.style.height = (s * h) / dpr + 'px';
+    frame.style.setProperty('--px', s / dpr + 'px');
+  }
+  addEventListener('resize', fit);
+  if (window.visualViewport) visualViewport.addEventListener('resize', fit);
+  fit();
+
+  let crt = false;
+  try { crt = localStorage.getItem(crtKey) === '1'; } catch { crt = false; }
+  function setCrt(on) {
+    crt = on;
+    frame.classList.toggle('crt', on);
+    try { localStorage.setItem(crtKey, on ? '1' : '0'); } catch {}
+  }
+  setCrt(crt);
+
+  return {
+    ctx, w, h, fit,
+    get crt() { return crt; },
+    toggleCrt() { setCrt(!crt); return crt; },
+  };
+}
+
+// ---- engine/sound.js
+// Chip sound: square, triangle and noise voices made in the browser. No audio
+// files. Browsers only allow sound after a tap or key, so `wake()` is called
+// from every input handler and does nothing until then.
+function makeSound(muteKey) {
+  let ac = null, out = null;
+  let muted = false;
+  try { muted = localStorage.getItem(muteKey) === '1'; } catch { muted = false; }
+
+  function wake() {
+    if (ac) { if (ac.state === 'suspended') ac.resume(); return; }
+    const Ctor = window.AudioContext || window.webkitAudioContext;
+    if (!Ctor) return;
+    ac = new Ctor();
+    out = ac.createGain();
+    out.gain.value = muted ? 0 : 1;
+    out.connect(ac.destination);
+  }
+
+  // One note. `at` is seconds from now, `to` slides the pitch.
+  function note(freq, dur, { type = 'square', vol = 0.05, at = 0, to = null } = {}) {
+    if (!ac) return;
+    const t = ac.currentTime + at;
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(freq, t);
+    if (to) o.frequency.exponentialRampToValueAtTime(to, t + dur);
+    g.gain.setValueAtTime(vol, t);
+    g.gain.setValueAtTime(vol, t + dur * 0.7);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(out);
+    o.start(t); o.stop(t + dur + 0.02);
+  }
+
+  // A run of notes: [[freq, dur], ...], each after the last; 0 is a rest.
+  function tune(notes, opts = {}) {
+    let at = opts.at || 0;
+    for (const [f, d] of notes) {
+      if (f) note(f, d * 0.92, { ...opts, at });
+      at += d;
+    }
+  }
+
+  function noise(dur, { vol = 0.2, cutoff = 900, at = 0 } = {}) {
+    if (!ac) return;
+    const len = Math.floor(ac.sampleRate * dur);
+    const buf = ac.createBuffer(1, len, ac.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len) ** 2;
+    const s = ac.createBufferSource(); s.buffer = buf;
+    const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = cutoff;
+    const g = ac.createGain(); g.gain.value = vol;
+    s.connect(f); f.connect(g); g.connect(out);
+    s.start(ac.currentTime + at);
+  }
+
+  // A held sound (an engine): filtered noise that runs for the whole session
+  // and is gated by its gain. Starting a source every frame is what makes
+  // engine sound crackle. Returns set(on); safe to call before wake().
+  function drone({ cutoff = 420, vol = 0.16 } = {}) {
+    let gain = null;
+    return on => {
+      if (!ac) return;
+      if (!gain) {
+        const len = ac.sampleRate * 2;
+        const buf = ac.createBuffer(1, len, ac.sampleRate);
+        const d = buf.getChannelData(0);
+        for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+        const s = ac.createBufferSource(); s.buffer = buf; s.loop = true;
+        const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = cutoff;
+        gain = ac.createGain(); gain.gain.value = 0;
+        s.connect(f); f.connect(gain); gain.connect(out);
+        s.start();
+      }
+      gain.gain.setTargetAtTime(on ? vol : 0, ac.currentTime, 0.03);
+    };
+  }
+
+  function setMuted(on) {
+    muted = on;
+    if (out) out.gain.value = on ? 0 : 1;
+    try { localStorage.setItem(muteKey, on ? '1' : '0'); } catch {}
+  }
+
+  return {
+    wake, note, tune, noise, drone,
+    get muted() { return muted; },
+    toggleMute() { setMuted(!muted); return muted; },
+  };
+}
+
+// ---- engine/input.js
+// Keyboard and touch in one place. `held` is what a game polls each tick;
+// `onDir` fires once per press (menus, initials); `onAction` carries the
+// buttons: start, pause, back, crt, mute.
+//
+// A word game passes `onLetter`: then every letter key is a letter (WASD stop
+// being directions, P/C/M stop being shortcuts; those stay on the buttons) and
+// only the arrows move. `onPoint(x, y)` receives taps on the screen in GAME
+// pixels; returning true means the game used the tap, otherwise it is START.
+function makeInput({ screen, onAction, onDir, onAny, onLetter = null, onPoint = null }) {
+  const held = { up: false, down: false, left: false, right: false };
+  const KEYS = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
+  const ACTIONS = { Space: 'start', Enter: 'start', Escape: 'back' };
+  if (!onLetter) {
+    Object.assign(KEYS, { KeyW: 'up', KeyS: 'down', KeyA: 'left', KeyD: 'right' });
+    Object.assign(ACTIONS, { KeyP: 'pause', KeyC: 'crt', KeyM: 'mute' });
+  }
+
+  let touch = matchMedia('(pointer: coarse)').matches;
+  const markTouch = on => {
+    touch = on;
+    document.body.classList.toggle('touch', on);
+  };
+  markTouch(touch);
+  addEventListener('touchstart', () => { if (!touch) markTouch(true); }, { passive: true });
+
+  addEventListener('keydown', e => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const dir = KEYS[e.code];
+    if (dir) {
+      e.preventDefault();
+      onAny();
+      if (!e.repeat) onDir(dir);
+      held[dir] = true;
+      return;
+    }
+    const action = ACTIONS[e.code];
+    if (action) {
+      // Space and Enter on a focused button or link belong to that control.
+      if ((e.code === 'Space' || e.code === 'Enter') && e.target.closest && e.target.closest('button, a')) return;
+      e.preventDefault();
+      onAny();
+      if (!e.repeat) onAction(action);
+      return;
+    }
+    // e.key, not e.code: the letter printed on the key, whatever the layout.
+    if (onLetter && /^[a-z]$/i.test(e.key)) {
+      e.preventDefault();
+      onAny();
+      if (!e.repeat) onLetter(e.key.toUpperCase());
+    }
+  });
+  addEventListener('keyup', e => {
+    const dir = KEYS[e.code];
+    if (dir) held[dir] = false;
+  });
+  addEventListener('blur', () => { held.up = held.down = held.left = held.right = false; });
+
+  for (const b of document.querySelectorAll('[data-dir]')) {
+    const dir = b.dataset.dir;
+    const down = e => {
+      e.preventDefault();
+      onAny();
+      held.up = held.down = held.left = held.right = false;
+      held[dir] = true;
+      onDir(dir);
+    };
+    const up = () => { held[dir] = false; };
+    b.addEventListener('pointerdown', down);
+    b.addEventListener('pointerup', up);
+    b.addEventListener('pointerleave', up);
+    b.addEventListener('pointercancel', up);
+    b.addEventListener('contextmenu', e => e.preventDefault());
+  }
+  for (const b of document.querySelectorAll('[data-action]')) {
+    const action = b.dataset.action;
+    // pointerdown for the START button, so it answers as fast as the d-pad;
+    // click for the toggles, so keyboard users can press them too.
+    if (b.classList.contains('start')) {
+      b.addEventListener('pointerdown', e => { e.preventDefault(); onAny(); onAction(action); });
+    } else {
+      b.addEventListener('click', () => { onAny(); onAction(action); });
+    }
+  }
+  screen.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    onAny();
+    if (onPoint) {
+      const r = screen.getBoundingClientRect();
+      const x = ((e.clientX - r.left) * screen.width) / r.width;
+      const y = ((e.clientY - r.top) * screen.height) / r.height;
+      if (onPoint(x, y)) return;
+    }
+    onAction('start');
+  });
+
+  return { held, get touch() { return touch; } };
+}
+
+// ---- engine/scores.js
+// The top-ten table, kept on this device only. A new browser starts with a
+// table of invented initials so the attract mode has something to show.
+const ENTRY_LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ.';
+
+function makeScores(key, defaults) {
+  let table = defaults.map(r => ({ ...r }));
+  try {
+    const saved = JSON.parse(localStorage.getItem(key) || 'null');
+    if (Array.isArray(saved) && saved.length === 10 && saved.every(r => typeof r.s === 'number' && typeof r.n === 'string')) table = saved;
+  } catch {}
+
+  return {
+    get table() { return table; },
+    get top() { return table[0].s; },
+    qualifies(score) { return score > 0 && score > table[9].s; },
+    // Returns the rank (0-9) the new row landed on.
+    add(n, s) {
+      let rank = table.findIndex(r => s > r.s);
+      if (rank === -1) return -1;
+      table.splice(rank, 0, { n, s });
+      table.length = 10;
+      try { localStorage.setItem(key, JSON.stringify(table)); } catch {}
+      return rank;
+    },
+  };
+}
+
+// ---- games/dust-off/flight.js
+// Dust Off's world, ship and landing rules, with no drawing, so the tests can
+// fly them. Carried over from the Qlaim cabinet unchanged: the same 960x560
+// world and the same tuning. The game draws it at a third of the size.
+const WORLD_W = 960, WORLD_H = 560;
+
+// Tuned so a competent landing costs roughly a third of the tank: enough
+// slack to correct a bad approach once, not twice.
+const GRAVITY = 0.028, THRUST = 0.072, SPIN = 2.6, FUEL = 1000;
+const SAFE_DOWN = 2.0, SAFE_DRIFT = 1.2, SAFE_TILT = 12;
+const FEET = 13; // ship centre to the bottom of its legs
+
+// Points, not columns: the surface is a polyline and the pads are the
+// segments that happen to be level. Wide pads pay x2, narrow ones x5.
+function buildTerrain(level, rand = Math.random) {
+  const W = WORLD_W, H = WORLD_H;
+  const points = [], pads = [];
+  const slots = [{ width: 120, mult: 2 }, { width: 78, mult: 3 }, { width: 48, mult: 5 }];
+  let x = 0, y = H - 90 - rand() * 60;
+  points.push({ x: 0, y });
+  const zones = [[120, 260], [380, 560], [660, 880]];
+  const chosen = zones.map((z, i) => ({ start: z[0] + rand() * (z[1] - z[0] - slots[i].width), ...slots[i] }))
+    .sort((a, b) => a.start - b.start);
+  for (const pad of chosen) {
+    while (x < pad.start - 30) {
+      x = Math.min(pad.start - 20, x + 26 + rand() * 34);
+      y = Math.max(H * 0.42, Math.min(H - 28, y + (rand() * 2 - 1) * (60 + level * 6)));
+      points.push({ x, y });
+    }
+    const padY = Math.max(H * 0.5, Math.min(H - 34, y + (rand() * 2 - 1) * 30));
+    points.push({ x: pad.start, y: padY });
+    points.push({ x: pad.start + pad.width, y: padY });
+    pads.push({ x1: pad.start, x2: pad.start + pad.width, y: padY, mult: pad.mult });
+    x = pad.start + pad.width; y = padY;
+  }
+  while (x < W) {
+    x = Math.min(W, x + 26 + rand() * 34);
+    y = Math.max(H * 0.42, Math.min(H - 28, y + (rand() * 2 - 1) * (60 + level * 6)));
+    points.push({ x, y });
+  }
+  points[points.length - 1].x = W;
+  return { points, pads };
+}
+
+function surfaceAt(terrain, px) {
+  const pts = terrain.points;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i], b = pts[i + 1];
+    if (px >= a.x && px <= b.x) {
+      const t = b.x - a.x === 0 ? 0 : (px - a.x) / (b.x - a.x);
+      return a.y + (b.y - a.y) * t;
+    }
+  }
+  return WORLD_H;
+}
+
+function padAt(terrain, px) {
+  return terrain.pads.find(p => px >= p.x1 && px <= p.x2) || null;
+}
+
+function newShip(rand = Math.random) {
+  return { x: 120 + rand() * 200, y: 70, vx: 0.9 + rand() * 0.8, vy: 0.2, a: 0, fuel: FUEL };
+}
+
+// One tick. `held` is { left, right, thrust }. Returns whether it burned.
+function stepShip(ship, held) {
+  if (held.left) ship.a -= SPIN;
+  if (held.right) ship.a += SPIN;
+  ship.a = Math.max(-90, Math.min(90, ship.a));
+  const burning = !!held.thrust && ship.fuel > 0;
+  if (burning) {
+    const rad = ((ship.a - 90) * Math.PI) / 180;
+    ship.vx += Math.cos(rad) * THRUST;
+    ship.vy += Math.sin(rad) * THRUST;
+    ship.fuel = Math.max(0, ship.fuel - 1.6);
+  }
+  ship.vy += GRAVITY;
+  ship.x += ship.vx; ship.y += ship.vy;
+  if (ship.x < -20) ship.x = WORLD_W + 20;
+  if (ship.x > WORLD_W + 20) ship.x = -20;
+  return burning;
+}
+
+// null while still in the air; otherwise how it met the ground.
+function touchdown(ship, terrain) {
+  if (ship.y + FEET < surfaceAt(terrain, ship.x)) return null;
+  const pad = padAt(terrain, ship.x);
+  const down = ship.vy, drift = Math.abs(ship.vx), tilt = Math.abs(ship.a);
+  if (!pad) return { ok: false, why: 'ROCKS' };
+  if (down > SAFE_DOWN) return { ok: false, why: 'DOWN', value: down };
+  if (drift > SAFE_DRIFT) return { ok: false, why: 'DRIFT', value: drift };
+  if (tilt > SAFE_TILT) return { ok: false, why: 'TILT', value: tilt };
+  return { ok: true, pad };
+}
+
+function landingScore(pad, fuel) {
+  const fuelBonus = Math.round(fuel / 10);
+  return { pad: 100 * pad.mult, fuel: fuelBonus, total: 100 * pad.mult + fuelBonus };
+}
+
+// The demo's pilot. Climb clear of the hills, drift over the nearest pad,
+// kill the sideways speed, then come straight down slowly.
+const CRUISE_Y = WORLD_H * 0.42 - 40;
+function autopilot(ship, terrain) {
+  let pad = terrain.pads[0];
+  for (const p of terrain.pads) if (Math.abs((p.x1 + p.x2) / 2 - ship.x) < Math.abs((pad.x1 + pad.x2) / 2 - ship.x)) pad = p;
+  const dx = (pad.x1 + pad.x2) / 2 - ship.x;
+  const over = Math.abs(dx) < (pad.x2 - pad.x1) / 2 - 8;
+  const alt = pad.y - (ship.y + FEET);
+  const wantVx = over ? 0 : Math.max(-1.4, Math.min(1.4, dx / 80));
+  let wantA = Math.max(-35, Math.min(35, (wantVx - ship.vx) * 45));
+  if (over && alt < 50) wantA = Math.max(-6, Math.min(6, wantA));
+  let wantVy;
+  if (!over) wantVy = ship.y > CRUISE_Y ? -0.4 : 0.3;
+  else wantVy = alt > 80 ? 1.3 : 0.7;
+  const aim = Math.abs(ship.a - wantA) < 12;
+  return {
+    left: ship.a > wantA + 2,
+    right: ship.a < wantA - 2,
+    thrust: ship.vy > wantVy || (aim && Math.abs(wantVx - ship.vx) > 0.3 && !over),
+  };
+}
+
+// ---- engine/sprites.js
+// Sprites are drawn as text: one character per pixel, '.' is transparent and
+// every other character is looked up in a palette. Swapping the palette is how
+// a sprite changes state (lit, remembered, alerted) — the way the hardware did it.
+function sprite(rows, palette) {
+  const w = rows[0].length, h = rows.length;
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const g = c.getContext('2d');
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const ch = rows[y][x];
+    if (ch === '.' || !palette[ch]) continue;
+    g.fillStyle = palette[ch];
+    g.fillRect(x, y, 1, 1);
+  }
+  return c;
+}
+
+function mirrored(src) {
+  const c = document.createElement('canvas');
+  c.width = src.width; c.height = src.height;
+  const g = c.getContext('2d');
+  g.translate(src.width, 0);
+  g.scale(-1, 1);
+  g.drawImage(src, 0, 0);
+  return c;
+}
+
+// A 16x16 tile painted by a function of (x, y) -> colour or null.
+function tile(size, paint) {
+  const c = document.createElement('canvas');
+  c.width = size; c.height = size;
+  const g = c.getContext('2d');
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    const col = paint(x, y);
+    if (!col) continue;
+    g.fillStyle = col;
+    g.fillRect(x, y, 1, 1);
+  }
+  return c;
+}
+
+// ---- games/dust-off/art.js
+// The lander, 11x9, turning about the middle of its cabin (column 5, row 4).
+const SHIP = [
+  '...GGGGG...',
+  '..GWWWWWG..',
+  '..GWBBWWG..',
+  '..GWBBWWG..',
+  '.GGGGGGGGG.',
+  '.G.KKKKK.G.',
+  '.G.......G.',
+  'G.........G',
+  'GG.......GG',
+];
+const SHIP_PAL = { G: '#c8c8d8', W: '#f0f0f0', B: '#5eeaf5', K: '#4a4a6a' };
+const PIVOT_X = 5, PIVOT_Y = 4;
+const TILT_STEP = 6;
+
+// Rotation done the way an 80s board did it: a stored frame per angle, every
+// pixel either fully on or off. Each frame is 17x17 with the pivot at (8, 8).
+function rotated(rows, pal, deg) {
+  const size = 17, mid = 8;
+  const c = document.createElement('canvas');
+  c.width = size; c.height = size;
+  const g = c.getContext('2d');
+  const r = (deg * Math.PI) / 180, cos = Math.cos(r), sin = Math.sin(r);
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    const dx = x - mid, dy = y - mid;
+    const sx = Math.round(dx * cos + dy * sin + PIVOT_X);
+    const sy = Math.round(-dx * sin + dy * cos + PIVOT_Y);
+    if (sy < 0 || sy >= rows.length || sx < 0 || sx >= rows[0].length) continue;
+    const ch = rows[sy][sx];
+    if (ch === '.') continue;
+    g.fillStyle = pal[ch];
+    g.fillRect(x, y, 1, 1);
+  }
+  return c;
+}
+
+function makeArt() {
+  const frames = [];
+  for (let a = -90; a <= 90; a += TILT_STEP) frames.push(rotated(SHIP, SHIP_PAL, a));
+  return {
+    ship: frames, // index (angle + 90) / TILT_STEP
+    mini: sprite(SHIP.slice(0, 9), SHIP_PAL),
+  };
+}
+
+// ---- games/dust-off/game.js
+// The world is 960x560, drawn at a third of the size under a 24px score bar.
+const SCALE = 3, TOP = 24;
+const W = WORLD_W / SCALE, H = TOP + Math.ceil(WORLD_H / SCALE) + 1; // 320 x 212
+const SHIPS = 3;
+const TICK_MS = 1000 / 60;
+const DEMO_TICKS = 60 * 40;
+
+const INK = {
+  red: '#ff3b3b', white: '#ffffff', yellow: '#ffd23f', orange: '#ff8a1e', green: '#3fd46b',
+  cyan: '#5eeaf5', grey: '#8f8fb0', dim: '#4a4a6a',
+};
+const ROW_INKS = ['#ff3b3b', '#ff8a1e', '#ffd23f', '#3fd46b', '#5eeaf5', '#8f7bff', '#ff5fb8', '#ff8a1e', '#ffd23f', '#3fd46b'];
+const LOGO_INK = ['#ffffff', '#f0f0f0', '#d8d8e8', '#c8c8d8', '#a0a0b8', '#8f8fb0', '#5a5a70'];
+const RANKS = ['1ST', '2ND', '3RD', '4TH', '5TH', '6TH', '7TH', '8TH', '9TH', '10TH'];
+
+// Invented initials, so a first visit has a table to beat.
+const DEFAULT_SCORES = [
+  ['LEM', 6000], ['ORB', 5000], ['APO', 4000], ['SEA', 3200], ['DUS', 2500],
+  ['ARC', 2000], ['FLY', 1500], ['TAP', 1000], ['DIP', 600], ['BIT', 300],
+].map(([n, s]) => ({ n, s }));
+
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const canvas = document.getElementById('c');
+const screen = makeScreen({ canvas, stage: document.getElementById('stage'), frame: document.getElementById('screen'), w: W, h: H, crtKey: 'lk.arcade.crt' });
+const ctx = screen.ctx;
+const sound = makeSound('lk.arcade.mute');
+const engine = sound.drone({ cutoff: 420, vol: 0.16 });
+const scores = makeScores('lk.dustoff.scores', DEFAULT_SCORES);
+const art = makeArt();
+
+// A fixed sky.
+const STARS = [];
+for (let i = 0; i < 46; i++) STARS.push({ x: (i * 137) % 320, y: 26 + ((i * 89) % 70), c: i % 4 ? '#8f8fb0' : '#ffffff' });
+
+let terrain = buildTerrain(1), ground = null;
+let ship = newShip();
+let mode = 'attract', page = 'title', pageT = 0, t = 0, timer = 0, clock = 0;
+let level = 1, ships = SHIPS, score = 0, sparks = [], shake = 0, burning = false;
+let demo = false, demoT = 0, result = null, tally = null, entry = null, highlight = -1, pausedFrom = null;
+
+const SFX = {
+  start: () => {
+    sound.tune([[523, 0.12], [659, 0.12], [784, 0.12], [1047, 0.12], [0, 0.06], [784, 0.12], [1047, 0.36]], { vol: 0.045 });
+    sound.tune([[131, 0.36], [196, 0.36], [262, 0.48]], { type: 'triangle', vol: 0.12 });
+  },
+  land: () => sound.tune([[660, 0.25], [880, 0.4]], { type: 'triangle', vol: 0.12 }),
+  crash: () => { sound.noise(0.7, { vol: 0.32, cutoff: 500 }); sound.note(220, 0.6, { to: 55, vol: 0.05 }); },
+  tick: () => sound.note(1760, 0.03, { vol: 0.025 }),
+  low: () => sound.note(1320, 0.06, { vol: 0.03 }),
+  blip: () => sound.note(988, 0.05, { vol: 0.04 }),
+  over: () => sound.tune([[392, 0.22], [370, 0.22], [349, 0.22], [330, 0.7]], { type: 'triangle', vol: 0.12 }),
+};
+// The demo plays silently: nobody asked for noise from a screen they are not using.
+function play(name) { if (!demo) SFX[name](); }
+
+// ---------------------------------------------------------------- the ground
+
+const sx = x => x / SCALE;
+const sy = (y, top = TOP) => top + y / SCALE;
+
+// Drawn once per flight into its own canvas: one column per pixel, a lit
+// edge, then rock that darkens with depth, dithered like the hardware did.
+function renderGround(tr, width, top, height) {
+  const c = document.createElement('canvas');
+  c.width = width; c.height = height;
+  const g = c.getContext('2d');
+  for (let x = 0; x < width; x++) {
+    const wx = Math.min(WORLD_W, (x + 0.5) * SCALE);
+    const y0 = Math.round(sy(surfaceAt(tr, wx), top));
+    for (let y = y0; y < height; y++) {
+      const d = y - y0;
+      let col;
+      if (d === 0) col = '#d8d8e8';
+      else if (d < 3) col = '#8f8fb0';
+      else if (d < 14) col = (x + y) % 3 === 0 ? '#3a3a48' : '#5a5a70';
+      else col = (x * 7 + y * 3) % 5 === 0 ? '#3a3a48' : '#24242e';
+      g.fillStyle = col;
+      g.fillRect(x, y, 1, 1);
+    }
+  }
+  for (const p of tr.pads) {
+    const x1 = Math.round(sx(p.x1)), x2 = Math.round(sx(p.x2)), y = Math.round(sy(p.y, top));
+    for (let x = x1; x <= x2; x++) {
+      g.fillStyle = Math.floor(x / 2) % 2 ? INK.yellow : INK.orange;
+      g.fillRect(x, y, 1, 1);
+      g.fillStyle = '#7a4a10';
+      g.fillRect(x, y + 1, 1, 1);
+    }
+    const label = 'X' + p.mult, lx = Math.round((x1 + x2) / 2);
+    g.fillStyle = '#000';
+    g.fillRect(lx - 7, y + 4, 14, 9);
+    text(g, label, lx, y + 5, INK.yellow, { align: 'center' });
+  }
+  return c;
+}
+
+function drawEarth(g, x, y) {
+  for (let dy = -6; dy <= 6; dy++) for (let dx = -6; dx <= 6; dx++) {
+    if (dx * dx + dy * dy > 38) continue;
+    const land = (dx * 3 + dy * 5 + 40) % 7 < 2 || (dx > 1 && dy < -1);
+    g.fillStyle = dx > 2 && dx * dx + dy * dy > 18 ? '#14206e' : land ? '#3fd46b' : '#2b4cff';
+    g.fillRect(x + dx, y + dy, 1, 1);
+  }
+}
+
+// ---------------------------------------------------------------- the game
+
+function newFlight() {
+  terrain = buildTerrain(level);
+  ground = renderGround(terrain, W, TOP, H);
+  ship = newShip();
+  sparks = []; shake = 0; result = null; tally = null; burning = false;
+}
+
+function newGame() {
+  demo = false; highlight = -1;
+  level = 1; ships = SHIPS; score = 0;
+  newFlight();
+  mode = 'ready'; timer = 150;
+  play('start');
+}
+
+function startDemo() {
+  demo = true; demoT = 0;
+  level = 1; ships = SHIPS; score = 0;
+  newFlight();
+  mode = 'ready'; timer = 60;
+}
+
+function endDemo() {
+  demo = false;
+  engine(false);
+  toAttract('scores');
+}
+
+function toAttract(p) {
+  mode = 'attract'; page = p; pageT = 0; demo = false; tally = null; entry = null;
+  engine(false);
+}
+
+function heldNow() {
+  if (demo) return autopilot(ship, terrain);
+  const h = input.held;
+  return { left: h.left, right: h.right, thrust: h.up };
+}
+
+function flyTick() {
+  if (demo && ++demoT > DEMO_TICKS) { endDemo(); return; }
+  burning = stepShip(ship, heldNow());
+  if (!demo) engine(burning);
+  if (burning && !reduceMotion && Math.random() < 0.7) {
+    const back = ((ship.a + 90) * Math.PI) / 180;
+    sparks.push({
+      x: ship.x + Math.cos(back) * 14, y: ship.y + Math.sin(back) * 14,
+      vx: Math.cos(back) * 2 + (Math.random() - 0.5), vy: Math.sin(back) * 2 + (Math.random() - 0.5),
+      life: 0.5, exhaust: true,
+    });
+  }
+  if (burning && ship.fuel < FUEL * 0.2 && clock % 20 === 0) play('low');
+  const r = touchdown(ship, terrain);
+  if (!r) return;
+  ship.y = surfaceAt(terrain, ship.x) - FEET;
+  engine(false);
+  burning = false;
+  result = r;
+  if (r.ok) {
+    const s = landingScore(r.pad, ship.fuel);
+    tally = { ...s, mult: r.pad.mult, from: score };
+    score += s.total;
+    mode = 'landed'; t = 0;
+    play('land');
+  } else {
+    ships--;
+    shake = reduceMotion ? 0 : 16;
+    for (let i = 0; i < (reduceMotion ? 10 : 34); i++) {
+      const a = Math.random() * Math.PI * 2, sp = 1 + Math.random() * 4.5;
+      sparks.push({ x: ship.x, y: ship.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 1.2, life: 1 });
+    }
+    mode = 'crashed'; t = 0;
+    play('crash');
+  }
+}
+
+function afterCrash() {
+  if (demo) { endDemo(); return; }
+  if (ships <= 0) { mode = 'over'; timer = 200; play('over'); return; }
+  newFlight();
+  mode = 'ready'; timer = 90;
+}
+
+function nextLevel() {
+  if (demo) { endDemo(); return; }
+  level++;
+  newFlight();
+  mode = 'ready'; timer = 90;
+}
+
+function afterOver() {
+  if (scores.qualifies(score)) {
+    entry = { letters: [0, 0, 0], pos: 0, timer: 60 * 30 };
+    mode = 'entry';
+  } else {
+    toAttract('scores');
+  }
+}
+
+function saveEntry() {
+  const name = entry.letters.map(i => ENTRY_LETTERS[i]).join('');
+  highlight = scores.add(name, score);
+  toAttract('scores');
+}
+
+// ---------------------------------------------------------------- input
+
+function onAction(action) {
+  if (action === 'crt') { screen.toggleCrt(); syncToggles(); return; }
+  if (action === 'mute') { sound.toggleMute(); syncToggles(); return; }
+  if (action === 'back') { toAttract('title'); return; }
+  if (action === 'pause') {
+    if (mode === 'paused') { mode = pausedFrom; return; }
+    if (!demo && ['ready', 'flying', 'landed', 'crashed'].includes(mode)) { pausedFrom = mode; mode = 'paused'; engine(false); }
+    return;
+  }
+  if (mode === 'attract' || demo) { newGame(); return; }
+  if (mode === 'paused') { mode = pausedFrom; return; }
+  if (mode === 'landed' && t >= 60) { nextLevel(); return; }
+  if (mode === 'over') { timer = 0; return; }
+  if (mode === 'entry') confirmLetter();
+}
+
+function confirmLetter() {
+  play('blip');
+  entry.pos++;
+  if (entry.pos >= 3) saveEntry();
+}
+
+function onDir(dir) {
+  if (mode !== 'entry') return;
+  const n = ENTRY_LETTERS.length, i = entry.pos;
+  if (dir === 'up') { entry.letters[i] = (entry.letters[i] + 1) % n; play('blip'); }
+  else if (dir === 'down') { entry.letters[i] = (entry.letters[i] + n - 1) % n; play('blip'); }
+  else if (dir === 'right') confirmLetter();
+  else if (dir === 'left' && entry.pos > 0) { entry.pos--; play('blip'); }
+}
+
+const input = makeInput({ screen: canvas, onAction, onDir, onAny: () => sound.wake() });
+
+const crtBtn = document.querySelector('[data-action="crt"]');
+const muteBtn = document.querySelector('[data-action="mute"]');
+function syncToggles() {
+  crtBtn.textContent = 'CRT ' + (screen.crt ? 'on' : 'off');
+  crtBtn.setAttribute('aria-pressed', String(screen.crt));
+  muteBtn.textContent = 'Sound ' + (sound.muted ? 'off' : 'on');
+  muteBtn.setAttribute('aria-pressed', String(!sound.muted));
+}
+syncToggles();
+
+// A phone that locks or switches app mid-flight comes back paused, not crashed.
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && !demo && ['ready', 'flying'].includes(mode)) { pausedFrom = mode; mode = 'paused'; engine(false); }
+});
+
+// ---------------------------------------------------------------- drawing
+
+const blinkOn = (rate = 32) => reduceMotion || ((clock / rate) | 0) % 2 === 0;
+const prompt = () => (input.touch ? 'TAP START' : 'PRESS SPACE');
+
+function banner(lines, y) {
+  const wide = Math.max(...lines.map(([s]) => s.length)) * 6 + 10;
+  ctx.fillStyle = '#000';
+  ctx.fillRect(Math.floor((W - wide) / 2), y - 5, wide, lines.length * 12 + 7);
+  lines.forEach(([s, ink], i) => text(ctx, s, W / 2, y + i * 12, ink, { align: 'center' }));
+}
+
+function drawShip(g, s, top, flame) {
+  const a = Math.max(-90, Math.min(90, s.a));
+  const frame = art.ship[Math.round((a + 90) / TILT_STEP)];
+  const cx = Math.round(sx(s.x)), cy = Math.round(sy(s.y, top));
+  g.drawImage(frame, cx - 8, cy - 8);
+  if (flame) {
+    const r = (a * Math.PI) / 180, len = 3 + (reduceMotion ? 1 : (clock >> 1) % 3);
+    for (let k = 0; k < len; k++) {
+      const d = 5 + k;
+      g.fillStyle = k < 1 ? INK.white : k < 2 ? INK.yellow : INK.orange;
+      g.fillRect(cx + Math.round(-Math.sin(r) * d), cy + Math.round(Math.cos(r) * d), 1, 1);
+    }
+  }
+}
+
+function drawSky(g, top) {
+  for (const s of STARS) { g.fillStyle = s.c; g.fillRect(s.x, s.y - TOP + top, 1, 1); }
+  drawEarth(g, 196, top + 16);
+}
+
+function drawHud() {
+  const shown = tally ? tally.from + Math.round(tally.total * Math.max(0, Math.min(1, (t - 40) / 40))) : score;
+  const hi = Math.max(scores.top, demo ? 0 : score);
+  if (!(mode === 'flying' && !demo) || blinkOn(24)) text(ctx, '1UP', 8, 3, INK.red);
+  text(ctx, String(shown).padStart(2, '0'), 50, 12, INK.white, { align: 'right' });
+  text(ctx, 'HI-SCORE', W / 2, 3, INK.red, { align: 'center' });
+  text(ctx, String(hi), W / 2, 12, INK.white, { align: 'center' });
+  if (mode === 'attract' || mode === 'entry') return;
+  text(ctx, 'FUEL', 248, 3, INK.red, { align: 'right' });
+  const low = ship.fuel < FUEL * 0.2;
+  ctx.fillStyle = '#1a1a2a'; ctx.fillRect(252, 3, 60, 6);
+  ctx.fillStyle = low ? (blinkOn(12) ? INK.orange : '#7a4a10') : INK.green;
+  ctx.fillRect(252, 3, Math.round((60 * ship.fuel) / FUEL), 6);
+  for (let i = 0; i < ships; i++) ctx.drawImage(art.mini, W - 19 - i * 13, 12);
+}
+
+function drawReadout() {
+  const alt = Math.max(0, surfaceAt(terrain, ship.x) - ship.y - FEET);
+  const rows = [
+    ['STAGE', String(level), false],
+    ['ALT', alt.toFixed(0), false],
+    ['DOWN', ship.vy.toFixed(1), ship.vy > SAFE_DOWN],
+    ['DRIFT', ship.vx.toFixed(1), Math.abs(ship.vx) > SAFE_DRIFT],
+    ['TILT', String(Math.round(ship.a)), Math.abs(ship.a) > SAFE_TILT],
+  ];
+  rows.forEach(([label, value, danger], i) => {
+    const y = TOP + 6 + i * 9;
+    text(ctx, label, 252, y, INK.dim);
+    text(ctx, value, 314, y, danger ? INK.orange : INK.green, { align: 'right' });
+  });
+}
+
+const WHY = {
+  ROCKS: () => ['ON THE ROCKS', 'ONLY THE PADS TAKE A LANDING'],
+  DOWN: r => ['DOWN AT ' + r.value.toFixed(1), 'OVER ' + SAFE_DOWN.toFixed(1) + ' FOLDS THE LEGS'],
+  DRIFT: r => ['SIDEWAYS AT ' + r.value.toFixed(1), 'OVER ' + SAFE_DRIFT.toFixed(1) + ' TIPS IT OVER'],
+  TILT: r => ['LEANING ' + Math.round(r.value), 'IT NEEDS TO BE WITHIN ' + SAFE_TILT],
+};
+
+function drawLanded() {
+  const w = 200, h = 78, x0 = (W - w) / 2, y0 = TOP + 20;
+  ctx.fillStyle = '#000'; ctx.fillRect(x0, y0, w, h);
+  ctx.fillStyle = INK.cyan;
+  ctx.fillRect(x0, y0, w, 1); ctx.fillRect(x0, y0 + h - 1, w, 1); ctx.fillRect(x0, y0, 1, h); ctx.fillRect(x0 + w - 1, y0, 1, h);
+  text(ctx, 'THE EAGLE IS DOWN', W / 2, y0 + 8, INK.yellow, { align: 'center' });
+  const row = (i, label, value) => {
+    const y = y0 + 24 + i * 12;
+    text(ctx, label, x0 + 10, y, INK.grey);
+    text(ctx, value, x0 + w - 10, y, INK.white, { align: 'right' });
+  };
+  if (t >= 20) row(0, 'PAD X' + tally.mult + ' X 100', String(tally.pad));
+  if (t >= 40) row(1, 'FUEL LEFT', String(tally.fuel));
+  if (t >= 60 && !demo && blinkOn()) text(ctx, prompt(), W / 2, y0 + h - 14, INK.cyan, { align: 'center' });
+}
+
+function drawWorld() {
+  ctx.save();
+  if (shake > 0.5) ctx.translate(Math.round((Math.random() - 0.5) * shake / 2), Math.round((Math.random() - 0.5) * shake / 2));
+  drawSky(ctx, TOP);
+  ctx.drawImage(ground, 0, 0);
+  for (const s of sparks) {
+    ctx.fillStyle = s.exhaust ? (s.life > 0.3 ? INK.yellow : INK.orange) : s.life > 0.6 ? INK.white : INK.orange;
+    ctx.fillRect(Math.round(sx(s.x)), Math.round(sy(s.y)), 1, 1);
+  }
+  if (mode !== 'crashed' || t < 4) drawShip(ctx, ship, TOP, burning && mode === 'flying');
+  ctx.restore();
+  if (mode !== 'landed') drawReadout();
+}
+
+function drawTitle() {
+  drawSky(ctx, TOP);
+  text(ctx, 'DUST OFF', W / 2 + 2, 42, '#1c2870', { align: 'center', scale: 4 });
+  text(ctx, 'DUST OFF', W / 2, 40, LOGO_INK, { align: 'center', scale: 4 });
+  text(ctx, 'BRING IT DOWN SLOWLY', W / 2, 78, INK.grey, { align: 'center' });
+  const demoShip = { x: 480, y: 330, a: reduceMotion ? 0 : Math.round(Math.sin(clock / 40) * 10) };
+  drawShip(ctx, demoShip, TOP, !reduceMotion && (clock >> 3) % 4 !== 0);
+  if (blinkOn()) text(ctx, prompt(), W / 2, 150, INK.yellow, { align: 'center' });
+  text(ctx, 'UP TO BURN, LEFT AND RIGHT TO TURN', W / 2, 166, INK.grey, { align: 'center' });
+  text(ctx, 'LEON KARSTEN 2026', W / 2, 198, INK.dim, { align: 'center' });
+}
+
+function drawHowTo() {
+  text(ctx, 'HOW TO PLAY', W / 2, 30, INK.cyan, { align: 'center' });
+  text(ctx, 'YOU ARE ALREADY FALLING. PUT IT DOWN', W / 2, 46, INK.white, { align: 'center' });
+  text(ctx, 'ON A LIT PAD, SLOW AND UPRIGHT.', W / 2, 56, INK.white, { align: 'center' });
+  const row = (y, label, value, ink = INK.white) => {
+    text(ctx, label, 60, y, INK.grey);
+    text(ctx, value, 260, y, ink, { align: 'right' });
+  };
+  row(76, 'DOWN AT MOST', SAFE_DOWN.toFixed(1), INK.green);
+  row(86, 'SIDEWAYS AT MOST', SAFE_DRIFT.toFixed(1), INK.green);
+  row(96, 'LEANING AT MOST', String(SAFE_TILT), INK.green);
+  text(ctx, 'SCORING', W / 2, 116, INK.yellow, { align: 'center' });
+  row(132, 'WIDE PAD', 'X2 X 100');
+  row(142, 'NARROW PAD', 'X5 X 100');
+  row(152, 'FUEL LEFT', '1 PER 10');
+  text(ctx, 'FUEL IS THE ONLY CLOCK.', W / 2, 172, INK.orange, { align: 'center' });
+  if (blinkOn()) text(ctx, prompt(), W / 2, 194, INK.yellow, { align: 'center' });
+}
+
+function drawScores() {
+  text(ctx, 'HIGH SCORES', W / 2, 28, INK.yellow, { align: 'center' });
+  text(ctx, 'RANK', 80, 42, INK.grey);
+  text(ctx, 'SCORE', 196, 42, INK.grey, { align: 'right' });
+  text(ctx, 'NAME', 220, 42, INK.grey);
+  scores.table.forEach((r, i) => {
+    if (i === highlight && !blinkOn(16)) return;
+    const y = 54 + i * 13;
+    const ink = i === highlight ? INK.white : ROW_INKS[i];
+    text(ctx, RANKS[i], 80, y, ink);
+    text(ctx, String(r.s), 196, y, ink, { align: 'right' });
+    text(ctx, r.n, 220, y, ink);
+  });
+  if (blinkOn()) text(ctx, prompt(), W / 2, 196, INK.yellow, { align: 'center' });
+}
+
+function drawEntry() {
+  text(ctx, 'YOU MADE THE TOP TEN', W / 2, 32, INK.cyan, { align: 'center' });
+  text(ctx, String(score), W / 2, 46, INK.yellow, { align: 'center', scale: 2 });
+  text(ctx, 'ENTER YOUR INITIALS', W / 2, 74, INK.white, { align: 'center' });
+  for (let i = 0; i < 3; i++) {
+    const x = W / 2 - 39 + i * 30;
+    const current = i === entry.pos;
+    if (!current || blinkOn(16)) text(ctx, ENTRY_LETTERS[entry.letters[i]], x, 92, current ? INK.yellow : INK.white, { scale: 3 });
+    ctx.fillStyle = current ? INK.yellow : INK.dim;
+    ctx.fillRect(x - 2, 118, 18, 2);
+  }
+  text(ctx, 'UP / DOWN   CHANGE LETTER', W / 2, 136, INK.grey, { align: 'center' });
+  text(ctx, (input.touch ? 'RIGHT OR START' : 'RIGHT OR SPACE') + '   NEXT', W / 2, 148, INK.grey, { align: 'center' });
+  text(ctx, 'LEFT   BACK', W / 2, 160, INK.grey, { align: 'center' });
+  text(ctx, 'TIME ' + Math.ceil(entry.timer / 60), W / 2, 184, INK.orange, { align: 'center' });
+}
+
+function draw() {
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, W, H);
+  if (mode === 'attract') {
+    drawHud();
+    if (page === 'title') drawTitle();
+    else if (page === 'howto') drawHowTo();
+    else drawScores();
+    return;
+  }
+  if (mode === 'entry') { drawHud(); drawEntry(); return; }
+  drawWorld();
+  drawHud();
+  if (mode === 'ready') banner(demo ? [['DEMO PLAY', INK.cyan]] : [['PLAYER ONE', INK.cyan], ['READY!', INK.yellow]], TOP + 40);
+  else if (mode === 'paused') banner([['PAUSED', INK.white], [input.touch ? 'TAP START' : 'PRESS P', INK.grey]], TOP + 40);
+  else if (mode === 'landed') drawLanded();
+  else if (mode === 'crashed' && t > 30 && result) {
+    const [a, b] = WHY[result.why](result);
+    banner([[a, INK.red], [b, INK.grey]], TOP + 40);
+  } else if (mode === 'over') banner([['GAME OVER', INK.red]], TOP + 40);
+  if (demo && mode === 'flying' && blinkOn()) text(ctx, 'DEMO PLAY', W / 2, TOP + 4, INK.cyan, { align: 'center' });
+}
+
+// ---------------------------------------------------------------- card art
+
+// The picture on the site's Games page, 320x240 (the card is 4:3), drawn with
+// the game's own ground, ship and font. scripts/cards.mjs saves it as a PNG.
+function drawCard() {
+  const c = document.createElement('canvas');
+  c.width = 320; c.height = 240;
+  const g = c.getContext('2d');
+  g.fillStyle = '#000'; g.fillRect(0, 0, 320, 240);
+  // The first seeded terrain whose x5 pad (always in the right third) sits
+  // well clear of the edge and high enough for its label. Bounded, so a
+  // change to the terrain rules can never hang the page.
+  let tr, five;
+  for (let s0 = 1; s0 < 500; s0++) {
+    let seed = s0;
+    const rnd = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+    tr = buildTerrain(2, rnd);
+    five = tr.pads.find(p => p.mult === 5);
+    const mid = sx((five.x1 + five.x2) / 2);
+    if (mid > 225 && mid < 260 && five.y < WORLD_H - 90) break;
+  }
+  const top = 40;
+  drawSky(g, top);
+  g.drawImage(renderGround(tr, 320, top, 240), 0, 0);
+  // The lander at twice the size, burning, over the narrow pad.
+  const lander = document.createElement('canvas');
+  lander.width = 17; lander.height = 26;
+  const lg = lander.getContext('2d');
+  drawShip(lg, { x: 8 * SCALE, y: -TOP * SCALE + 8 * SCALE, a: -6 }, TOP, true);
+  g.imageSmoothingEnabled = false;
+  const cx = Math.round(sx((five.x1 + five.x2) / 2)), py = Math.round(sy(five.y, top));
+  g.drawImage(lander, cx - 17, py - 96, 34, 52);
+  text(g, 'DUST OFF', 162, 12, '#1c2870', { align: 'center', scale: 4 });
+  text(g, 'DUST OFF', 160, 10, LOGO_INK, { align: 'center', scale: 4 });
+  return c;
+}
+
+// ---------------------------------------------------------------- loop
+
+const PAGES = { title: ['howto', 420], howto: ['demo', 540], scores: ['title', 420] };
+function attractTick() {
+  pageT++;
+  const [next, length] = PAGES[page];
+  if (pageT < length) return;
+  if (next === 'demo') { startDemo(); return; }
+  if (next === 'title') highlight = -1;
+  toAttract(next);
+}
+
+function tick() {
+  clock++;
+  for (const s of sparks) { s.x += s.vx; s.y += s.vy; if (!s.exhaust) s.vy += 0.14; s.life -= s.exhaust ? 0.06 : 0.018; }
+  sparks = sparks.filter(s => s.life > 0);
+  if (shake > 0) shake *= 0.86;
+  switch (mode) {
+    case 'attract': attractTick(); break;
+    case 'ready': if (--timer <= 0) mode = 'flying'; break;
+    case 'flying': flyTick(); break;
+    case 'landed':
+      t++;
+      if (t > 40 && t <= 80 && t % 3 === 0) play('tick');
+      if ((demo && t >= 150) || t >= 600) nextLevel();
+      break;
+    case 'crashed': if (++t >= 150) afterCrash(); break;
+    case 'over': if (--timer <= 0) afterOver(); break;
+    case 'entry': if (--entry.timer <= 0) saveEntry(); break;
+  }
+}
+
+// A fixed 60 ticks a second whatever the display's refresh rate.
+let acc = 0, lastT = 0;
+function frame(now) {
+  requestAnimationFrame(frame);
+  if (!lastT) lastT = now;
+  acc += Math.min(100, now - lastT);
+  lastT = now;
+  while (acc >= TICK_MS) { tick(); acc -= TICK_MS; }
+  draw();
+}
+newFlight();
+requestAnimationFrame(frame);
+
+// Read-only view for the page checks, plus shortcuts so a check can reach the
+// later screens without flying a whole game.
+window.__dustoff = {
+  get mode() { return mode; },
+  get page() { return page; },
+  get demo() { return demo; },
+  get score() { return score; },
+  get ships() { return ships; },
+  get ship() { return { ...ship }; },
+  attract(p) { toAttract(p); },
+  endGame(s) { demo = false; score = s; ships = 0; mode = 'over'; timer = 1; },
+  // Put the ship just above the widest pad, upright and slow: a landing.
+  overPad() { const p = terrain.pads.find(q => q.mult === 2); Object.assign(ship, { x: (p.x1 + p.x2) / 2, y: p.y - FEET - 3, vx: 0, vy: 0.5, a: 0 }); },
+};
+window.__arcade = { card: drawCard };
+})();
+</script>
+</body>
+</html>

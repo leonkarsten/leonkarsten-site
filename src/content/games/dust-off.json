@@ -1,0 +1,8 @@
+{
+  "name": "Dust Off",
+  "slug": "dust-off",
+  "summary": "Bring the lander down slowly on a lit pad. The narrow pads pay more, and fuel is the only clock.",
+  "app": "/play/dust-off/",
+  "image": "/play/dust-off/card.png",
+  "tags": ["lander", "keyboard or touch"]
+}

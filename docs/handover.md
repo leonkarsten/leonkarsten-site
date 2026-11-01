@@ -32,7 +32,8 @@ Nothing personal: interests, facts, instructions, coaching, experiences only.
   attract mode, top-ten initials), synthwave only on the page around it; rules in that repo's
   `docs/style.md`. Import with `.\scripts\import-arcade.ps1 -Build`. Games, both ported from Leon's
   Qlaim arcade on 2026-11-01: **Lamplight** (`/play/lamplight/`, maze) and **Launch Window**
-  (`/play/launch-window/`, word guessing, upright screen with on-screen letter keys). Leon has
+  (`/play/launch-window/`, word guessing, upright screen with on-screen letter keys) and **Dust Off**
+  (`/play/dust-off/`, lunar lander, built overnight 1-2 Nov while Leon slept). Leon has
   seen Lamplight live; neither has been played through on his iPhone yet. Card pictures: each game draws its own 4:3 card (`npm run cards` in the arcade repo
   saves `cards/<slug>.png`); the import copies it to `public/play/<slug>/card.png` and the
   catalogue entry's optional `image` field shows it on `/games/`.

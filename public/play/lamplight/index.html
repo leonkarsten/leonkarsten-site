@@ -381,6 +381,28 @@ function makeSound(muteKey) {
     s.start(ac.currentTime + at);
   }
 
+  // A held sound (an engine): filtered noise that runs for the whole session
+  // and is gated by its gain. Starting a source every frame is what makes
+  // engine sound crackle. Returns set(on); safe to call before wake().
+  function drone({ cutoff = 420, vol = 0.16 } = {}) {
+    let gain = null;
+    return on => {
+      if (!ac) return;
+      if (!gain) {
+        const len = ac.sampleRate * 2;
+        const buf = ac.createBuffer(1, len, ac.sampleRate);
+        const d = buf.getChannelData(0);
+        for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+        const s = ac.createBufferSource(); s.buffer = buf; s.loop = true;
+        const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = cutoff;
+        gain = ac.createGain(); gain.gain.value = 0;
+        s.connect(f); f.connect(gain); gain.connect(out);
+        s.start();
+      }
+      gain.gain.setTargetAtTime(on ? vol : 0, ac.currentTime, 0.03);
+    };
+  }
+
   function setMuted(on) {
     muted = on;
     if (out) out.gain.value = on ? 0 : 1;
@@ -388,7 +410,7 @@ function makeSound(muteKey) {
   }
 
   return {
-    wake, note, tune, noise,
+    wake, note, tune, noise, drone,
     get muted() { return muted; },
     toggleMute() { setMuted(!muted); return muted; },
   };
