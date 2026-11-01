@@ -1,0 +1,1225 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sorted</title>
+<meta name="description" content="Two loops of beads and a turntable between them. Turn the loops, spin the middle, and get every bead home to its own colour.">
+<meta name="theme-color" content="#000000">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2016%2016'%20shape-rendering='crispEdges'%3E%3Crect%20width='16'%20height='16'%20fill='%23000'/%3E%3Crect%20x='1'%20y='5'%20width='5'%20height='6'%20fill='%233fd46b'/%3E%3Crect%20x='10'%20y='5'%20width='5'%20height='6'%20fill='%23ff8a1e'/%3E%3Crect%20x='12'%20y='7'%20width='1'%20height='2'%20fill='%23000'/%3E%3Crect%20x='7'%20y='7'%20width='2'%20height='2'%20fill='%238f8fb0'/%3E%3C/svg%3E">
+<style>
+:root {
+  --void: #000;
+  --chrome: #8f8fb0;
+  --chrome-hi: #5eeaf5;
+  --edge: #2a2a40;
+  --start: #e8302f;
+  --ui: ui-monospace, 'Cascadia Mono', Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; height: 100%; background: var(--void); color: var(--chrome); }
+body {
+  font-family: var(--ui);
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  height: 100dvh;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: 'bar' 'stage' 'pad';
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.bar {
+  grid-area: bar;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+}
+.bar a, .bar button {
+  font: 700 12px/1 var(--ui);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--chrome);
+  background: none;
+  border: 1px solid transparent;
+  padding: 9px 10px;
+  text-decoration: none;
+  cursor: pointer;
+  border-radius: 0;
+}
+.bar a:hover, .bar button:hover, .bar a:focus-visible, .bar button:focus-visible {
+  color: var(--chrome-hi);
+  border-color: var(--edge);
+  outline: none;
+}
+.bar button[aria-pressed='true'] { color: var(--chrome-hi); }
+.toggles { display: flex; gap: 2px; }
+
+.stage {
+  grid-area: stage;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  padding: 8px 16px;
+}
+/* A faint edge, so an unexplored black playfield still has a size. */
+.screen { position: relative; line-height: 0; touch-action: none; box-shadow: 0 0 0 1px #1c1c2c; }
+.screen canvas {
+  display: block;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+/* The CRT switch. Off by default: sharp pixels are the honest picture, the
+   tube is a costume. Scanlines are one per game pixel row (--px is set by
+   the screen fit), so they never beat against the art. */
+.screen.crt { border-radius: 3% / 4%; overflow: hidden; box-shadow: 0 0 0 4px #0b0b14, 0 0 36px rgba(94, 234, 245, 0.12); }
+.screen.crt canvas { filter: saturate(1.25) brightness(1.12) contrast(1.05) blur(calc(var(--px) * 0.18)); }
+.screen.crt::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background:
+    radial-gradient(ellipse at center, rgba(0, 0, 0, 0) 58%, rgba(0, 0, 0, 0.6) 100%),
+    repeating-linear-gradient(to bottom,
+      rgba(0, 0, 0, 0) 0, rgba(0, 0, 0, 0) calc(var(--px) * 0.55),
+      rgba(0, 0, 0, 0.38) calc(var(--px) * 0.55), rgba(0, 0, 0, 0.38) var(--px));
+  box-shadow: inset 0 0 48px rgba(0, 0, 0, 0.75);
+}
+
+/* Touch controls: shown on touch screens only. */
+.pad {
+  grid-area: pad;
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  max-width: 380px;
+  margin: 0 auto;
+  padding: 4px 20px 16px;
+}
+body.touch .pad { display: flex; }
+.dpad {
+  display: grid;
+  grid-template-columns: repeat(3, 54px);
+  grid-template-rows: repeat(3, 50px);
+  gap: 3px;
+}
+.dpad button, .start {
+  font: 700 18px/1 var(--ui);
+  color: var(--chrome);
+  background: #12121e;
+  border: 2px solid var(--edge);
+  border-radius: 6px;
+  padding: 0;
+  touch-action: none;
+  cursor: pointer;
+}
+.dpad button:active { background: #24243a; color: var(--chrome-hi); }
+.dpad .up { grid-area: 1 / 2; }
+.dpad .left { grid-area: 2 / 1; }
+.dpad .right { grid-area: 2 / 3; }
+.dpad .down { grid-area: 3 / 2; }
+.start {
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  background: var(--start);
+  border: 4px solid #7a1414;
+  color: #fff;
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  box-shadow: inset 0 -6px 0 rgba(0, 0, 0, 0.25);
+}
+.start:active { transform: translateY(2px); box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.25); }
+
+/* A phone on its side: d-pad left of the screen, START right of it. A game
+   with no d-pad (its keys are on the screen) moves the bar to a column
+   instead, so an upright screen gets the full height. */
+@media (orientation: landscape) and (max-height: 520px) {
+  body.no-pad {
+    grid-template-rows: minmax(0, 1fr);
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas: 'bar stage';
+  }
+  body.no-pad .bar { flex-direction: column; justify-content: flex-start; align-items: flex-start; }
+  body.no-pad .toggles { flex-direction: column; }
+  .stage { padding: 4px 8px; }
+  body.touch:not(.no-pad) {
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas: 'bar bar bar' 'dpad stage start';
+  }
+  body.touch:not(.no-pad) .pad { display: contents; }
+  body.touch .dpad { grid-area: dpad; align-self: center; margin-left: 12px; }
+  body.touch .start { grid-area: start; align-self: center; margin-right: 16px; }
+}
+
+/* Two-button pairs, for games with two things to turn (Sorted's loops). */
+.pair { display: grid; grid-template-columns: repeat(2, 54px); grid-template-rows: 54px auto; gap: 3px; justify-items: center; }
+.pair button {
+  width: 54px; height: 54px;
+  font: 700 18px/1 var(--ui); color: var(--chrome);
+  background: #12121e; border: 2px solid var(--edge); border-radius: 6px;
+  padding: 0; touch-action: none; cursor: pointer;
+}
+.pair button:active { background: #24243a; color: var(--chrome-hi); }
+.pair span { grid-column: 1 / 3; font: 700 10px/1 var(--ui); letter-spacing: 0.14em; color: var(--chrome); }
+@media (orientation: landscape) and (max-height: 520px) {
+  body.touch:not(.no-pad) .pad.loops { display: flex; flex-direction: column; gap: 12px; grid-area: start; align-self: center; margin-right: 12px; padding: 0; }
+  body.touch:not(.no-pad) .pad.loops .start { margin: 0; }
+}
+</style>
+</head>
+<body>
+
+<header class="bar">
+  <a href="/games/">&larr; Games</a>
+  <div class="toggles">
+    <button type="button" data-action="crt" aria-pressed="false">CRT off</button>
+    <button type="button" data-action="mute" aria-pressed="true">Sound on</button>
+  </div>
+</header>
+
+<main class="stage" id="stage">
+  <div class="screen" id="screen">
+    <canvas id="c" role="img" aria-label="Sorted game screen. A and D turn the left loop, the arrow keys turn the right loop, Space spins the middle; on a touch screen use the buttons under the board."></canvas>
+  </div>
+</main>
+
+<div class="pad loops">
+  <div class="pair">
+    <button type="button" data-letter="A" aria-label="Left loop anticlockwise">&#9664;</button>
+    <button type="button" data-letter="D" aria-label="Left loop clockwise">&#9654;</button>
+    <span>LEFT LOOP</span>
+  </div>
+  <button type="button" class="start" data-action="start">Spin</button>
+  <div class="pair">
+    <button type="button" data-dir="left" aria-label="Right loop anticlockwise">&#9664;</button>
+    <button type="button" data-dir="right" aria-label="Right loop clockwise">&#9654;</button>
+    <span>RIGHT LOOP</span>
+  </div>
+</div>
+
+<script>
+(() => {
+'use strict';
+// ---- engine/font.js
+// 5x7 bitmap font, one string per glyph, rows separated by spaces. Drawn with
+// fillRect so it stays on the pixel grid at any scale; there is no web font.
+const GLYPHS = {
+  A: '.###. #...# #...# ##### #...# #...# #...#',
+  B: '####. #...# #...# ####. #...# #...# ####.',
+  C: '.###. #...# #.... #.... #.... #...# .###.',
+  D: '####. #...# #...# #...# #...# #...# ####.',
+  E: '##### #.... #.... ####. #.... #.... #####',
+  F: '##### #.... #.... ####. #.... #.... #....',
+  G: '.###. #...# #.... #.### #...# #...# .####',
+  H: '#...# #...# #...# ##### #...# #...# #...#',
+  I: '.###. ..#.. ..#.. ..#.. ..#.. ..#.. .###.',
+  J: '..### ...#. ...#. ...#. ...#. #..#. .##..',
+  K: '#...# #..#. #.#.. ##... #.#.. #..#. #...#',
+  L: '#.... #.... #.... #.... #.... #.... #####',
+  M: '#...# ##.## #.#.# #.#.# #...# #...# #...#',
+  N: '#...# #...# ##..# #.#.# #..## #...# #...#',
+  O: '.###. #...# #...# #...# #...# #...# .###.',
+  P: '####. #...# #...# ####. #.... #.... #....',
+  Q: '.###. #...# #...# #...# #.#.# #..#. .##.#',
+  R: '####. #...# #...# ####. #.#.. #..#. #...#',
+  S: '.###. #...# #.... .###. ....# #...# .###.',
+  T: '##### ..#.. ..#.. ..#.. ..#.. ..#.. ..#..',
+  U: '#...# #...# #...# #...# #...# #...# .###.',
+  V: '#...# #...# #...# #...# #...# .#.#. ..#..',
+  W: '#...# #...# #...# #.#.# #.#.# #.#.# .#.#.',
+  X: '#...# #...# .#.#. ..#.. .#.#. #...# #...#',
+  Y: '#...# #...# .#.#. ..#.. ..#.. ..#.. ..#..',
+  Z: '##### ....# ...#. ..#.. .#... #.... #####',
+  0: '.###. #...# #..## #.#.# ##..# #...# .###.',
+  1: '..#.. .##.. ..#.. ..#.. ..#.. ..#.. .###.',
+  2: '.###. #...# ....# ...#. ..#.. .#... #####',
+  3: '##### ...#. ..#.. ...#. ....# #...# .###.',
+  4: '...#. ..##. .#.#. #..#. ##### ...#. ...#.',
+  5: '##### #.... ####. ....# ....# #...# .###.',
+  6: '..##. .#... #.... ####. #...# #...# .###.',
+  7: '##### ....# ...#. ..#.. .#... .#... .#...',
+  8: '.###. #...# #...# .###. #...# #...# .###.',
+  9: '.###. #...# #...# .#### ....# ...#. .##..',
+  ' ': '..... ..... ..... ..... ..... ..... .....',
+  '.': '..... ..... ..... ..... ..... .##.. .##..',
+  ',': '..... ..... ..... ..... .##.. ..#.. .#...',
+  '!': '..#.. ..#.. ..#.. ..#.. ..#.. ..... ..#..',
+  '?': '.###. #...# ....# ...#. ..#.. ..... ..#..',
+  '-': '..... ..... ..... .###. ..... ..... .....',
+  '+': '..... ..#.. ..#.. ##### ..#.. ..#.. .....',
+  '=': '..... ..... ##### ..... ##### ..... .....',
+  ':': '..... .##.. .##.. ..... .##.. .##.. .....',
+  '/': '....# ...#. ...#. ..#.. .#... .#... #....',
+  "'": '..#.. ..#.. .#... ..... ..... ..... .....',
+  '<': '...#. ..#.. .#... #.... .#... ..#.. ...#.',
+  '>': '.#... ..#.. ...#. ....# ...#. ..#.. .#...',
+  '*': '..... #...# .#.#. ..#.. .#.#. #...# .....',
+  '%': '##..# ##.#. ...#. ..#.. .#... .#.## #..##',
+};
+const FONT_CHARS = Object.keys(GLYPHS).join('');
+
+const FONT_BITS = {};
+for (const [ch, rows] of Object.entries(GLYPHS)) FONT_BITS[ch] = rows.split(' ');
+
+const GLYPH_W = 5, GLYPH_H = 7, ADVANCE = 6;
+
+function textWidth(str, scale = 1) {
+  return str.length ? (str.length * ADVANCE - 1) * scale : 0;
+}
+
+// `color` is one colour, or an array of seven (one per glyph row) for the
+// striped logos arcade title screens used.
+function text(ctx, str, x, y, color, opts = {}) {
+  const scale = opts.scale || 1;
+  const s = String(str).toUpperCase();
+  let left = x;
+  if (opts.align === 'center') left = x - Math.floor(textWidth(s, scale) / 2);
+  else if (opts.align === 'right') left = x - textWidth(s, scale);
+  for (let i = 0; i < s.length; i++) {
+    const rows = FONT_BITS[s[i]] || FONT_BITS['?'];
+    const gx = left + i * ADVANCE * scale;
+    for (let r = 0; r < GLYPH_H; r++) {
+      ctx.fillStyle = Array.isArray(color) ? color[r] : color;
+      const row = rows[r];
+      for (let c = 0; c < GLYPH_W; c++) {
+        if (row[c] === '#') ctx.fillRect(gx + c * scale, y + r * scale, scale, scale);
+      }
+    }
+  }
+}
+
+// ---- engine/screen.js
+// The arcade screen: a small fixed-resolution canvas, scaled up in whole
+// DEVICE pixels so every game pixel is the same size and stays sharp. A 336px
+// screen on a 3x phone is drawn at exactly 3 device pixels per game pixel,
+// never 3.35, which is what makes uneven, shimmering pixels.
+function makeScreen({ canvas, stage, frame, w, h, crtKey }) {
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+
+  function fit() {
+    const dpr = window.devicePixelRatio || 1;
+    // clientWidth/Height include the stage's padding; the screen gets only
+    // what is inside it.
+    const cs = getComputedStyle(stage);
+    const aw = stage.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    const ah = stage.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+    const s = Math.max(1, Math.floor(Math.min((aw * dpr) / w, (ah * dpr) / h)));
+    canvas.style.width = (s * w) / dpr + 'px';
+    canvas.style.height = (s * h) / dpr + 'px';
+    frame.style.setProperty('--px', s / dpr + 'px');
+  }
+  addEventListener('resize', fit);
+  if (window.visualViewport) visualViewport.addEventListener('resize', fit);
+  fit();
+
+  let crt = false;
+  try { crt = localStorage.getItem(crtKey) === '1'; } catch { crt = false; }
+  function setCrt(on) {
+    crt = on;
+    frame.classList.toggle('crt', on);
+    try { localStorage.setItem(crtKey, on ? '1' : '0'); } catch {}
+  }
+  setCrt(crt);
+
+  return {
+    ctx, w, h, fit,
+    get crt() { return crt; },
+    toggleCrt() { setCrt(!crt); return crt; },
+  };
+}
+
+// ---- engine/sound.js
+// Chip sound: square, triangle and noise voices made in the browser. No audio
+// files. Browsers only allow sound after a tap or key, so `wake()` is called
+// from every input handler and does nothing until then.
+function makeSound(muteKey) {
+  let ac = null, out = null;
+  let muted = false;
+  try { muted = localStorage.getItem(muteKey) === '1'; } catch { muted = false; }
+
+  function wake() {
+    if (ac) { if (ac.state === 'suspended') ac.resume(); return; }
+    const Ctor = window.AudioContext || window.webkitAudioContext;
+    if (!Ctor) return;
+    ac = new Ctor();
+    out = ac.createGain();
+    out.gain.value = muted ? 0 : 1;
+    out.connect(ac.destination);
+  }
+
+  // One note. `at` is seconds from now, `to` slides the pitch.
+  function note(freq, dur, { type = 'square', vol = 0.05, at = 0, to = null } = {}) {
+    if (!ac) return;
+    const t = ac.currentTime + at;
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(freq, t);
+    if (to) o.frequency.exponentialRampToValueAtTime(to, t + dur);
+    g.gain.setValueAtTime(vol, t);
+    g.gain.setValueAtTime(vol, t + dur * 0.7);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(out);
+    o.start(t); o.stop(t + dur + 0.02);
+  }
+
+  // A run of notes: [[freq, dur], ...], each after the last; 0 is a rest.
+  function tune(notes, opts = {}) {
+    let at = opts.at || 0;
+    for (const [f, d] of notes) {
+      if (f) note(f, d * 0.92, { ...opts, at });
+      at += d;
+    }
+  }
+
+  function noise(dur, { vol = 0.2, cutoff = 900, at = 0 } = {}) {
+    if (!ac) return;
+    const len = Math.floor(ac.sampleRate * dur);
+    const buf = ac.createBuffer(1, len, ac.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len) ** 2;
+    const s = ac.createBufferSource(); s.buffer = buf;
+    const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = cutoff;
+    const g = ac.createGain(); g.gain.value = vol;
+    s.connect(f); f.connect(g); g.connect(out);
+    s.start(ac.currentTime + at);
+  }
+
+  // A held sound (an engine): filtered noise that runs for the whole session
+  // and is gated by its gain. Starting a source every frame is what makes
+  // engine sound crackle. Returns set(on); safe to call before wake().
+  function drone({ cutoff = 420, vol = 0.16 } = {}) {
+    let gain = null;
+    return on => {
+      if (!ac) return;
+      if (!gain) {
+        const len = ac.sampleRate * 2;
+        const buf = ac.createBuffer(1, len, ac.sampleRate);
+        const d = buf.getChannelData(0);
+        for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+        const s = ac.createBufferSource(); s.buffer = buf; s.loop = true;
+        const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = cutoff;
+        gain = ac.createGain(); gain.gain.value = 0;
+        s.connect(f); f.connect(gain); gain.connect(out);
+        s.start();
+      }
+      gain.gain.setTargetAtTime(on ? vol : 0, ac.currentTime, 0.03);
+    };
+  }
+
+  function setMuted(on) {
+    muted = on;
+    if (out) out.gain.value = on ? 0 : 1;
+    try { localStorage.setItem(muteKey, on ? '1' : '0'); } catch {}
+  }
+
+  return {
+    wake, note, tune, noise, drone,
+    get muted() { return muted; },
+    toggleMute() { setMuted(!muted); return muted; },
+  };
+}
+
+// ---- engine/input.js
+// Keyboard and touch in one place. `held` is what a game polls each tick;
+// `onDir` fires once per press (menus, initials); `onAction` carries the
+// buttons: start, pause, back, crt, mute.
+//
+// A word game passes `onLetter`: then every letter key is a letter (WASD stop
+// being directions, P/C/M stop being shortcuts; those stay on the buttons) and
+// only the arrows move. `onKey(code)` gets any other key and returns true if
+// it used it. `onPoint(x, y)` receives taps on the screen in GAME
+// pixels; returning true means the game used the tap, otherwise it is START.
+function makeInput({ screen, onAction, onDir, onAny, onLetter = null, onPoint = null, onKey = null }) {
+  // `fire` is Space, Enter or the START button while held, for games that
+  // hold a trigger down; every other game ignores it.
+  const held = { up: false, down: false, left: false, right: false, fire: false };
+  const KEYS = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
+  const ACTIONS = { Space: 'start', Enter: 'start', Escape: 'back' };
+  if (!onLetter) {
+    Object.assign(KEYS, { KeyW: 'up', KeyS: 'down', KeyA: 'left', KeyD: 'right' });
+    Object.assign(ACTIONS, { KeyP: 'pause', KeyC: 'crt', KeyM: 'mute' });
+  }
+
+  let touch = matchMedia('(pointer: coarse)').matches;
+  const markTouch = on => {
+    touch = on;
+    document.body.classList.toggle('touch', on);
+  };
+  markTouch(touch);
+  addEventListener('touchstart', () => { if (!touch) markTouch(true); }, { passive: true });
+
+  addEventListener('keydown', e => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const dir = KEYS[e.code];
+    if (dir) {
+      e.preventDefault();
+      onAny();
+      if (!e.repeat) onDir(dir);
+      held[dir] = true;
+      return;
+    }
+    const action = ACTIONS[e.code];
+    if (action) {
+      if (action === 'start') held.fire = true;
+      // Space and Enter on a focused button or link belong to that control.
+      if ((e.code === 'Space' || e.code === 'Enter') && e.target.closest && e.target.closest('button, a')) return;
+      e.preventDefault();
+      onAny();
+      if (!e.repeat) onAction(action);
+      return;
+    }
+    // e.key, not e.code: the letter printed on the key, whatever the layout.
+    // Digits come through the same door, for games that number their keys.
+    if (onLetter && /^[a-z0-9]$/i.test(e.key)) {
+      e.preventDefault();
+      onAny();
+      if (!e.repeat) onLetter(e.key.toUpperCase());
+    }
+    // Anything else a game asked for by code (Z for undo, R for restart).
+    else if (onKey && !e.repeat && onKey(e.code)) { e.preventDefault(); onAny(); }
+  });
+  addEventListener('keyup', e => {
+    const dir = KEYS[e.code];
+    if (dir) held[dir] = false;
+    if (ACTIONS[e.code] === 'start') held.fire = false;
+  });
+  addEventListener('blur', () => { held.up = held.down = held.left = held.right = held.fire = false; });
+
+  for (const b of document.querySelectorAll('[data-dir]')) {
+    const dir = b.dataset.dir;
+    const down = e => {
+      e.preventDefault();
+      onAny();
+      held.up = held.down = held.left = held.right = false;
+      held[dir] = true;
+      onDir(dir);
+    };
+    const up = () => { held[dir] = false; };
+    b.addEventListener('pointerdown', down);
+    b.addEventListener('pointerup', up);
+    b.addEventListener('pointerleave', up);
+    b.addEventListener('pointercancel', up);
+    b.addEventListener('contextmenu', e => e.preventDefault());
+  }
+  // Buttons that send a letter (Sorted's left loop is A and D).
+  for (const b of document.querySelectorAll('[data-letter]')) {
+    b.addEventListener('pointerdown', e => { e.preventDefault(); onAny(); if (onLetter) onLetter(b.dataset.letter); });
+    b.addEventListener('contextmenu', e => e.preventDefault());
+  }
+  for (const b of document.querySelectorAll('[data-action]')) {
+    const action = b.dataset.action;
+    // pointerdown for the START button, so it answers as fast as the d-pad;
+    // click for the toggles, so keyboard users can press them too.
+    if (b.classList.contains('start')) {
+      b.addEventListener('pointerdown', e => { e.preventDefault(); onAny(); held.fire = true; onAction(action); });
+      for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(ev, () => { held.fire = false; });
+    } else {
+      b.addEventListener('click', () => { onAny(); onAction(action); });
+    }
+  }
+  screen.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    onAny();
+    if (onPoint) {
+      const r = screen.getBoundingClientRect();
+      const x = ((e.clientX - r.left) * screen.width) / r.width;
+      const y = ((e.clientY - r.top) * screen.height) / r.height;
+      if (onPoint(x, y)) return;
+    }
+    onAction('start');
+  });
+
+  return { held, get touch() { return touch; } };
+}
+
+// ---- engine/scores.js
+// The top-ten table, kept on this device only. A new browser starts with a
+// table of invented initials so the attract mode has something to show.
+const ENTRY_LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ.';
+
+function makeScores(key, defaults) {
+  let table = defaults.map(r => ({ ...r }));
+  try {
+    const saved = JSON.parse(localStorage.getItem(key) || 'null');
+    if (Array.isArray(saved) && saved.length === 10 && saved.every(r => typeof r.s === 'number' && typeof r.n === 'string')) table = saved;
+  } catch {}
+
+  return {
+    get table() { return table; },
+    get top() { return table[0].s; },
+    qualifies(score) { return score > 0 && score > table[9].s; },
+    // Returns the rank (0-9) the new row landed on.
+    add(n, s) {
+      let rank = table.findIndex(r => s > r.s);
+      if (rank === -1) return -1;
+      table.splice(rank, 0, { n, s });
+      table.length = 10;
+      try { localStorage.setItem(key, JSON.stringify(table)); } catch {}
+      return rank;
+    },
+  };
+}
+
+// ---- engine/entry.js
+// Three initials, drawn large, with tap targets for games that have no d-pad:
+// on a touch screen a tap above a letter's middle steps it up, below steps it
+// down, and a tap anywhere else accepts it. (Without this a phone player in a
+// tap-only game could only ever enter AAA.)
+function initialsLayout(w, y) {
+  return { x0: Math.round(w / 2 - 39), y, step: 30 };
+}
+
+function arrow(ctx, cx, y, up, ink) {
+  ctx.fillStyle = ink;
+  for (let r = 0; r < 4; r++) ctx.fillRect(cx - r, up ? y + r : y + 3 - r, r * 2 + 1, 1);
+}
+
+function drawInitials(ctx, entry, L, { blinkOn, touch, ink }) {
+  for (let i = 0; i < 3; i++) {
+    const x = L.x0 + i * L.step;
+    const current = i === entry.pos;
+    if (!current || blinkOn) text(ctx, ENTRY_LETTERS[entry.letters[i]], x, L.y, current ? ink.yellow : ink.white, { scale: 3 });
+    ctx.fillStyle = current ? ink.yellow : ink.dim;
+    ctx.fillRect(x - 2, L.y + 26, 18, 2);
+    if (touch && current) {
+      arrow(ctx, x + 7, L.y - 9, true, ink.yellow);
+      arrow(ctx, x + 7, L.y + 32, false, ink.yellow);
+    }
+  }
+}
+
+// 'up', 'down' or 'next' for a tap at (x, y) in game pixels.
+function tapInitials(entry, L, x, y) {
+  const left = L.x0 + entry.pos * L.step - 8, right = left + 32;
+  if (x < left || x > right) return 'next';
+  if (y >= L.y - 16 && y < L.y + 11) return 'up';
+  if (y >= L.y + 11 && y <= L.y + 40) return 'down';
+  return 'next';
+}
+
+// ---- games/sorted/rules.js
+// SORTED — two loops of beads and a turntable between them, and nothing else.
+//
+// The wooden bead puzzle Leon saw in an ad on 15 October 2026: two oval
+// tracks, red beads and white, and a piece in the middle that carries a short
+// run of beads from one track into the other. The cabinet draws it; this file
+// is the puzzle, PURE, for the reason Kings Row's rules are: a wrong rule here
+// never throws. A swap that drops a bead, a turn that duplicates one, a move
+// counter that says "mixed in 10" about a board that needs 11 — all of them
+// render, and the player simply cannot win, or is told something untrue.
+// scripts/test-sorted.mjs runs this file (the Qlaim checker, carried over).
+//
+// THE BOARD. Each loop is an array of LOOP positions holding 0 or 1. Index 0
+// to INNER-1 is the loop's INNER straight, the side that faces the centre,
+// numbered top to bottom on screen. The rest run on round the loop: the left
+// loop clockwise, the right loop anticlockwise, so the two are mirror images
+// and index i means the same place on both.
+//
+// THE TWO MOVES.
+//   turn(loop, steps)  every bead in that loop moves `steps` places round it.
+//   swap()             the turntable spins half a turn: the two inner
+//                      straights change loops. A half-turn puts the top of one
+//                      at the bottom of the other, so left[i] <-> right[INNER-1-i].
+//
+// WHAT COUNTS AS A MOVE is decided here, once, so a drag, a key and the
+// scramble cannot disagree. A move is one turn of a loop, however far, or one
+// swap. Turning the same loop again before the next swap is still that one
+// turn — the two loops never touch, so L R L is "L twice and R", which is two
+// moves, not three. Two swaps in a row undo each other and count as none. The
+// history below is kept in that reduced form, and the move count is its length.
+
+const LOOP = 20
+const INNER = 5
+const LEVELS = { easy: 4, medium: 10, hard: 25 }
+
+const mod = (n, m) => ((n % m) + m) % m
+
+function solvedBoard() {
+  return { left: Array(LOOP).fill(0), right: Array(LOOP).fill(1), history: [] }
+}
+
+const moves = (state) => state.history.length
+
+// Each loop one colour. Which loop has which colour does not matter.
+function isSorted(state) {
+  const one = (loop) => loop.every(b => b === loop[0])
+  return one(state.left) && one(state.right) && state.left[0] !== state.right[0]
+}
+
+function rotate(loop, steps) {
+  // The bead at i goes to i + steps.
+  const out = Array(LOOP)
+  for (let i = 0; i < LOOP; i++) out[mod(i + steps, LOOP)] = loop[i]
+  return out
+}
+
+function turn(state, loop, steps) {
+  if (loop !== 'L' && loop !== 'R') throw new Error(`no loop called ${loop}`)
+  if (!Number.isInteger(steps)) throw new Error(`a turn is a whole number of places, not ${steps}`)
+  const s = mod(steps, LOOP)
+  if (s === 0) return state
+
+  const key = loop === 'L' ? 'left' : 'right'
+  const next = { ...state, [key]: rotate(state[key], s), history: state.history.slice() }
+
+  // The turns since the last swap. At most one per loop, by construction.
+  const h = next.history
+  let since = h.length
+  while (since > 0 && h[since - 1].t !== 'S') since--
+  const at = h.findIndex((m, i) => i >= since && m.t === loop)
+  if (at === -1) h.push({ t: loop, n: s })
+  else {
+    const total = mod(h[at].n + s, LOOP)
+    if (total === 0) h.splice(at, 1)
+    else h[at] = { t: loop, n: total }
+  }
+  return next
+}
+
+function swap(state) {
+  const left = state.left.slice(), right = state.right.slice()
+  for (let i = 0; i < INNER; i++) {
+    left[i] = state.right[INNER - 1 - i]
+    right[INNER - 1 - i] = state.left[i]
+  }
+  const history = state.history.slice()
+  if (history.length && history[history.length - 1].t === 'S') history.pop()
+  else history.push({ t: 'S' })
+  return { left, right, history }
+}
+
+function play(state, move) {
+  return move.t === 'S' ? swap(state) : turn(state, move.t, move.n)
+}
+
+// The moves that take a board back along its own history. A swap undoes
+// itself; a turn is undone by the same loop turned back the same distance.
+function inverse(history) {
+  return history.slice().reverse().map(m => m.t === 'S' ? { t: 'S' } : { t: m.t, n: mod(-m.n, LOOP) })
+}
+
+const sameBoard = (a, b) => a.left.every((x, i) => x === b.left[i]) && a.right.every((x, i) => x === b.right[i])
+
+// A board mixed from the sorted one by real moves, so it can always be
+// sorted again — in at most `count` moves, which is the only thing the
+// cabinet claims about it. The fastest way back may be shorter; nobody has
+// proved otherwise, so the cabinet says "mixed in", never "par".
+//
+// A move that leaves the board looking the same (turning a loop that is all
+// one colour) is not kept, or "mixed in 4" would count moves that did nothing.
+function scramble(count, rand = Math.random) {
+  for (let attempt = 0; attempt < 200; attempt++) {
+    let s = solvedBoard()
+    let guard = 0
+    while (moves(s) < count && guard++ < count * 50) {
+      const r = rand()
+      let next
+      if (r < 0.34) next = swap(s)
+      else next = turn(s, r < 0.67 ? 'L' : 'R', 1 + Math.floor(rand() * (LOOP - 1)))
+      if (sameBoard(next, s)) continue
+      // A move that shortens the history undoes an earlier one: allowed, it
+      // is only ever one step back from a board already reached.
+      s = next
+    }
+    if (moves(s) === count && !isSorted(s)) {
+      return { board: { left: s.left, right: s.right, history: [] }, mixedIn: count, path: s.history }
+    }
+  }
+  throw new Error(`could not mix a board in ${count} moves`)
+}
+
+// ---- games/sorted/game.js
+const W = 320, H = 240, TOP = 20;
+const TICK_MS = 1000 / 60;
+const LEVEL_KEYS = Object.keys(LEVELS); // easy, medium, hard
+const LEVEL_NAMES = { easy: 'EASY', medium: 'MEDIUM', hard: 'HARD' };
+const LEVEL_PTS = { easy: 1000, medium: 2000, hard: 3000 };
+
+const INK = {
+  red: '#ff3b3b', white: '#ffffff', yellow: '#ffd23f', orange: '#ff8a1e', green: '#3fd46b',
+  cyan: '#5eeaf5', grey: '#8f8fb0', dim: '#4a4a6a',
+};
+const ROW_INKS = ['#ff3b3b', '#ff8a1e', '#ffd23f', '#3fd46b', '#5eeaf5', '#8f7bff', '#ff5fb8', '#ff8a1e', '#ffd23f', '#3fd46b'];
+const LOGO_INK = ['#c8f8d4', '#3fd46b', '#3fd46b', '#ffd23f', '#ff8a1e', '#ff8a1e', '#a3501e'];
+const RANKS = ['1ST', '2ND', '3RD', '4TH', '5TH', '6TH', '7TH', '8TH', '9TH', '10TH'];
+
+// Invented initials, so a first visit has a table to beat.
+const DEFAULT_SCORES = [
+  ['BEA', 6500], ['RNG', 5600], ['LUP', 4800], ['TRN', 4000], ['SPN', 3300],
+  ['ODD', 2600], ['EVN', 2000], ['TWO', 1600], ['DOT', 1300], ['ONE', 1100],
+].map(([n, s]) => ({ n, s }));
+
+// ---------------------------------------------------------------- geometry
+// The same racetrack as the Qlaim cabinet, in bead units with the turntable at
+// the origin: two straights of INNER beads joined by two half-circles.
+const ARC = (LOOP - 2 * INNER) / 2;
+const RAD = ARC / Math.PI;
+const HALF = (INNER - 1) / 2;
+const YC = HALF + 0.5;
+const GAP = 0.62;
+const CX = GAP + RAD;
+const DISC = Math.hypot(GAP, HALF) + 0.62;
+const UNIT = 18, OX = W / 2, OY = TOP + 106;
+const LEFT_PATH = (() => {
+  const pts = [];
+  for (let i = 0; i < INNER; i++) pts.push([-GAP, -HALF + i]);
+  for (let j = 0; j < ARC; j++) { const a = (Math.PI * (j + 0.5)) / ARC; pts.push([-CX + RAD * Math.cos(a), YC + RAD * Math.sin(a)]); }
+  for (let i = 0; i < INNER; i++) pts.push([-CX - RAD, HALF - i]);
+  for (let j = 0; j < ARC; j++) { const a = Math.PI + (Math.PI * (j + 0.5)) / ARC; pts.push([-CX + RAD * Math.cos(a), -YC + RAD * Math.sin(a)]); }
+  return pts;
+})();
+function placeOn(loop, f) {
+  const i = Math.floor(f), k = f - i, n = LOOP;
+  const a = LEFT_PATH[((i % n) + n) % n], b = LEFT_PATH[(((i + 1) % n) + n) % n];
+  const x = a[0] + (b[0] - a[0]) * k, y = a[1] + (b[1] - a[1]) * k;
+  return loop === 'L' ? [x, y] : [-x, y];
+}
+const toPx = ([x, y]) => [Math.round(OX + x * UNIT), Math.round(OY + y * UNIT)];
+
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const canvas = document.getElementById('c');
+const screen = makeScreen({ canvas, stage: document.getElementById('stage'), frame: document.getElementById('screen'), w: W, h: H, crtKey: 'lk.arcade.crt' });
+const ctx = screen.ctx;
+const sound = makeSound('lk.arcade.mute');
+const scores = makeScores('lk.sorted.scores', DEFAULT_SCORES);
+const ENTRY_AT = initialsLayout(W, 96);
+
+let board = null, mixedIn = 0, path = [], level = 'easy', choice = 0;
+let mode = 'attract', page = 'title', pageT = 0, t = 0, clock = 0, timer = 0;
+let ticks = 0, started = false, view = { L: 0, R: 0 }, spin = null, tally = null, score = 0;
+let demo = false, demoPath = [], demoNext = 0, entry = null, highlight = -1, pausedFrom = null;
+
+const SFX = {
+  start: () => sound.tune([[523, 0.1], [659, 0.1], [784, 0.1], [1047, 0.25]], { vol: 0.045 }),
+  click: () => sound.note(900, 0.03, { to: 700, vol: 0.035 }),
+  spin: () => sound.note(330, 0.16, { type: 'triangle', to: 520, vol: 0.08 }),
+  done: () => sound.tune([[523, 0.14], [659, 0.14], [784, 0.14], [1047, 0.3]], { type: 'triangle', vol: 0.1 }),
+  blip: () => sound.note(988, 0.05, { vol: 0.04 }),
+};
+// The demo plays silently: nobody asked for noise from a screen they are not using.
+function sfx(name) { if (!demo) SFX[name](); }
+
+const seconds = () => Math.floor(ticks / 60);
+const clockText = () => Math.floor(seconds() / 60) + ':' + String(seconds() % 60).padStart(2, '0');
+
+// ---------------------------------------------------------------- the game
+
+function newBoard(lv, isDemo) {
+  level = lv; demo = isDemo; highlight = -1;
+  const s = scramble(LEVELS[lv]);
+  board = s.board; mixedIn = s.mixedIn; path = s.path;
+  ticks = 0; started = false; view = { L: 0, R: 0 }; spin = null; tally = null;
+  mode = 'playing'; t = 0;
+  if (isDemo) { demoPath = inverse(path); demoNext = 50; } else sfx('start');
+}
+
+function commit(next) {
+  board = next;
+  started = true;
+  if (isSorted(board)) finish();
+}
+
+function turnLoop(loop, steps) {
+  if (mode !== 'playing' || spin) return;
+  commit(turn(board, loop, steps));
+  view[loop] = reduceMotion ? 0 : -steps;
+  sfx('click');
+}
+
+function spinMiddle() {
+  if (mode !== 'playing' || spin) return;
+  sfx('spin');
+  if (reduceMotion) { commit(swap(board)); return; }
+  spin = { from: board, t: 0 };
+}
+
+// 1000, 2000 or 3000 for the level; 200 for every move under the number it
+// was mixed in; 5 for every second under five minutes.
+function boardScore(lv, used, mixed, secs) {
+  const under = Math.max(0, mixed - used), quick = Math.max(0, 300 - secs);
+  return { level: LEVEL_PTS[lv], under, underPts: under * 200, quick, quickPts: quick * 5, total: LEVEL_PTS[lv] + under * 200 + quick * 5 };
+}
+
+function finish() {
+  if (demo) { mode = 'done'; t = 0; return; }
+  tally = { ...boardScore(level, moves(board), mixedIn, seconds()), moves: moves(board), time: clockText() };
+  score = tally.total;
+  mode = 'done'; t = 0;
+  sfx('done');
+  saveBest();
+}
+
+function afterDone() {
+  if (demo) { demo = false; toAttract('scores'); return; }
+  if (scores.qualifies(score)) { entry = { letters: [0, 0, 0], pos: 0, timer: 60 * 30 }; mode = 'entry'; }
+  else toAttract('scores');
+}
+
+function toAttract(p) { mode = 'attract'; page = p; pageT = 0; demo = false; entry = null; tally = null; }
+
+function saveEntry() {
+  const name = entry.letters.map(i => ENTRY_LETTERS[i]).join('');
+  highlight = scores.add(name, score);
+  toAttract('scores');
+}
+
+function confirmLetter() {
+  sfx('blip');
+  entry.pos++;
+  if (entry.pos >= 3) saveEntry();
+}
+
+// ---------------------------------------------------------------- input
+
+// Left key turns a loop anticlockwise, right key clockwise. The left loop is
+// numbered clockwise and the right anticlockwise (rules.js), so the signs differ.
+const inside = (b, x, y) => x >= b.x && x < b.x + b.w && y >= b.y && y < b.y + b.h;
+const levelRow = i => ({ x: 70, y: 96 + i * 26, w: 180, h: 22 });
+
+function onAction(action) {
+  if (action === 'crt') { screen.toggleCrt(); syncToggles(); return; }
+  if (action === 'mute') { sound.toggleMute(); syncToggles(); return; }
+  if (action === 'back') { toAttract('title'); return; }
+  if (mode === 'attract' || demo) { newBoard(LEVEL_KEYS[choice], false); return; }
+  if (mode === 'playing') { spinMiddle(); return; }
+  if (mode === 'done' && t >= 60) { afterDone(); return; }
+  if (mode === 'entry') confirmLetter();
+}
+
+function onLetter(ch) {
+  if (mode === 'entry') { const i = ENTRY_LETTERS.indexOf(ch); if (i >= 0) { entry.letters[entry.pos] = i; confirmLetter(); } return; }
+  if (mode !== 'playing' || demo) return;
+  if (ch === 'A') turnLoop('L', -1);
+  if (ch === 'D') turnLoop('L', 1);
+}
+
+function onDir(dir) {
+  if (mode === 'attract') {
+    if (page !== 'title') { page = 'title'; pageT = 0; }
+    if (dir === 'up') { choice = (choice + 2) % 3; pageT = 0; sfx('blip'); }
+    if (dir === 'down') { choice = (choice + 1) % 3; pageT = 0; sfx('blip'); }
+    return;
+  }
+  if (mode === 'playing' && !demo) {
+    if (dir === 'left') turnLoop('R', 1);
+    if (dir === 'right') turnLoop('R', -1);
+    return;
+  }
+  if (mode !== 'entry') return;
+  const n = ENTRY_LETTERS.length, i = entry.pos;
+  if (dir === 'up') { entry.letters[i] = (entry.letters[i] + 1) % n; sfx('blip'); }
+  else if (dir === 'down') { entry.letters[i] = (entry.letters[i] + n - 1) % n; sfx('blip'); }
+  else if (dir === 'right') confirmLetter();
+  else if (dir === 'left' && entry.pos > 0) { entry.pos--; sfx('blip'); }
+}
+
+function onPoint(x, y) {
+  if (mode === 'attract' && page === 'title') {
+    for (let i = 0; i < 3; i++) if (inside(levelRow(i), x, y)) { choice = i; newBoard(LEVEL_KEYS[i], false); return true; }
+    return false;
+  }
+  if (mode === 'playing' && !demo) {
+    if (Math.hypot((x - OX) / UNIT, (y - OY) / UNIT) < DISC) spinMiddle();
+    return true;
+  }
+  if (mode === 'entry') {
+    const a = tapInitials(entry, ENTRY_AT, x, y);
+    if (a === 'next') confirmLetter(); else onDir(a);
+    return true;
+  }
+  return false;
+}
+
+const input = makeInput({ screen: canvas, onAction, onDir, onLetter, onPoint, onAny: () => sound.wake() });
+
+const crtBtn = document.querySelector('[data-action="crt"]');
+const muteBtn = document.querySelector('[data-action="mute"]');
+function syncToggles() {
+  crtBtn.textContent = 'CRT ' + (screen.crt ? 'on' : 'off');
+  crtBtn.setAttribute('aria-pressed', String(screen.crt));
+  muteBtn.textContent = 'Sound ' + (sound.muted ? 'off' : 'on');
+  muteBtn.setAttribute('aria-pressed', String(!sound.muted));
+}
+syncToggles();
+
+// A puzzle has no hurry, but the clock does: it stops when the phone does.
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && !demo && mode === 'playing') { pausedFrom = mode; mode = 'paused'; }
+});
+addEventListener('focus', () => { if (mode === 'paused') mode = pausedFrom; });
+
+// ---------------------------------------------------------------- drawing
+
+const blinkOn = (rate = 32) => reduceMotion || ((clock / rate) | 0) % 2 === 0;
+
+function disc(g, cx, cy, r, col) {
+  g.fillStyle = col;
+  for (let dy = -r; dy <= r; dy++) { const w = Math.floor(Math.sqrt(r * r - dy * dy + r * 0.6)); g.fillRect(cx - w, cy + dy, w * 2 + 1, 1); }
+}
+
+// Two kinds of bead that differ in SHAPE as well as colour (filled, and a
+// ring with a dot) so a player who cannot tell green from orange can sort them.
+function bead(g, kind, [x, y]) {
+  if (kind === 0) {
+    disc(g, x, y, 7, '#1f7a3a'); disc(g, x, y, 6, '#3fd46b');
+    g.fillStyle = '#c8f8d4'; g.fillRect(x - 3, y - 4, 2, 2);
+  } else {
+    disc(g, x, y, 7, '#ff8a1e'); disc(g, x, y, 4, '#000'); disc(g, x, y, 1, '#ff8a1e');
+  }
+}
+
+let trackLayer = null;
+function track() {
+  if (trackLayer) return trackLayer;
+  const c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  const g = c.getContext('2d');
+  for (const loop of ['L', 'R']) for (let f = 0; f < LOOP; f += 0.25) { const [x, y] = toPx(placeOn(loop, f)); disc(g, x, y, 9, '#1a1a2a'); }
+  for (let a = 0; a < 64; a++) {
+    if (a % 2) continue;
+    const ang = (a / 64) * Math.PI * 2;
+    g.fillStyle = '#4a4a6a';
+    g.fillRect(Math.round(OX + Math.cos(ang) * DISC * UNIT), Math.round(OY + Math.sin(ang) * DISC * UNIT), 1, 1);
+  }
+  trackLayer = c;
+  return c;
+}
+
+function drawBoard(g, b, spinT) {
+  g.drawImage(track(), 0, 0);
+  const turnAngle = spinT * Math.PI;
+  const notch = turnAngle - Math.PI / 2;
+  disc(g, Math.round(OX + Math.cos(notch) * DISC * UNIT), Math.round(OY + Math.sin(notch) * DISC * UNIT), 2, spinT > 0 ? INK.cyan : INK.dim);
+  for (const loop of ['L', 'R']) {
+    const beads = loop === 'L' ? b.left : b.right;
+    for (let i = 0; i < LOOP; i++) {
+      let p = placeOn(loop, i + (spinT > 0 ? 0 : view[loop]));
+      if (spinT > 0 && i < INNER) { const c = Math.cos(turnAngle), s = Math.sin(turnAngle); p = [p[0] * c - p[1] * s, p[0] * s + p[1] * c]; }
+      bead(g, beads[i], toPx(p));
+    }
+  }
+}
+
+function drawHud() {
+  const hi = Math.max(scores.top, demo ? 0 : score);
+  if (!(mode === 'playing' && !demo) || blinkOn(24)) text(ctx, '1UP', 8, 3, INK.red);
+  text(ctx, String(mode === 'attract' ? 0 : score).padStart(2, '0'), 50, 12, INK.white, { align: 'right' });
+  text(ctx, 'HI-SCORE', W / 2, 3, INK.red, { align: 'center' });
+  text(ctx, String(hi), W / 2, 12, INK.white, { align: 'center' });
+  if (mode === 'attract' || mode === 'entry') return;
+  text(ctx, LEVEL_NAMES[level], 312, 3, INK.red, { align: 'right' });
+  text(ctx, 'MOVES ' + moves(board) + '  ' + clockText(), 312, 12, INK.white, { align: 'right' });
+}
+
+function banner(lines, y) {
+  const wide = Math.max(...lines.map(([s]) => s.length)) * 6 + 10;
+  ctx.fillStyle = '#000';
+  ctx.fillRect(Math.floor((W - wide) / 2), y - 5, wide, lines.length * 12 + 7);
+  lines.forEach(([s, ink], i) => text(ctx, s, W / 2, y + i * 12, ink, { align: 'center' }));
+}
+
+function drawGame() {
+  drawBoard(ctx, spin ? spin.from : board, spin ? Math.min(1, spin.t / 17) : 0);
+  text(ctx, 'MIXED IN ' + mixedIn + ' MOVES', W / 2, TOP + 4, INK.grey, { align: 'center' });
+  if (demo) { if (blinkOn()) text(ctx, 'DEMO PLAY', W / 2, 222, INK.yellow, { align: 'center' }); }
+  else if (input.touch) {
+    if (moves(board) === 0) text(ctx, 'THE BUTTONS TURN THE LOOPS', W / 2, 222, INK.grey, { align: 'center' });
+  } else {
+    text(ctx, 'A D  LEFT LOOP     SPACE  SPIN     < >  RIGHT LOOP', W / 2, 222, INK.grey, { align: 'center' });
+  }
+  if (mode === 'done' && tally && t > 30) {
+    const lines = [['SORTED IN ' + tally.moves + ' MOVES, ' + tally.time, INK.yellow], [LEVEL_NAMES[level] + '   ' + tally.level, INK.white]];
+    if (tally.under) lines.push([tally.under + ' UNDER THE MIX X 200   ' + tally.underPts, INK.white]);
+    if (tally.quick) lines.push([tally.quick + ' SECONDS TO SPARE X 5   ' + tally.quickPts, INK.white]);
+    lines.push(['SCORE ' + tally.total, INK.green]);
+    if (t >= 60 && blinkOn()) lines.push([input.touch ? 'TAP TO GO ON' : 'PRESS SPACE', INK.cyan]);
+    banner(lines, 70);
+  }
+  if (mode === 'paused') banner([['PAUSED', INK.white]], 110);
+}
+
+function bestLine(lv) {
+  let best = null;
+  try { best = JSON.parse(localStorage.getItem('lk.sorted.best.' + lv) || 'null'); } catch {}
+  return best ? 'BEST ' + best.moves + ' MOVES' : 'NOT YET SORTED';
+}
+
+function drawTitle() {
+  text(ctx, 'SORTED', W / 2 + 2, 30, '#1c2870', { align: 'center', scale: 5 });
+  text(ctx, 'SORTED', W / 2, 28, LOGO_INK, { align: 'center', scale: 5 });
+  text(ctx, 'EVERY BEAD HOME TO ITS OWN COLOUR', W / 2, 72, INK.grey, { align: 'center' });
+  LEVEL_KEYS.forEach((lv, i) => {
+    const r = levelRow(i), on = i === choice;
+    ctx.fillStyle = on ? '#1c2870' : '#14141f'; ctx.fillRect(r.x, r.y, r.w, r.h);
+    text(ctx, LEVEL_NAMES[lv], r.x + 8, r.y + 4, on ? INK.yellow : INK.white);
+    text(ctx, 'MIXED IN ' + LEVELS[lv], r.x + r.w - 8, r.y + 4, INK.grey, { align: 'right' });
+    text(ctx, bestLine(lv), r.x + r.w - 8, r.y + 13, INK.dim, { align: 'right' });
+  });
+  if (blinkOn()) text(ctx, input.touch ? 'TAP A LEVEL TO PLAY' : 'UP / DOWN, THEN SPACE', W / 2, 184, INK.yellow, { align: 'center' });
+  text(ctx, 'LEON KARSTEN 2026', W / 2, 226, INK.dim, { align: 'center' });
+}
+
+function drawHowTo() {
+  text(ctx, 'HOW TO PLAY', W / 2, 28, INK.cyan, { align: 'center' });
+  text(ctx, 'TURN EITHER LOOP. SPIN THE MIDDLE TO', W / 2, 44, INK.white, { align: 'center' });
+  text(ctx, 'TRADE ITS BEADS BETWEEN THE LOOPS.', W / 2, 56, INK.white, { align: 'center' });
+  text(ctx, 'SORTED: EACH LOOP ONE COLOUR.', W / 2, 72, INK.green, { align: 'center' });
+  bead(ctx, 0, [140, 92]); bead(ctx, 1, [180, 92]);
+  text(ctx, 'EVERY BOARD WAS MIXED BY REAL MOVES,', W / 2, 112, INK.grey, { align: 'center' });
+  text(ctx, 'SO IT CAN ALWAYS BE SORTED AGAIN.', W / 2, 124, INK.grey, { align: 'center' });
+  text(ctx, 'SCORING', W / 2, 146, INK.yellow, { align: 'center' });
+  const row = (y, l, v) => { text(ctx, l, 30, y, INK.grey); text(ctx, v, 290, y, INK.white, { align: 'right' }); };
+  row(160, 'EASY, MEDIUM, HARD', '1000 2000 3000');
+  row(172, 'EACH MOVE UNDER THE MIX', '200');
+  row(184, 'EACH SECOND UNDER 5 MINUTES', '5');
+  if (blinkOn()) text(ctx, input.touch ? 'TAP TO PLAY' : 'PRESS SPACE', W / 2, 208, INK.yellow, { align: 'center' });
+}
+
+function drawScores() {
+  text(ctx, 'HIGH SCORES', W / 2, 28, INK.yellow, { align: 'center' });
+  text(ctx, 'RANK', 80, 44, INK.grey);
+  text(ctx, 'SCORE', 196, 44, INK.grey, { align: 'right' });
+  text(ctx, 'NAME', 220, 44, INK.grey);
+  scores.table.forEach((r, i) => {
+    if (i === highlight && !blinkOn(16)) return;
+    const y = 58 + i * 15;
+    const ink = i === highlight ? INK.white : ROW_INKS[i];
+    text(ctx, RANKS[i], 80, y, ink);
+    text(ctx, String(r.s), 196, y, ink, { align: 'right' });
+    text(ctx, r.n, 220, y, ink);
+  });
+  if (blinkOn()) text(ctx, input.touch ? 'TAP TO PLAY' : 'PRESS SPACE', W / 2, 214, INK.yellow, { align: 'center' });
+}
+
+function drawEntry() {
+  text(ctx, 'YOU MADE THE TOP TEN', W / 2, 34, INK.cyan, { align: 'center' });
+  text(ctx, String(score), W / 2, 50, INK.yellow, { align: 'center', scale: 2 });
+  text(ctx, 'ENTER YOUR INITIALS', W / 2, 76, INK.white, { align: 'center' });
+  drawInitials(ctx, entry, ENTRY_AT, { blinkOn: blinkOn(16), touch: input.touch, ink: INK });
+  text(ctx, input.touch ? 'TAP THE ARROWS, OR ANYWHERE FOR NEXT' : 'TYPE THEM, OR USE THE ARROWS', W / 2, 146, INK.grey, { align: 'center' });
+  text(ctx, 'TIME ' + Math.ceil(entry.timer / 60), W / 2, 176, INK.orange, { align: 'center' });
+}
+
+function draw() {
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, W, H);
+  drawHud();
+  if (mode === 'attract') {
+    if (page === 'title') drawTitle();
+    else if (page === 'howto') drawHowTo();
+    else drawScores();
+    return;
+  }
+  if (mode === 'entry') { drawEntry(); return; }
+  drawGame();
+}
+
+// ---------------------------------------------------------------- card art
+
+function drawCard() {
+  const c = document.createElement('canvas');
+  c.width = 320; c.height = 240;
+  const g = c.getContext('2d');
+  g.fillStyle = '#000'; g.fillRect(0, 0, 320, 240);
+  let seed = 3;
+  const rnd = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+  const s = scramble(4, rnd).board;
+  const keep = view; view = { L: 0, R: 0 };
+  g.save(); g.translate(0, 10);
+  drawBoard(g, s, 0);
+  g.restore();
+  view = keep;
+  text(g, 'SORTED', 162, 10, '#1c2870', { align: 'center', scale: 4 });
+  text(g, 'SORTED', 160, 8, LOGO_INK, { align: 'center', scale: 4 });
+  return c;
+}
+
+// ---------------------------------------------------------------- loop
+
+const PAGES = { title: ['howto', 600], howto: ['demo', 600], scores: ['title', 420] };
+function attractTick() {
+  pageT++;
+  const [next, length] = PAGES[page];
+  if (pageT < length) return;
+  if (next === 'demo') { newBoard('easy', true); return; }
+  if (next === 'title') highlight = -1;
+  toAttract(next);
+}
+
+function tick() {
+  clock++;
+  for (const k of ['L', 'R']) { view[k] *= 0.82; if (Math.abs(view[k]) < 0.02) view[k] = 0; }
+  switch (mode) {
+    case 'attract': attractTick(); break;
+    case 'playing':
+      t++;
+      if (started) ticks++;
+      if (spin && ++spin.t >= 17) { const from = spin.from; spin = null; commit(swap(from)); }
+      if (demo && t >= demoNext && !spin) {
+        const m = demoPath.shift();
+        if (!m) { demo = false; toAttract('scores'); break; }
+        if (m.t === 'S') spinMiddle(); else turnLoop(m.t, m.n);
+        demoNext = t + 40;
+      }
+      break;
+    case 'done':
+      t++;
+      if ((demo && t >= 90) || t >= 60 * 15) afterDone();
+      break;
+    case 'entry': if (--entry.timer <= 0) saveEntry(); break;
+  }
+}
+
+// Remember the best per level, as the Qlaim cabinet did.
+function saveBest() {
+  if (!tally) return;
+  const key = 'lk.sorted.best.' + level;
+  let prev = null;
+  try { prev = JSON.parse(localStorage.getItem(key) || 'null'); } catch {}
+  if (!prev || tally.moves < prev.moves) { try { localStorage.setItem(key, JSON.stringify({ moves: tally.moves })); } catch {} }
+};
+
+let acc = 0, lastT = 0;
+function frame(now) {
+  requestAnimationFrame(frame);
+  if (!lastT) lastT = now;
+  acc += Math.min(100, now - lastT);
+  lastT = now;
+  while (acc >= TICK_MS) { tick(); acc -= TICK_MS; }
+  draw();
+}
+requestAnimationFrame(frame);
+
+window.__sortedgame = {
+  get mode() { return mode; },
+  get page() { return page; },
+  get demo() { return demo; },
+  get score() { return score; },
+  get moves() { return board ? moves(board) : 0; },
+  get solution() { return inverse(path); },
+  get sorted() { return board ? isSorted(board) : false; },
+  attract(p) { toAttract(p); },
+  endGame(s) { demo = false; score = s; tally = null; afterDone(); },
+};
+window.__arcade = { card: drawCard };
+})();
+</script>
+</body>
+</html>
