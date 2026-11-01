@@ -453,7 +453,8 @@ function makeInput({ screen, onAction, onDir, onAny, onLetter = null, onPoint = 
       return;
     }
     // e.key, not e.code: the letter printed on the key, whatever the layout.
-    if (onLetter && /^[a-z]$/i.test(e.key)) {
+    // Digits come through the same door, for games that number their keys.
+    if (onLetter && /^[a-z0-9]$/i.test(e.key)) {
       e.preventDefault();
       onAny();
       if (!e.repeat) onLetter(e.key.toUpperCase());
@@ -956,6 +957,7 @@ function onAction(action) {
 }
 
 function onLetter(ch) {
+  if (!/^[A-Z]$/.test(ch)) return; // digits are not guesses
   if (mode === 'attract' || demo) { newGame(); return; }
   if (mode === 'play') guess(ch);
   else if (mode === 'entry') typeInitial(ALPHABET.indexOf(ch));

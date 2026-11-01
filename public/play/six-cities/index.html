@@ -454,7 +454,8 @@ function makeInput({ screen, onAction, onDir, onAny, onLetter = null, onPoint = 
       return;
     }
     // e.key, not e.code: the letter printed on the key, whatever the layout.
-    if (onLetter && /^[a-z]$/i.test(e.key)) {
+    // Digits come through the same door, for games that number their keys.
+    if (onLetter && /^[a-z0-9]$/i.test(e.key)) {
       e.preventDefault();
       onAny();
       if (!e.repeat) onLetter(e.key.toUpperCase());
@@ -795,6 +796,43 @@ function makeArt() {
   };
 }
 
+// ---- engine/entry.js
+// Three initials, drawn large, with tap targets for games that have no d-pad:
+// on a touch screen a tap above a letter's middle steps it up, below steps it
+// down, and a tap anywhere else accepts it. (Without this a phone player in a
+// tap-only game could only ever enter AAA.)
+function initialsLayout(w, y) {
+  return { x0: Math.round(w / 2 - 39), y, step: 30 };
+}
+
+function arrow(ctx, cx, y, up, ink) {
+  ctx.fillStyle = ink;
+  for (let r = 0; r < 4; r++) ctx.fillRect(cx - r, up ? y + r : y + 3 - r, r * 2 + 1, 1);
+}
+
+function drawInitials(ctx, entry, L, { blinkOn, touch, ink }) {
+  for (let i = 0; i < 3; i++) {
+    const x = L.x0 + i * L.step;
+    const current = i === entry.pos;
+    if (!current || blinkOn) text(ctx, ENTRY_LETTERS[entry.letters[i]], x, L.y, current ? ink.yellow : ink.white, { scale: 3 });
+    ctx.fillStyle = current ? ink.yellow : ink.dim;
+    ctx.fillRect(x - 2, L.y + 26, 18, 2);
+    if (touch && current) {
+      arrow(ctx, x + 7, L.y - 9, true, ink.yellow);
+      arrow(ctx, x + 7, L.y + 32, false, ink.yellow);
+    }
+  }
+}
+
+// 'up', 'down' or 'next' for a tap at (x, y) in game pixels.
+function tapInitials(entry, L, x, y) {
+  const left = L.x0 + entry.pos * L.step - 8, right = left + 32;
+  if (x < left || x > right) return 'next';
+  if (y >= L.y - 16 && y < L.y + 11) return 'up';
+  if (y >= L.y + 11 && y <= L.y + 40) return 'down';
+  return 'next';
+}
+
 // ---- games/six-cities/game.js
 // The world is 960x600, drawn at a third of the size under a 20px score bar.
 const SCALE = 3, TOP = 20;
@@ -810,6 +848,7 @@ const INK = {
 const ROW_INKS = ['#ff3b3b', '#ff8a1e', '#ffd23f', '#3fd46b', '#5eeaf5', '#8f7bff', '#ff5fb8', '#ff8a1e', '#ffd23f', '#3fd46b'];
 const LOGO_INK = ['#fff3a0', '#ffd23f', '#ff8a1e', '#ff8a1e', '#e8302f', '#e8302f', '#8a1c1c'];
 const BLAST_INKS = ['#ffffff', '#ffd23f', '#ff8a1e', '#e8302f', '#ff5fb8', '#5eeaf5'];
+const ENTRY_AT = initialsLayout(320, 92);
 const RANKS = ['1ST', '2ND', '3RD', '4TH', '5TH', '6TH', '7TH', '8TH', '9TH', '10TH'];
 
 // Invented initials, so a first visit has a table to beat.
@@ -973,6 +1012,11 @@ function onPoint(x, y) {
     shoot(x * SCALE, (y - TOP) * SCALE);
     return true;
   }
+  if (mode === 'entry') {
+    const a = tapInitials(entry, ENTRY_AT, x, y);
+    if (a === 'next') confirmLetter(); else onDir(a);
+    return true;
+  }
   return mode === 'ready';
 }
 
@@ -1128,16 +1172,15 @@ function drawEntry() {
   text(ctx, 'YOU MADE THE TOP TEN', W / 2, 32, INK.cyan, { align: 'center' });
   text(ctx, String(world.score), W / 2, 46, INK.yellow, { align: 'center', scale: 2 });
   text(ctx, 'ENTER YOUR INITIALS', W / 2, 74, INK.white, { align: 'center' });
-  for (let i = 0; i < 3; i++) {
-    const x = W / 2 - 39 + i * 30;
-    const current = i === entry.pos;
-    if (!current || blinkOn(16)) text(ctx, ENTRY_LETTERS[entry.letters[i]], x, 92, current ? INK.yellow : INK.white, { scale: 3 });
-    ctx.fillStyle = current ? INK.yellow : INK.dim;
-    ctx.fillRect(x - 2, 118, 18, 2);
+  drawInitials(ctx, entry, ENTRY_AT, { blinkOn: blinkOn(16), touch: input.touch, ink: INK });
+  if (input.touch) {
+    text(ctx, 'TAP THE ARROWS TO CHANGE A LETTER,', W / 2, 140, INK.grey, { align: 'center' });
+    text(ctx, 'TAP ANYWHERE ELSE FOR THE NEXT ONE', W / 2, 152, INK.grey, { align: 'center' });
+  } else {
+    text(ctx, 'UP / DOWN   CHANGE LETTER', W / 2, 138, INK.grey, { align: 'center' });
+    text(ctx, 'RIGHT OR SPACE   NEXT', W / 2, 150, INK.grey, { align: 'center' });
+    text(ctx, 'LEFT   BACK', W / 2, 162, INK.grey, { align: 'center' });
   }
-  text(ctx, 'UP / DOWN   CHANGE LETTER', W / 2, 138, INK.grey, { align: 'center' });
-  text(ctx, (input.touch ? 'TAP OR RIGHT' : 'RIGHT OR SPACE') + '   NEXT', W / 2, 150, INK.grey, { align: 'center' });
-  text(ctx, 'LEFT   BACK', W / 2, 162, INK.grey, { align: 'center' });
   text(ctx, 'TIME ' + Math.ceil(entry.timer / 60), W / 2, 188, INK.orange, { align: 'center' });
 }
 

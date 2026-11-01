@@ -1,0 +1,1035 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Say Again</title>
+<meta name="description" content="Four panels and a growing sequence. No reading, no reflexes, only remembering.">
+<meta name="theme-color" content="#000000">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2016%2016'%20shape-rendering='crispEdges'%3E%3Crect%20width='16'%20height='16'%20fill='%23000'/%3E%3Crect%20x='1'%20y='1'%20width='6'%20height='6'%20fill='%233fd46b'/%3E%3Crect%20x='9'%20y='1'%20width='6'%20height='6'%20fill='%23ff8a1e'/%3E%3Crect%20x='1'%20y='9'%20width='6'%20height='6'%20fill='%232b4cff'/%3E%3Crect%20x='9'%20y='9'%20width='6'%20height='6'%20fill='%238f4bff'/%3E%3C/svg%3E">
+<style>
+:root {
+  --void: #000;
+  --chrome: #8f8fb0;
+  --chrome-hi: #5eeaf5;
+  --edge: #2a2a40;
+  --start: #e8302f;
+  --ui: ui-monospace, 'Cascadia Mono', Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; height: 100%; background: var(--void); color: var(--chrome); }
+body {
+  font-family: var(--ui);
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  height: 100dvh;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: 'bar' 'stage' 'pad';
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.bar {
+  grid-area: bar;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+}
+.bar a, .bar button {
+  font: 700 12px/1 var(--ui);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--chrome);
+  background: none;
+  border: 1px solid transparent;
+  padding: 9px 10px;
+  text-decoration: none;
+  cursor: pointer;
+  border-radius: 0;
+}
+.bar a:hover, .bar button:hover, .bar a:focus-visible, .bar button:focus-visible {
+  color: var(--chrome-hi);
+  border-color: var(--edge);
+  outline: none;
+}
+.bar button[aria-pressed='true'] { color: var(--chrome-hi); }
+.toggles { display: flex; gap: 2px; }
+
+.stage {
+  grid-area: stage;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  padding: 8px 16px;
+}
+/* A faint edge, so an unexplored black playfield still has a size. */
+.screen { position: relative; line-height: 0; touch-action: none; box-shadow: 0 0 0 1px #1c1c2c; }
+.screen canvas {
+  display: block;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+/* The CRT switch. Off by default: sharp pixels are the honest picture, the
+   tube is a costume. Scanlines are one per game pixel row (--px is set by
+   the screen fit), so they never beat against the art. */
+.screen.crt { border-radius: 3% / 4%; overflow: hidden; box-shadow: 0 0 0 4px #0b0b14, 0 0 36px rgba(94, 234, 245, 0.12); }
+.screen.crt canvas { filter: saturate(1.25) brightness(1.12) contrast(1.05) blur(calc(var(--px) * 0.18)); }
+.screen.crt::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background:
+    radial-gradient(ellipse at center, rgba(0, 0, 0, 0) 58%, rgba(0, 0, 0, 0.6) 100%),
+    repeating-linear-gradient(to bottom,
+      rgba(0, 0, 0, 0) 0, rgba(0, 0, 0, 0) calc(var(--px) * 0.55),
+      rgba(0, 0, 0, 0.38) calc(var(--px) * 0.55), rgba(0, 0, 0, 0.38) var(--px));
+  box-shadow: inset 0 0 48px rgba(0, 0, 0, 0.75);
+}
+
+/* Touch controls: shown on touch screens only. */
+.pad {
+  grid-area: pad;
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  max-width: 380px;
+  margin: 0 auto;
+  padding: 4px 20px 16px;
+}
+body.touch .pad { display: flex; }
+.dpad {
+  display: grid;
+  grid-template-columns: repeat(3, 54px);
+  grid-template-rows: repeat(3, 50px);
+  gap: 3px;
+}
+.dpad button, .start {
+  font: 700 18px/1 var(--ui);
+  color: var(--chrome);
+  background: #12121e;
+  border: 2px solid var(--edge);
+  border-radius: 6px;
+  padding: 0;
+  touch-action: none;
+  cursor: pointer;
+}
+.dpad button:active { background: #24243a; color: var(--chrome-hi); }
+.dpad .up { grid-area: 1 / 2; }
+.dpad .left { grid-area: 2 / 1; }
+.dpad .right { grid-area: 2 / 3; }
+.dpad .down { grid-area: 3 / 2; }
+.start {
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  background: var(--start);
+  border: 4px solid #7a1414;
+  color: #fff;
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  box-shadow: inset 0 -6px 0 rgba(0, 0, 0, 0.25);
+}
+.start:active { transform: translateY(2px); box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.25); }
+
+/* A phone on its side: d-pad left of the screen, START right of it. A game
+   with no d-pad (its keys are on the screen) moves the bar to a column
+   instead, so an upright screen gets the full height. */
+@media (orientation: landscape) and (max-height: 520px) {
+  body.no-pad {
+    grid-template-rows: minmax(0, 1fr);
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas: 'bar stage';
+  }
+  body.no-pad .bar { flex-direction: column; justify-content: flex-start; align-items: flex-start; }
+  body.no-pad .toggles { flex-direction: column; }
+  .stage { padding: 4px 8px; }
+  body.touch:not(.no-pad) {
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas: 'bar bar bar' 'dpad stage start';
+  }
+  body.touch:not(.no-pad) .pad { display: contents; }
+  body.touch .dpad { grid-area: dpad; align-self: center; margin-left: 12px; }
+  body.touch .start { grid-area: start; align-self: center; margin-right: 16px; }
+}
+</style>
+</head>
+<body class="no-pad">
+
+<header class="bar">
+  <a href="/games/">&larr; Games</a>
+  <div class="toggles">
+    <button type="button" data-action="crt" aria-pressed="false">CRT off</button>
+    <button type="button" data-action="mute" aria-pressed="true">Sound on</button>
+  </div>
+</header>
+
+<main class="stage" id="stage">
+  <div class="screen" id="screen">
+    <canvas id="c" role="img" aria-label="Say Again game screen. Watch the panels, then repeat them: tap them, or press Q W A S or 1 2 3 4. Space to start."></canvas>
+  </div>
+</main>
+
+<script>
+(() => {
+'use strict';
+// ---- engine/font.js
+// 5x7 bitmap font, one string per glyph, rows separated by spaces. Drawn with
+// fillRect so it stays on the pixel grid at any scale; there is no web font.
+const GLYPHS = {
+  A: '.###. #...# #...# ##### #...# #...# #...#',
+  B: '####. #...# #...# ####. #...# #...# ####.',
+  C: '.###. #...# #.... #.... #.... #...# .###.',
+  D: '####. #...# #...# #...# #...# #...# ####.',
+  E: '##### #.... #.... ####. #.... #.... #####',
+  F: '##### #.... #.... ####. #.... #.... #....',
+  G: '.###. #...# #.... #.### #...# #...# .####',
+  H: '#...# #...# #...# ##### #...# #...# #...#',
+  I: '.###. ..#.. ..#.. ..#.. ..#.. ..#.. .###.',
+  J: '..### ...#. ...#. ...#. ...#. #..#. .##..',
+  K: '#...# #..#. #.#.. ##... #.#.. #..#. #...#',
+  L: '#.... #.... #.... #.... #.... #.... #####',
+  M: '#...# ##.## #.#.# #.#.# #...# #...# #...#',
+  N: '#...# #...# ##..# #.#.# #..## #...# #...#',
+  O: '.###. #...# #...# #...# #...# #...# .###.',
+  P: '####. #...# #...# ####. #.... #.... #....',
+  Q: '.###. #...# #...# #...# #.#.# #..#. .##.#',
+  R: '####. #...# #...# ####. #.#.. #..#. #...#',
+  S: '.###. #...# #.... .###. ....# #...# .###.',
+  T: '##### ..#.. ..#.. ..#.. ..#.. ..#.. ..#..',
+  U: '#...# #...# #...# #...# #...# #...# .###.',
+  V: '#...# #...# #...# #...# #...# .#.#. ..#..',
+  W: '#...# #...# #...# #.#.# #.#.# #.#.# .#.#.',
+  X: '#...# #...# .#.#. ..#.. .#.#. #...# #...#',
+  Y: '#...# #...# .#.#. ..#.. ..#.. ..#.. ..#..',
+  Z: '##### ....# ...#. ..#.. .#... #.... #####',
+  0: '.###. #...# #..## #.#.# ##..# #...# .###.',
+  1: '..#.. .##.. ..#.. ..#.. ..#.. ..#.. .###.',
+  2: '.###. #...# ....# ...#. ..#.. .#... #####',
+  3: '##### ...#. ..#.. ...#. ....# #...# .###.',
+  4: '...#. ..##. .#.#. #..#. ##### ...#. ...#.',
+  5: '##### #.... ####. ....# ....# #...# .###.',
+  6: '..##. .#... #.... ####. #...# #...# .###.',
+  7: '##### ....# ...#. ..#.. .#... .#... .#...',
+  8: '.###. #...# #...# .###. #...# #...# .###.',
+  9: '.###. #...# #...# .#### ....# ...#. .##..',
+  ' ': '..... ..... ..... ..... ..... ..... .....',
+  '.': '..... ..... ..... ..... ..... .##.. .##..',
+  ',': '..... ..... ..... ..... .##.. ..#.. .#...',
+  '!': '..#.. ..#.. ..#.. ..#.. ..#.. ..... ..#..',
+  '?': '.###. #...# ....# ...#. ..#.. ..... ..#..',
+  '-': '..... ..... ..... .###. ..... ..... .....',
+  '+': '..... ..#.. ..#.. ##### ..#.. ..#.. .....',
+  '=': '..... ..... ##### ..... ##### ..... .....',
+  ':': '..... .##.. .##.. ..... .##.. .##.. .....',
+  '/': '....# ...#. ...#. ..#.. .#... .#... #....',
+  "'": '..#.. ..#.. .#... ..... ..... ..... .....',
+  '<': '...#. ..#.. .#... #.... .#... ..#.. ...#.',
+  '>': '.#... ..#.. ...#. ....# ...#. ..#.. .#...',
+  '*': '..... #...# .#.#. ..#.. .#.#. #...# .....',
+  '%': '##..# ##.#. ...#. ..#.. .#... .#.## #..##',
+};
+const FONT_CHARS = Object.keys(GLYPHS).join('');
+
+const FONT_BITS = {};
+for (const [ch, rows] of Object.entries(GLYPHS)) FONT_BITS[ch] = rows.split(' ');
+
+const GLYPH_W = 5, GLYPH_H = 7, ADVANCE = 6;
+
+function textWidth(str, scale = 1) {
+  return str.length ? (str.length * ADVANCE - 1) * scale : 0;
+}
+
+// `color` is one colour, or an array of seven (one per glyph row) for the
+// striped logos arcade title screens used.
+function text(ctx, str, x, y, color, opts = {}) {
+  const scale = opts.scale || 1;
+  const s = String(str).toUpperCase();
+  let left = x;
+  if (opts.align === 'center') left = x - Math.floor(textWidth(s, scale) / 2);
+  else if (opts.align === 'right') left = x - textWidth(s, scale);
+  for (let i = 0; i < s.length; i++) {
+    const rows = FONT_BITS[s[i]] || FONT_BITS['?'];
+    const gx = left + i * ADVANCE * scale;
+    for (let r = 0; r < GLYPH_H; r++) {
+      ctx.fillStyle = Array.isArray(color) ? color[r] : color;
+      const row = rows[r];
+      for (let c = 0; c < GLYPH_W; c++) {
+        if (row[c] === '#') ctx.fillRect(gx + c * scale, y + r * scale, scale, scale);
+      }
+    }
+  }
+}
+
+// ---- engine/screen.js
+// The arcade screen: a small fixed-resolution canvas, scaled up in whole
+// DEVICE pixels so every game pixel is the same size and stays sharp. A 336px
+// screen on a 3x phone is drawn at exactly 3 device pixels per game pixel,
+// never 3.35, which is what makes uneven, shimmering pixels.
+function makeScreen({ canvas, stage, frame, w, h, crtKey }) {
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+
+  function fit() {
+    const dpr = window.devicePixelRatio || 1;
+    // clientWidth/Height include the stage's padding; the screen gets only
+    // what is inside it.
+    const cs = getComputedStyle(stage);
+    const aw = stage.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    const ah = stage.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+    const s = Math.max(1, Math.floor(Math.min((aw * dpr) / w, (ah * dpr) / h)));
+    canvas.style.width = (s * w) / dpr + 'px';
+    canvas.style.height = (s * h) / dpr + 'px';
+    frame.style.setProperty('--px', s / dpr + 'px');
+  }
+  addEventListener('resize', fit);
+  if (window.visualViewport) visualViewport.addEventListener('resize', fit);
+  fit();
+
+  let crt = false;
+  try { crt = localStorage.getItem(crtKey) === '1'; } catch { crt = false; }
+  function setCrt(on) {
+    crt = on;
+    frame.classList.toggle('crt', on);
+    try { localStorage.setItem(crtKey, on ? '1' : '0'); } catch {}
+  }
+  setCrt(crt);
+
+  return {
+    ctx, w, h, fit,
+    get crt() { return crt; },
+    toggleCrt() { setCrt(!crt); return crt; },
+  };
+}
+
+// ---- engine/sound.js
+// Chip sound: square, triangle and noise voices made in the browser. No audio
+// files. Browsers only allow sound after a tap or key, so `wake()` is called
+// from every input handler and does nothing until then.
+function makeSound(muteKey) {
+  let ac = null, out = null;
+  let muted = false;
+  try { muted = localStorage.getItem(muteKey) === '1'; } catch { muted = false; }
+
+  function wake() {
+    if (ac) { if (ac.state === 'suspended') ac.resume(); return; }
+    const Ctor = window.AudioContext || window.webkitAudioContext;
+    if (!Ctor) return;
+    ac = new Ctor();
+    out = ac.createGain();
+    out.gain.value = muted ? 0 : 1;
+    out.connect(ac.destination);
+  }
+
+  // One note. `at` is seconds from now, `to` slides the pitch.
+  function note(freq, dur, { type = 'square', vol = 0.05, at = 0, to = null } = {}) {
+    if (!ac) return;
+    const t = ac.currentTime + at;
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(freq, t);
+    if (to) o.frequency.exponentialRampToValueAtTime(to, t + dur);
+    g.gain.setValueAtTime(vol, t);
+    g.gain.setValueAtTime(vol, t + dur * 0.7);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(out);
+    o.start(t); o.stop(t + dur + 0.02);
+  }
+
+  // A run of notes: [[freq, dur], ...], each after the last; 0 is a rest.
+  function tune(notes, opts = {}) {
+    let at = opts.at || 0;
+    for (const [f, d] of notes) {
+      if (f) note(f, d * 0.92, { ...opts, at });
+      at += d;
+    }
+  }
+
+  function noise(dur, { vol = 0.2, cutoff = 900, at = 0 } = {}) {
+    if (!ac) return;
+    const len = Math.floor(ac.sampleRate * dur);
+    const buf = ac.createBuffer(1, len, ac.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len) ** 2;
+    const s = ac.createBufferSource(); s.buffer = buf;
+    const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = cutoff;
+    const g = ac.createGain(); g.gain.value = vol;
+    s.connect(f); f.connect(g); g.connect(out);
+    s.start(ac.currentTime + at);
+  }
+
+  // A held sound (an engine): filtered noise that runs for the whole session
+  // and is gated by its gain. Starting a source every frame is what makes
+  // engine sound crackle. Returns set(on); safe to call before wake().
+  function drone({ cutoff = 420, vol = 0.16 } = {}) {
+    let gain = null;
+    return on => {
+      if (!ac) return;
+      if (!gain) {
+        const len = ac.sampleRate * 2;
+        const buf = ac.createBuffer(1, len, ac.sampleRate);
+        const d = buf.getChannelData(0);
+        for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+        const s = ac.createBufferSource(); s.buffer = buf; s.loop = true;
+        const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = cutoff;
+        gain = ac.createGain(); gain.gain.value = 0;
+        s.connect(f); f.connect(gain); gain.connect(out);
+        s.start();
+      }
+      gain.gain.setTargetAtTime(on ? vol : 0, ac.currentTime, 0.03);
+    };
+  }
+
+  function setMuted(on) {
+    muted = on;
+    if (out) out.gain.value = on ? 0 : 1;
+    try { localStorage.setItem(muteKey, on ? '1' : '0'); } catch {}
+  }
+
+  return {
+    wake, note, tune, noise, drone,
+    get muted() { return muted; },
+    toggleMute() { setMuted(!muted); return muted; },
+  };
+}
+
+// ---- engine/input.js
+// Keyboard and touch in one place. `held` is what a game polls each tick;
+// `onDir` fires once per press (menus, initials); `onAction` carries the
+// buttons: start, pause, back, crt, mute.
+//
+// A word game passes `onLetter`: then every letter key is a letter (WASD stop
+// being directions, P/C/M stop being shortcuts; those stay on the buttons) and
+// only the arrows move. `onPoint(x, y)` receives taps on the screen in GAME
+// pixels; returning true means the game used the tap, otherwise it is START.
+function makeInput({ screen, onAction, onDir, onAny, onLetter = null, onPoint = null }) {
+  const held = { up: false, down: false, left: false, right: false };
+  const KEYS = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
+  const ACTIONS = { Space: 'start', Enter: 'start', Escape: 'back' };
+  if (!onLetter) {
+    Object.assign(KEYS, { KeyW: 'up', KeyS: 'down', KeyA: 'left', KeyD: 'right' });
+    Object.assign(ACTIONS, { KeyP: 'pause', KeyC: 'crt', KeyM: 'mute' });
+  }
+
+  let touch = matchMedia('(pointer: coarse)').matches;
+  const markTouch = on => {
+    touch = on;
+    document.body.classList.toggle('touch', on);
+  };
+  markTouch(touch);
+  addEventListener('touchstart', () => { if (!touch) markTouch(true); }, { passive: true });
+
+  addEventListener('keydown', e => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const dir = KEYS[e.code];
+    if (dir) {
+      e.preventDefault();
+      onAny();
+      if (!e.repeat) onDir(dir);
+      held[dir] = true;
+      return;
+    }
+    const action = ACTIONS[e.code];
+    if (action) {
+      // Space and Enter on a focused button or link belong to that control.
+      if ((e.code === 'Space' || e.code === 'Enter') && e.target.closest && e.target.closest('button, a')) return;
+      e.preventDefault();
+      onAny();
+      if (!e.repeat) onAction(action);
+      return;
+    }
+    // e.key, not e.code: the letter printed on the key, whatever the layout.
+    // Digits come through the same door, for games that number their keys.
+    if (onLetter && /^[a-z0-9]$/i.test(e.key)) {
+      e.preventDefault();
+      onAny();
+      if (!e.repeat) onLetter(e.key.toUpperCase());
+    }
+  });
+  addEventListener('keyup', e => {
+    const dir = KEYS[e.code];
+    if (dir) held[dir] = false;
+  });
+  addEventListener('blur', () => { held.up = held.down = held.left = held.right = false; });
+
+  for (const b of document.querySelectorAll('[data-dir]')) {
+    const dir = b.dataset.dir;
+    const down = e => {
+      e.preventDefault();
+      onAny();
+      held.up = held.down = held.left = held.right = false;
+      held[dir] = true;
+      onDir(dir);
+    };
+    const up = () => { held[dir] = false; };
+    b.addEventListener('pointerdown', down);
+    b.addEventListener('pointerup', up);
+    b.addEventListener('pointerleave', up);
+    b.addEventListener('pointercancel', up);
+    b.addEventListener('contextmenu', e => e.preventDefault());
+  }
+  for (const b of document.querySelectorAll('[data-action]')) {
+    const action = b.dataset.action;
+    // pointerdown for the START button, so it answers as fast as the d-pad;
+    // click for the toggles, so keyboard users can press them too.
+    if (b.classList.contains('start')) {
+      b.addEventListener('pointerdown', e => { e.preventDefault(); onAny(); onAction(action); });
+    } else {
+      b.addEventListener('click', () => { onAny(); onAction(action); });
+    }
+  }
+  screen.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    onAny();
+    if (onPoint) {
+      const r = screen.getBoundingClientRect();
+      const x = ((e.clientX - r.left) * screen.width) / r.width;
+      const y = ((e.clientY - r.top) * screen.height) / r.height;
+      if (onPoint(x, y)) return;
+    }
+    onAction('start');
+  });
+
+  return { held, get touch() { return touch; } };
+}
+
+// ---- engine/scores.js
+// The top-ten table, kept on this device only. A new browser starts with a
+// table of invented initials so the attract mode has something to show.
+const ENTRY_LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ.';
+
+function makeScores(key, defaults) {
+  let table = defaults.map(r => ({ ...r }));
+  try {
+    const saved = JSON.parse(localStorage.getItem(key) || 'null');
+    if (Array.isArray(saved) && saved.length === 10 && saved.every(r => typeof r.s === 'number' && typeof r.n === 'string')) table = saved;
+  } catch {}
+
+  return {
+    get table() { return table; },
+    get top() { return table[0].s; },
+    qualifies(score) { return score > 0 && score > table[9].s; },
+    // Returns the rank (0-9) the new row landed on.
+    add(n, s) {
+      let rank = table.findIndex(r => s > r.s);
+      if (rank === -1) return -1;
+      table.splice(rank, 0, { n, s });
+      table.length = 10;
+      try { localStorage.setItem(key, JSON.stringify(table)); } catch {}
+      return rank;
+    },
+  };
+}
+
+// ---- games/say-again/rules.js
+// Say Again's rules, with no drawing, so the tests can run them. Carried over
+// from the Qlaim cabinet unchanged: four panels, a sequence one longer each
+// round, and playback that quickens but never past what a person can watch.
+//
+// A major sixth chord split across the four panels, so a correct run is
+// pleasant and a wrong one is the only ugly sound in the game.
+const NOTES = [329.63, 415.30, 493.88, 659.25];
+
+function pace(n) {
+  return { on: Math.max(230, 520 - n * 22), gap: Math.max(90, 210 - n * 9) };
+}
+
+const msToTicks = ms => Math.round((ms * 60) / 1000);
+
+// When each panel lights during playback, in ticks from the start.
+function timeline(seq, slow = false) {
+  const { on, gap } = pace(seq.length);
+  const onT = msToTicks(slow ? Math.max(on, 300) : on), gapT = msToTicks(gap);
+  let t = msToTicks(600);
+  const flashes = seq.map(panel => {
+    const f = { panel, start: t, end: t + onT };
+    t += onT + gapT;
+    return f;
+  });
+  return { flashes, end: t };
+}
+
+function newRun(rand = Math.random) {
+  return { seq: [Math.floor(rand() * 4)], pos: 0 };
+}
+
+function grow(run, rand = Math.random) {
+  run.seq.push(Math.floor(rand() * 4));
+  run.pos = 0;
+}
+
+// 'right' (keep going), 'done' (the whole sequence repeated), 'wrong'.
+function press(run, i) {
+  if (run.seq[run.pos] !== i) return 'wrong';
+  run.pos++;
+  return run.pos === run.seq.length ? 'done' : 'right';
+}
+
+// The score is the longest sequence repeated in full.
+const scoreOf = (run, failed) => (failed ? run.seq.length - 1 : run.seq.length);
+
+// ---- engine/entry.js
+// Three initials, drawn large, with tap targets for games that have no d-pad:
+// on a touch screen a tap above a letter's middle steps it up, below steps it
+// down, and a tap anywhere else accepts it. (Without this a phone player in a
+// tap-only game could only ever enter AAA.)
+function initialsLayout(w, y) {
+  return { x0: Math.round(w / 2 - 39), y, step: 30 };
+}
+
+function arrow(ctx, cx, y, up, ink) {
+  ctx.fillStyle = ink;
+  for (let r = 0; r < 4; r++) ctx.fillRect(cx - r, up ? y + r : y + 3 - r, r * 2 + 1, 1);
+}
+
+function drawInitials(ctx, entry, L, { blinkOn, touch, ink }) {
+  for (let i = 0; i < 3; i++) {
+    const x = L.x0 + i * L.step;
+    const current = i === entry.pos;
+    if (!current || blinkOn) text(ctx, ENTRY_LETTERS[entry.letters[i]], x, L.y, current ? ink.yellow : ink.white, { scale: 3 });
+    ctx.fillStyle = current ? ink.yellow : ink.dim;
+    ctx.fillRect(x - 2, L.y + 26, 18, 2);
+    if (touch && current) {
+      arrow(ctx, x + 7, L.y - 9, true, ink.yellow);
+      arrow(ctx, x + 7, L.y + 32, false, ink.yellow);
+    }
+  }
+}
+
+// 'up', 'down' or 'next' for a tap at (x, y) in game pixels.
+function tapInitials(entry, L, x, y) {
+  const left = L.x0 + entry.pos * L.step - 8, right = left + 32;
+  if (x < left || x > right) return 'next';
+  if (y >= L.y - 16 && y < L.y + 11) return 'up';
+  if (y >= L.y + 11 && y <= L.y + 40) return 'down';
+  return 'next';
+}
+
+// ---- games/say-again/game.js
+// An upright screen: score bar, four panels, the round count where they meet.
+const W = 240, H = 300;
+const TICK_MS = 1000 / 60;
+const PANEL = 100, GAP = 8, LEFT = (W - PANEL * 2 - GAP) / 2, PTOP = 54;
+const KEYS = { Q: 0, W: 1, A: 2, S: 3, 1: 0, 2: 1, 3: 2, 4: 3 };
+const KEY_LABELS = ['Q', 'W', 'A', 'S'];
+
+const INK = {
+  red: '#ff3b3b', white: '#ffffff', yellow: '#ffd23f', orange: '#ff8a1e', green: '#3fd46b',
+  cyan: '#5eeaf5', grey: '#8f8fb0', dim: '#4a4a6a',
+};
+const ROW_INKS = ['#ff3b3b', '#ff8a1e', '#ffd23f', '#3fd46b', '#5eeaf5', '#8f7bff', '#ff5fb8', '#ff8a1e', '#ffd23f', '#3fd46b'];
+const LOGO_INK = ['#ffffff', '#c8f8d4', '#3fd46b', '#ff8a1e', '#5eeaf5', '#8f7bff', '#5b2a86'];
+const ENTRY_AT = initialsLayout(240, 110);
+const RANKS = ['1ST', '2ND', '3RD', '4TH', '5TH', '6TH', '7TH', '8TH', '9TH', '10TH'];
+// Each panel: dark and lit colours, and a shape so colour is never the only clue.
+const PANELS = [
+  { dark: '#0f3a1e', mid: '#1f7a3a', lit: '#3fd46b', glow: '#c8f8d4', shape: 'triangle' },
+  { dark: '#4a2410', mid: '#a3501e', lit: '#ff8a1e', glow: '#ffd8a8', shape: 'circle' },
+  { dark: '#14206e', mid: '#2b4cff', lit: '#5eeaf5', glow: '#d0f8ff', shape: 'square' },
+  { dark: '#3a1858', mid: '#8f4bff', lit: '#d68bff', glow: '#f0d8ff', shape: 'diamond' },
+];
+
+// Invented initials. Five is a good score for a grown-up.
+const DEFAULT_SCORES = [
+  ['MEM', 20], ['ECO', 16], ['REP', 13], ['ORD', 11], ['TUN', 9],
+  ['RNG', 8], ['TAP', 7], ['HUM', 6], ['BIP', 5], ['ONE', 4],
+].map(([n, s]) => ({ n, s }));
+
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const canvas = document.getElementById('c');
+const screen = makeScreen({ canvas, stage: document.getElementById('stage'), frame: document.getElementById('screen'), w: W, h: H, crtKey: 'lk.arcade.crt' });
+const ctx = screen.ctx;
+const sound = makeSound('lk.arcade.mute');
+const scores = makeScores('lk.sayagain.scores', DEFAULT_SCORES);
+
+let run = newRun();
+let mode = 'attract', page = 'title', pageT = 0, t = 0, clock = 0, timer = 0;
+let show = null, lit = -1, litUntil = 0, missed = -1, score = 0;
+let demo = false, demoStop = 0, demoNext = 0, entry = null, highlight = -1;
+
+const SFX = {
+  start: () => sound.tune([[NOTES[0], 0.1], [NOTES[1], 0.1], [NOTES[2], 0.1], [NOTES[3], 0.25]], { type: 'triangle', vol: 0.12 }),
+  wrong: () => sound.note(160, 0.55, { type: 'sawtooth', to: 70, vol: 0.12 }),
+  blip: () => sound.note(988, 0.05, { vol: 0.04 }),
+};
+// The demo plays silently: nobody asked for noise from a screen they are not using.
+function play(name) { if (!demo) SFX[name](); }
+function tone(i, ms) { if (!demo) sound.note(NOTES[i], ms / 1000, { type: 'triangle', vol: 0.14 }); }
+
+function light(i, ms) {
+  lit = i;
+  litUntil = clock + msToTicks(ms);
+  tone(i, ms * 0.9);
+}
+
+// ---------------------------------------------------------------- the game
+
+function watch() {
+  show = timeline(run.seq, reduceMotion);
+  mode = 'watch'; t = 0;
+}
+
+function newGame() {
+  demo = false; highlight = -1;
+  run = newRun();
+  score = 0; missed = -1;
+  play('start');
+  watch();
+}
+
+function startDemo() {
+  demo = true; demoStop = 4 + Math.floor(Math.random() * 4);
+  run = newRun();
+  score = 0; missed = -1;
+  watch();
+}
+
+function endDemo() {
+  demo = false;
+  toAttract('scores');
+}
+
+function toAttract(p) {
+  mode = 'attract'; page = p; pageT = 0; demo = false; entry = null; lit = -1;
+}
+
+function pressPanel(i) {
+  if (mode !== 'turn') return;
+  light(i, 190);
+  const r = press(run, i);
+  if (r === 'wrong') {
+    score = scoreOf(run, true);
+    missed = run.seq[run.pos];
+    play('wrong');
+    mode = 'wrong'; t = 0;
+  } else if (r === 'done') {
+    score = scoreOf(run, false);
+    mode = 'right'; t = 0;
+  }
+}
+
+function afterWrong() {
+  if (demo) { endDemo(); return; }
+  if (scores.qualifies(score)) {
+    entry = { letters: [0, 0, 0], pos: 0, timer: 60 * 30 };
+    mode = 'entry';
+  } else {
+    toAttract('scores');
+  }
+}
+
+function saveEntry() {
+  const name = entry.letters.map(i => ENTRY_LETTERS[i]).join('');
+  highlight = scores.add(name, score);
+  toAttract('scores');
+}
+
+function confirmLetter() {
+  play('blip');
+  entry.pos++;
+  if (entry.pos >= 3) saveEntry();
+}
+
+// ---------------------------------------------------------------- input
+
+function panelAt(x, y) {
+  for (let i = 0; i < 4; i++) {
+    const r = panelRect(i);
+    if (x >= r.x && x < r.x + PANEL && y >= r.y && y < r.y + PANEL) return i;
+  }
+  return -1;
+}
+
+function onAction(action) {
+  if (action === 'crt') { screen.toggleCrt(); syncToggles(); return; }
+  if (action === 'mute') { sound.toggleMute(); syncToggles(); return; }
+  if (action === 'back') { toAttract('title'); return; }
+  if (mode === 'attract' || demo) { newGame(); return; }
+  if (mode === 'wrong' && t > 60) { afterWrong(); return; }
+  if (mode === 'entry') confirmLetter();
+}
+
+function onLetter(ch) {
+  if (mode === 'entry') {
+    const i = ENTRY_LETTERS.indexOf(ch);
+    if (i >= 0) { entry.letters[entry.pos] = i; confirmLetter(); }
+    return;
+  }
+  if (ch in KEYS) {
+    if (mode === 'turn' && !demo) pressPanel(KEYS[ch]);
+    return;
+  }
+  if (mode === 'attract' || demo) newGame();
+}
+
+function onDir(dir) {
+  if (mode !== 'entry') return;
+  const n = ENTRY_LETTERS.length, i = entry.pos;
+  if (dir === 'up') { entry.letters[i] = (entry.letters[i] + 1) % n; play('blip'); }
+  else if (dir === 'down') { entry.letters[i] = (entry.letters[i] + n - 1) % n; play('blip'); }
+  else if (dir === 'right') confirmLetter();
+  else if (dir === 'left' && entry.pos > 0) { entry.pos--; play('blip'); }
+}
+
+// While it is your turn every tap belongs to the panels; a tap between them
+// does nothing rather than counting as a press.
+function onPoint(x, y) {
+  if (demo || mode === 'attract') return false;
+  if (mode === 'turn') { const i = panelAt(x, y); if (i >= 0) pressPanel(i); return true; }
+  if (mode === 'entry') {
+    const a = tapInitials(entry, ENTRY_AT, x, y);
+    if (a === 'next') confirmLetter(); else onDir(a);
+    return true;
+  }
+  return mode === 'watch' || mode === 'right' || (mode === 'wrong' && t <= 60);
+}
+
+const input = makeInput({ screen: canvas, onAction, onDir, onLetter, onPoint, onAny: () => sound.wake() });
+
+const crtBtn = document.querySelector('[data-action="crt"]');
+const muteBtn = document.querySelector('[data-action="mute"]');
+function syncToggles() {
+  crtBtn.textContent = 'CRT ' + (screen.crt ? 'on' : 'off');
+  crtBtn.setAttribute('aria-pressed', String(screen.crt));
+  muteBtn.textContent = 'Sound ' + (sound.muted ? 'off' : 'on');
+  muteBtn.setAttribute('aria-pressed', String(!sound.muted));
+}
+syncToggles();
+
+// ---------------------------------------------------------------- drawing
+
+const blinkOn = (rate = 32) => reduceMotion || ((clock / rate) | 0) % 2 === 0;
+const prompt = () => (input.touch ? 'TAP TO START' : 'PRESS SPACE');
+
+function panelRect(i) {
+  return { x: LEFT + (i % 2) * (PANEL + GAP), y: PTOP + Math.floor(i / 2) * (PANEL + GAP) };
+}
+
+function shapeHit(shape, dx, dy, r) {
+  if (shape === 'circle') return dx * dx + dy * dy < r * r;
+  if (shape === 'square') return Math.abs(dx) <= r * 0.8 && Math.abs(dy) <= r * 0.8;
+  if (shape === 'diamond') return Math.abs(dx) + Math.abs(dy) <= r;
+  return dy >= -r && dy <= r * 0.8 && Math.abs(dx) <= (dy + r) * 0.55; // triangle
+}
+
+function drawPanel(g, i, x, y, size, on, keyLabel) {
+  const p = PANELS[i];
+  g.fillStyle = on ? p.lit : p.dark;
+  g.fillRect(x, y, size, size);
+  g.fillStyle = on ? p.glow : p.mid;
+  g.fillRect(x, y, size, 3); g.fillRect(x, y, 3, size);
+  g.fillStyle = '#000';
+  g.fillRect(x, y + size - 3, size, 3); g.fillRect(x + size - 3, y, 3, size);
+  const cx = x + size / 2, cy = y + size / 2, r = Math.round(size * 0.2);
+  g.fillStyle = on ? p.glow : p.mid;
+  for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) if (shapeHit(p.shape, dx, dy, r)) g.fillRect(cx + dx, cy + dy, 1, 1);
+  if (keyLabel) text(g, keyLabel, x + 8, y + 8, on ? '#000' : p.mid);
+}
+
+function drawBoard() {
+  for (let i = 0; i < 4; i++) {
+    const r = panelRect(i);
+    const on = lit === i && clock < litUntil;
+    drawPanel(ctx, i, r.x, r.y, PANEL, on, input.touch ? '' : KEY_LABELS[i]);
+  }
+  const cx = W / 2, cy = PTOP + PANEL + GAP / 2;
+  ctx.fillStyle = '#000';
+  for (let dy = -16; dy <= 16; dy++) { const w = Math.floor(Math.sqrt(256 - dy * dy)); ctx.fillRect(cx - w, cy + dy, w * 2 + 1, 1); }
+  const n = mode === 'wrong' ? score : run.seq.length - (mode === 'right' ? 0 : 1);
+  text(ctx, String(Math.max(0, n)), cx + 1, cy - 6, INK.white, { align: 'center', scale: 2 });
+}
+
+function drawHud() {
+  const hi = Math.max(scores.top, demo ? 0 : score);
+  if (!(mode === 'turn' && !demo) || blinkOn(24)) text(ctx, '1UP', 8, 3, INK.red);
+  text(ctx, String(mode === 'attract' ? 0 : score).padStart(2, '0'), 50, 12, INK.white, { align: 'right' });
+  text(ctx, 'HI-SCORE', W / 2, 3, INK.red, { align: 'center' });
+  text(ctx, String(hi), W / 2, 12, INK.white, { align: 'center' });
+}
+
+function caption(s, ink) { text(ctx, s, W / 2, 34, ink, { align: 'center' }); }
+
+function drawTitle() {
+  text(ctx, 'SAY', W / 2 + 2, 36, '#1c2870', { align: 'center', scale: 4 });
+  text(ctx, 'SAY', W / 2, 34, LOGO_INK, { align: 'center', scale: 4 });
+  text(ctx, 'AGAIN', W / 2 + 2, 70, '#1c2870', { align: 'center', scale: 4 });
+  text(ctx, 'AGAIN', W / 2, 68, LOGO_INK, { align: 'center', scale: 4 });
+  const step = (clock >> 4) % 4;
+  for (let i = 0; i < 4; i++) drawPanel(ctx, i, 52 + (i % 2) * 70, 112 + Math.floor(i / 2) * 70, 64, !reduceMotion && step === i, '');
+  text(ctx, 'NO READING, NO REFLEXES,', W / 2, 246, INK.grey, { align: 'center' });
+  text(ctx, 'ONLY REMEMBERING.', W / 2, 256, INK.grey, { align: 'center' });
+  if (blinkOn()) text(ctx, prompt(), W / 2, 272, INK.yellow, { align: 'center' });
+  text(ctx, 'LEON KARSTEN 2026', W / 2, 288, INK.dim, { align: 'center' });
+}
+
+function drawHowTo() {
+  text(ctx, 'HOW TO PLAY', W / 2, 30, INK.cyan, { align: 'center' });
+  text(ctx, 'WATCH THE PANELS LIGHT UP,', W / 2, 50, INK.white, { align: 'center' });
+  text(ctx, 'THEN PRESS THEM IN THE SAME ORDER.', W / 2, 62, INK.white, { align: 'center' });
+  text(ctx, 'EVERY ROUND ADDS ONE MORE.', W / 2, 80, INK.white, { align: 'center' });
+  for (let i = 0; i < 4; i++) {
+    const x = 40 + i * 42;
+    drawPanel(ctx, i, x, 100, 34, false, '');
+    text(ctx, input.touch ? String(i + 1) : KEY_LABELS[i], x + 17, 140, INK.grey, { align: 'center' });
+  }
+  if (!input.touch) text(ctx, 'OR THE KEYS 1 2 3 4', W / 2, 156, INK.grey, { align: 'center' });
+  text(ctx, 'ONE WRONG PANEL ENDS THE RUN,', W / 2, 180, INK.orange, { align: 'center' });
+  text(ctx, 'AND IT SHOWS YOU THE ONE YOU MISSED.', W / 2, 192, INK.orange, { align: 'center' });
+  text(ctx, 'YOUR SCORE IS THE LONGEST SEQUENCE', W / 2, 212, INK.cyan, { align: 'center' });
+  text(ctx, 'YOU REPEATED. FIVE IS GOOD.', W / 2, 224, INK.cyan, { align: 'center' });
+  if (blinkOn()) text(ctx, prompt(), W / 2, 256, INK.yellow, { align: 'center' });
+}
+
+function drawScores() {
+  text(ctx, 'HIGH SCORES', W / 2, 30, INK.yellow, { align: 'center' });
+  text(ctx, 'RANK', 40, 48, INK.grey);
+  text(ctx, 'RUN', 150, 48, INK.grey, { align: 'right' });
+  text(ctx, 'NAME', 170, 48, INK.grey);
+  scores.table.forEach((r, i) => {
+    if (i === highlight && !blinkOn(16)) return;
+    const y = 64 + i * 16;
+    const ink = i === highlight ? INK.white : ROW_INKS[i];
+    text(ctx, RANKS[i], 40, y, ink);
+    text(ctx, String(r.s), 150, y, ink, { align: 'right' });
+    text(ctx, r.n, 170, y, ink);
+  });
+  if (blinkOn()) text(ctx, prompt(), W / 2, 240, INK.yellow, { align: 'center' });
+}
+
+function drawEntry() {
+  text(ctx, 'YOU MADE THE TOP TEN', W / 2, 36, INK.cyan, { align: 'center' });
+  text(ctx, 'A RUN OF ' + score, W / 2, 52, INK.yellow, { align: 'center', scale: 2 });
+  text(ctx, 'ENTER YOUR INITIALS', W / 2, 90, INK.white, { align: 'center' });
+  drawInitials(ctx, entry, ENTRY_AT, { blinkOn: blinkOn(16), touch: input.touch, ink: INK });
+  if (input.touch) {
+    text(ctx, 'TAP THE ARROWS TO CHANGE', W / 2, 160, INK.grey, { align: 'center' });
+    text(ctx, 'A LETTER, ANYWHERE ELSE', W / 2, 172, INK.grey, { align: 'center' });
+    text(ctx, 'FOR THE NEXT ONE', W / 2, 184, INK.grey, { align: 'center' });
+  } else {
+    text(ctx, 'TYPE THEM, OR USE THE ARROWS', W / 2, 160, INK.grey, { align: 'center' });
+  }
+  text(ctx, 'TIME ' + Math.ceil(entry.timer / 60), W / 2, 206, INK.orange, { align: 'center' });
+}
+
+function draw() {
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, W, H);
+  drawHud();
+  if (mode === 'attract') {
+    if (page === 'title') drawTitle();
+    else if (page === 'howto') drawHowTo();
+    else drawScores();
+    return;
+  }
+  if (mode === 'entry') { drawEntry(); return; }
+  drawBoard();
+  if (mode === 'watch') caption('WATCH', INK.cyan);
+  else if (mode === 'turn') caption(demo ? 'DEMO PLAY' : 'YOUR TURN', demo ? INK.yellow : INK.green);
+  else if (mode === 'right') caption('AGAIN', INK.yellow);
+  else if (mode === 'wrong') caption(t < 40 ? 'NOT THAT ONE' : 'IT WAS THIS ONE', INK.red);
+  const bottom = PTOP + PANEL * 2 + GAP + 12;
+  if (mode === 'wrong' && t > 120 && !demo && blinkOn()) text(ctx, input.touch ? 'TAP START' : 'PRESS SPACE', W / 2, bottom, INK.yellow, { align: 'center' });
+  else if (demo && blinkOn()) text(ctx, 'DEMO PLAY', W / 2, bottom, INK.cyan, { align: 'center' });
+}
+
+// ---------------------------------------------------------------- card art
+
+// The picture on the site's Games page, 320x240 (the card is 4:3).
+function drawCard() {
+  const c = document.createElement('canvas');
+  c.width = 320; c.height = 240;
+  const g = c.getContext('2d');
+  g.fillStyle = '#000'; g.fillRect(0, 0, 320, 240);
+  text(g, 'SAY AGAIN', 162, 12, '#1c2870', { align: 'center', scale: 4 });
+  text(g, 'SAY AGAIN', 160, 10, LOGO_INK, { align: 'center', scale: 4 });
+  for (let i = 0; i < 4; i++) drawPanel(g, i, 84 + (i % 2) * 78, 58 + Math.floor(i / 2) * 78, 74, i === 1, '');
+  g.fillStyle = '#000';
+  for (let dy = -16; dy <= 16; dy++) { const w = Math.floor(Math.sqrt(256 - dy * dy)); g.fillRect(160 - w, 134 + dy, w * 2 + 1, 1); }
+  text(g, '7', 161, 128, INK.white, { align: 'center', scale: 2 });
+  return c;
+}
+
+// ---------------------------------------------------------------- loop
+
+const PAGES = { title: ['howto', 420], howto: ['demo', 600], scores: ['title', 420] };
+function attractTick() {
+  pageT++;
+  const [next, length] = PAGES[page];
+  if (pageT < length) return;
+  if (next === 'demo') { startDemo(); return; }
+  if (next === 'title') highlight = -1;
+  toAttract(next);
+}
+
+function tick() {
+  clock++;
+  switch (mode) {
+    case 'attract': attractTick(); break;
+    case 'watch': {
+      t++;
+      const f = show.flashes.find(fl => fl.start === t);
+      if (f) light(f.panel, (f.end - f.start) * TICK_MS);
+      if (t >= show.end) { mode = 'turn'; t = 0; run.pos = 0; demoNext = 40; }
+      break;
+    }
+    case 'turn':
+      t++;
+      // The demo repeats the sequence, then fumbles once it has shown enough.
+      if (demo && t >= demoNext) {
+        const want = run.seq[run.pos];
+        pressPanel(run.seq.length >= demoStop ? (want + 1) % 4 : want);
+        demoNext = t + 24;
+      }
+      break;
+    case 'right': if (++t >= 31) { grow(run); watch(); } break;
+    case 'wrong':
+      t++;
+      if (t === 40) light(missed, 620);
+      if ((demo && t >= 120) || t >= 60 * 8) afterWrong();
+      break;
+    case 'entry': if (--entry.timer <= 0) saveEntry(); break;
+  }
+}
+
+// A fixed 60 ticks a second whatever the display's refresh rate.
+let acc = 0, lastT = 0;
+function frame(now) {
+  requestAnimationFrame(frame);
+  if (!lastT) lastT = now;
+  acc += Math.min(100, now - lastT);
+  lastT = now;
+  while (acc >= TICK_MS) { tick(); acc -= TICK_MS; }
+  draw();
+}
+requestAnimationFrame(frame);
+
+// Read-only view for the page checks.
+window.__sayagain = {
+  get mode() { return mode; },
+  get page() { return page; },
+  get demo() { return demo; },
+  get score() { return score; },
+  get seq() { return run.seq.slice(); },
+  panelCentre(i) { const r = panelRect(i); return { x: r.x + PANEL / 2, y: r.y + PANEL / 2 }; },
+  attract(p) { toAttract(p); },
+  endGame(s) { demo = false; score = s; mode = 'wrong'; t = 61; },
+};
+window.__arcade = { card: drawCard };
+})();
+</script>
+</body>
+</html>

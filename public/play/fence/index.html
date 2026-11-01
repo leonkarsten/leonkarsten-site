@@ -464,7 +464,8 @@ function makeInput({ screen, onAction, onDir, onAny, onLetter = null, onPoint = 
       return;
     }
     // e.key, not e.code: the letter printed on the key, whatever the layout.
-    if (onLetter && /^[a-z]$/i.test(e.key)) {
+    // Digits come through the same door, for games that number their keys.
+    if (onLetter && /^[a-z0-9]$/i.test(e.key)) {
       e.preventDefault();
       onAny();
       if (!e.repeat) onLetter(e.key.toUpperCase());

@@ -1,0 +1,8 @@
+{
+  "name": "Say Again",
+  "slug": "say-again",
+  "summary": "Four panels and a sequence that grows by one each round. No reading, no reflexes, only remembering.",
+  "app": "/play/say-again/",
+  "image": "/play/say-again/card.png",
+  "tags": ["memory", "tap or keyboard"]
+}
