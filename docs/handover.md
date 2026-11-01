@@ -27,8 +27,14 @@ Nothing personal: interests, facts, instructions, coaching, experiences only.
   cancelled; nothing to migrate.
 - **Sankey Studio** is imported at `public/apps/sankey-studio/index.html` (single-file Vite build,
   ~1.5 MB). Source repo: `C:\Users\leon\Documents\sankey-studio`.
-- **Content:** one draft post and one draft guide, both `draft: true` placeholders. Games
-  collection is empty. About page has a bracketed contact placeholder.
+- **Games:** source repo `C:\Users\leon\Documents\leonkarsten-arcade` (local only, no remote
+  yet). Style: real 1980–85 raster arcade inside the screen (black, pixel sprites, bitmap font,
+  attract mode, top-ten initials), synthwave only on the page around it; rules in that repo's
+  `docs/style.md`. Import with `.\scripts\import-arcade.ps1 -Build`. First game **Lamplight**
+  (`/play/lamplight/`, ported from Leon's Qlaim arcade) added 2026-11-01; not yet played through
+  by Leon. Its card on `/games/` still shows the placeholder gradient (no card art field yet).
+- **Content:** one draft post and one draft guide, both `draft: true` placeholders. About page
+  has a bracketed contact placeholder.
 
 ## Architecture
 
@@ -82,8 +88,9 @@ the same path collide in Astro.
 4. **Sankey Studio retro themes** — brief at `sankey-studio/docs/retro-theme-brief.md` (in the
    Sankey repo, not this one). After that ships, rerun `scripts/import-sankey-studio.ps1 -Build`
    here and push.
-5. **First game.** Build in its own repo, copy the self-contained output to `public/play/<slug>/`,
-   add `src/content/games/<slug>.json`. The Games page currently shows a "being wheeled in" notice.
+5. **Games.** Lamplight is live. Next: Leon plays it on his iPhone and decides on the CRT switch;
+   card art for `/games/` (e.g. a title-screen image); the next game (a paddle or ladder game was
+   suggested). The "How these are made" box links to Writing, which has no build notes yet.
 6. Optional: raise DNS TTLs from 600 to 3600 once everything is stable; add a privacy-respecting
    page counter (Plausible or GoatCounter), never Google Analytics.
 

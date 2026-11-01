@@ -1,0 +1,1387 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Lamplight</title>
+<meta name="description" content="A maze you can only see a little of at a time. Find three lanterns and the door; something walks the corridors that you cannot fight.">
+<meta name="theme-color" content="#000000">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2016%2016'%20shape-rendering='crispEdges'%3E%3Crect%20width='16'%20height='16'%20fill='%23000'/%3E%3Crect%20x='6'%20y='2'%20width='4'%20height='1'%20fill='%23a0a0b8'/%3E%3Crect%20x='5'%20y='4'%20width='6'%20height='7'%20fill='%23a0a0b8'/%3E%3Crect%20x='6'%20y='5'%20width='4'%20height='5'%20fill='%23ffd23f'/%3E%3Crect%20x='7'%20y='6'%20width='2'%20height='3'%20fill='%23ff8a1e'/%3E%3Crect%20x='6'%20y='11'%20width='4'%20height='1'%20fill='%23a0a0b8'/%3E%3C/svg%3E">
+<style>
+:root {
+  --void: #000;
+  --chrome: #8f8fb0;
+  --chrome-hi: #5eeaf5;
+  --edge: #2a2a40;
+  --start: #e8302f;
+  --ui: ui-monospace, 'Cascadia Mono', Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; height: 100%; background: var(--void); color: var(--chrome); }
+body {
+  font-family: var(--ui);
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  height: 100dvh;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: 'bar' 'stage' 'pad';
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.bar {
+  grid-area: bar;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+}
+.bar a, .bar button {
+  font: 700 12px/1 var(--ui);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--chrome);
+  background: none;
+  border: 1px solid transparent;
+  padding: 9px 10px;
+  text-decoration: none;
+  cursor: pointer;
+  border-radius: 0;
+}
+.bar a:hover, .bar button:hover, .bar a:focus-visible, .bar button:focus-visible {
+  color: var(--chrome-hi);
+  border-color: var(--edge);
+  outline: none;
+}
+.bar button[aria-pressed='true'] { color: var(--chrome-hi); }
+.toggles { display: flex; gap: 2px; }
+
+.stage {
+  grid-area: stage;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  padding: 8px 16px;
+}
+/* A faint edge, so an unexplored black playfield still has a size. */
+.screen { position: relative; line-height: 0; touch-action: none; box-shadow: 0 0 0 1px #1c1c2c; }
+.screen canvas {
+  display: block;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+/* The CRT switch. Off by default: sharp pixels are the honest picture, the
+   tube is a costume. Scanlines are one per game pixel row (--px is set by
+   the screen fit), so they never beat against the art. */
+.screen.crt { border-radius: 3% / 4%; overflow: hidden; box-shadow: 0 0 0 4px #0b0b14, 0 0 36px rgba(94, 234, 245, 0.12); }
+.screen.crt canvas { filter: saturate(1.25) brightness(1.12) contrast(1.05) blur(calc(var(--px) * 0.18)); }
+.screen.crt::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background:
+    radial-gradient(ellipse at center, rgba(0, 0, 0, 0) 58%, rgba(0, 0, 0, 0.6) 100%),
+    repeating-linear-gradient(to bottom,
+      rgba(0, 0, 0, 0) 0, rgba(0, 0, 0, 0) calc(var(--px) * 0.55),
+      rgba(0, 0, 0, 0.38) calc(var(--px) * 0.55), rgba(0, 0, 0, 0.38) var(--px));
+  box-shadow: inset 0 0 48px rgba(0, 0, 0, 0.75);
+}
+
+/* Touch controls: shown on touch screens only. */
+.pad {
+  grid-area: pad;
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  max-width: 380px;
+  margin: 0 auto;
+  padding: 4px 20px 16px;
+}
+body.touch .pad { display: flex; }
+.dpad {
+  display: grid;
+  grid-template-columns: repeat(3, 54px);
+  grid-template-rows: repeat(3, 50px);
+  gap: 3px;
+}
+.dpad button, .start {
+  font: 700 18px/1 var(--ui);
+  color: var(--chrome);
+  background: #12121e;
+  border: 2px solid var(--edge);
+  border-radius: 6px;
+  padding: 0;
+  touch-action: none;
+  cursor: pointer;
+}
+.dpad button:active { background: #24243a; color: var(--chrome-hi); }
+.dpad .up { grid-area: 1 / 2; }
+.dpad .left { grid-area: 2 / 1; }
+.dpad .right { grid-area: 2 / 3; }
+.dpad .down { grid-area: 3 / 2; }
+.start {
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  background: var(--start);
+  border: 4px solid #7a1414;
+  color: #fff;
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  box-shadow: inset 0 -6px 0 rgba(0, 0, 0, 0.25);
+}
+.start:active { transform: translateY(2px); box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.25); }
+
+/* A phone on its side: d-pad left of the screen, START right of it. */
+@media (orientation: landscape) and (max-height: 520px) {
+  body.touch {
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas: 'bar bar bar' 'dpad stage start';
+  }
+  body.touch .pad { display: contents; }
+  body.touch .dpad { grid-area: dpad; align-self: center; margin-left: 12px; }
+  body.touch .start { grid-area: start; align-self: center; margin-right: 16px; }
+}
+</style>
+</head>
+<body>
+
+<header class="bar">
+  <a href="/games/">&larr; Games</a>
+  <div class="toggles">
+    <button type="button" data-action="crt" aria-pressed="false">CRT off</button>
+    <button type="button" data-action="mute" aria-pressed="true">Sound on</button>
+    <button type="button" data-action="pause">Pause</button>
+  </div>
+</header>
+
+<main class="stage" id="stage">
+  <div class="screen" id="screen">
+    <canvas id="c" role="img" aria-label="Lamplight game screen. Arrow keys or WASD to move, Space to start, P to pause."></canvas>
+  </div>
+</main>
+
+<div class="pad">
+  <div class="dpad">
+    <button type="button" class="up" data-dir="up" aria-label="Up">&#9650;</button>
+    <button type="button" class="left" data-dir="left" aria-label="Left">&#9664;</button>
+    <button type="button" class="right" data-dir="right" aria-label="Right">&#9654;</button>
+    <button type="button" class="down" data-dir="down" aria-label="Down">&#9660;</button>
+  </div>
+  <button type="button" class="start" data-action="start">Start</button>
+</div>
+
+<script>
+(() => {
+'use strict';
+// ---- engine/font.js
+// 5x7 bitmap font, one string per glyph, rows separated by spaces. Drawn with
+// fillRect so it stays on the pixel grid at any scale; there is no web font.
+const GLYPHS = {
+  A: '.###. #...# #...# ##### #...# #...# #...#',
+  B: '####. #...# #...# ####. #...# #...# ####.',
+  C: '.###. #...# #.... #.... #.... #...# .###.',
+  D: '####. #...# #...# #...# #...# #...# ####.',
+  E: '##### #.... #.... ####. #.... #.... #####',
+  F: '##### #.... #.... ####. #.... #.... #....',
+  G: '.###. #...# #.... #.### #...# #...# .####',
+  H: '#...# #...# #...# ##### #...# #...# #...#',
+  I: '.###. ..#.. ..#.. ..#.. ..#.. ..#.. .###.',
+  J: '..### ...#. ...#. ...#. ...#. #..#. .##..',
+  K: '#...# #..#. #.#.. ##... #.#.. #..#. #...#',
+  L: '#.... #.... #.... #.... #.... #.... #####',
+  M: '#...# ##.## #.#.# #.#.# #...# #...# #...#',
+  N: '#...# #...# ##..# #.#.# #..## #...# #...#',
+  O: '.###. #...# #...# #...# #...# #...# .###.',
+  P: '####. #...# #...# ####. #.... #.... #....',
+  Q: '.###. #...# #...# #...# #.#.# #..#. .##.#',
+  R: '####. #...# #...# ####. #.#.. #..#. #...#',
+  S: '.###. #...# #.... .###. ....# #...# .###.',
+  T: '##### ..#.. ..#.. ..#.. ..#.. ..#.. ..#..',
+  U: '#...# #...# #...# #...# #...# #...# .###.',
+  V: '#...# #...# #...# #...# #...# .#.#. ..#..',
+  W: '#...# #...# #...# #.#.# #.#.# #.#.# .#.#.',
+  X: '#...# #...# .#.#. ..#.. .#.#. #...# #...#',
+  Y: '#...# #...# .#.#. ..#.. ..#.. ..#.. ..#..',
+  Z: '##### ....# ...#. ..#.. .#... #.... #####',
+  0: '.###. #...# #..## #.#.# ##..# #...# .###.',
+  1: '..#.. .##.. ..#.. ..#.. ..#.. ..#.. .###.',
+  2: '.###. #...# ....# ...#. ..#.. .#... #####',
+  3: '##### ...#. ..#.. ...#. ....# #...# .###.',
+  4: '...#. ..##. .#.#. #..#. ##### ...#. ...#.',
+  5: '##### #.... ####. ....# ....# #...# .###.',
+  6: '..##. .#... #.... ####. #...# #...# .###.',
+  7: '##### ....# ...#. ..#.. .#... .#... .#...',
+  8: '.###. #...# #...# .###. #...# #...# .###.',
+  9: '.###. #...# #...# .#### ....# ...#. .##..',
+  ' ': '..... ..... ..... ..... ..... ..... .....',
+  '.': '..... ..... ..... ..... ..... .##.. .##..',
+  ',': '..... ..... ..... ..... .##.. ..#.. .#...',
+  '!': '..#.. ..#.. ..#.. ..#.. ..#.. ..... ..#..',
+  '?': '.###. #...# ....# ...#. ..#.. ..... ..#..',
+  '-': '..... ..... ..... .###. ..... ..... .....',
+  '+': '..... ..#.. ..#.. ##### ..#.. ..#.. .....',
+  '=': '..... ..... ##### ..... ##### ..... .....',
+  ':': '..... .##.. .##.. ..... .##.. .##.. .....',
+  '/': '....# ...#. ...#. ..#.. .#... .#... #....',
+  "'": '..#.. ..#.. .#... ..... ..... ..... .....',
+  '<': '...#. ..#.. .#... #.... .#... ..#.. ...#.',
+  '>': '.#... ..#.. ...#. ....# ...#. ..#.. .#...',
+  '*': '..... #...# .#.#. ..#.. .#.#. #...# .....',
+};
+
+const FONT_BITS = {};
+for (const [ch, rows] of Object.entries(GLYPHS)) FONT_BITS[ch] = rows.split(' ');
+
+const GLYPH_W = 5, GLYPH_H = 7, ADVANCE = 6;
+
+function textWidth(str, scale = 1) {
+  return str.length ? (str.length * ADVANCE - 1) * scale : 0;
+}
+
+// `color` is one colour, or an array of seven (one per glyph row) for the
+// striped logos arcade title screens used.
+function text(ctx, str, x, y, color, opts = {}) {
+  const scale = opts.scale || 1;
+  const s = String(str).toUpperCase();
+  let left = x;
+  if (opts.align === 'center') left = x - Math.floor(textWidth(s, scale) / 2);
+  else if (opts.align === 'right') left = x - textWidth(s, scale);
+  for (let i = 0; i < s.length; i++) {
+    const rows = FONT_BITS[s[i]] || FONT_BITS['?'];
+    const gx = left + i * ADVANCE * scale;
+    for (let r = 0; r < GLYPH_H; r++) {
+      ctx.fillStyle = Array.isArray(color) ? color[r] : color;
+      const row = rows[r];
+      for (let c = 0; c < GLYPH_W; c++) {
+        if (row[c] === '#') ctx.fillRect(gx + c * scale, y + r * scale, scale, scale);
+      }
+    }
+  }
+}
+
+// ---- engine/screen.js
+// The arcade screen: a small fixed-resolution canvas, scaled up in whole
+// DEVICE pixels so every game pixel is the same size and stays sharp. A 336px
+// screen on a 3x phone is drawn at exactly 3 device pixels per game pixel,
+// never 3.35, which is what makes uneven, shimmering pixels.
+function makeScreen({ canvas, stage, frame, w, h, crtKey }) {
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+
+  function fit() {
+    const dpr = window.devicePixelRatio || 1;
+    const aw = stage.clientWidth, ah = stage.clientHeight;
+    const s = Math.max(1, Math.floor(Math.min((aw * dpr) / w, (ah * dpr) / h)));
+    canvas.style.width = (s * w) / dpr + 'px';
+    canvas.style.height = (s * h) / dpr + 'px';
+    frame.style.setProperty('--px', s / dpr + 'px');
+  }
+  addEventListener('resize', fit);
+  if (window.visualViewport) visualViewport.addEventListener('resize', fit);
+  fit();
+
+  let crt = false;
+  try { crt = localStorage.getItem(crtKey) === '1'; } catch { crt = false; }
+  function setCrt(on) {
+    crt = on;
+    frame.classList.toggle('crt', on);
+    try { localStorage.setItem(crtKey, on ? '1' : '0'); } catch {}
+  }
+  setCrt(crt);
+
+  return {
+    ctx, w, h, fit,
+    get crt() { return crt; },
+    toggleCrt() { setCrt(!crt); return crt; },
+  };
+}
+
+// ---- engine/sound.js
+// Chip sound: square, triangle and noise voices made in the browser. No audio
+// files. Browsers only allow sound after a tap or key, so `wake()` is called
+// from every input handler and does nothing until then.
+function makeSound(muteKey) {
+  let ac = null, out = null;
+  let muted = false;
+  try { muted = localStorage.getItem(muteKey) === '1'; } catch { muted = false; }
+
+  function wake() {
+    if (ac) { if (ac.state === 'suspended') ac.resume(); return; }
+    const Ctor = window.AudioContext || window.webkitAudioContext;
+    if (!Ctor) return;
+    ac = new Ctor();
+    out = ac.createGain();
+    out.gain.value = muted ? 0 : 1;
+    out.connect(ac.destination);
+  }
+
+  // One note. `at` is seconds from now, `to` slides the pitch.
+  function note(freq, dur, { type = 'square', vol = 0.05, at = 0, to = null } = {}) {
+    if (!ac) return;
+    const t = ac.currentTime + at;
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(freq, t);
+    if (to) o.frequency.exponentialRampToValueAtTime(to, t + dur);
+    g.gain.setValueAtTime(vol, t);
+    g.gain.setValueAtTime(vol, t + dur * 0.7);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(out);
+    o.start(t); o.stop(t + dur + 0.02);
+  }
+
+  // A run of notes: [[freq, dur], ...], each after the last; 0 is a rest.
+  function tune(notes, opts = {}) {
+    let at = opts.at || 0;
+    for (const [f, d] of notes) {
+      if (f) note(f, d * 0.92, { ...opts, at });
+      at += d;
+    }
+  }
+
+  function noise(dur, { vol = 0.2, cutoff = 900, at = 0 } = {}) {
+    if (!ac) return;
+    const len = Math.floor(ac.sampleRate * dur);
+    const buf = ac.createBuffer(1, len, ac.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len) ** 2;
+    const s = ac.createBufferSource(); s.buffer = buf;
+    const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = cutoff;
+    const g = ac.createGain(); g.gain.value = vol;
+    s.connect(f); f.connect(g); g.connect(out);
+    s.start(ac.currentTime + at);
+  }
+
+  function setMuted(on) {
+    muted = on;
+    if (out) out.gain.value = on ? 0 : 1;
+    try { localStorage.setItem(muteKey, on ? '1' : '0'); } catch {}
+  }
+
+  return {
+    wake, note, tune, noise,
+    get muted() { return muted; },
+    toggleMute() { setMuted(!muted); return muted; },
+  };
+}
+
+// ---- engine/input.js
+// Keyboard and touch in one place. `held` is what a game polls each tick;
+// `onDir` fires once per press (menus, initials); `onAction` carries the
+// buttons: start, pause, back, crt, mute.
+function makeInput({ screen, onAction, onDir, onAny }) {
+  const held = { up: false, down: false, left: false, right: false };
+  const KEYS = {
+    ArrowUp: 'up', KeyW: 'up', ArrowDown: 'down', KeyS: 'down',
+    ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right',
+  };
+  const ACTIONS = { Space: 'start', Enter: 'start', KeyP: 'pause', Escape: 'back', KeyC: 'crt', KeyM: 'mute' };
+
+  let touch = matchMedia('(pointer: coarse)').matches;
+  const markTouch = on => {
+    touch = on;
+    document.body.classList.toggle('touch', on);
+  };
+  markTouch(touch);
+  addEventListener('touchstart', () => { if (!touch) markTouch(true); }, { passive: true });
+
+  addEventListener('keydown', e => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const dir = KEYS[e.code];
+    if (dir) {
+      e.preventDefault();
+      onAny();
+      if (!e.repeat) onDir(dir);
+      held[dir] = true;
+      return;
+    }
+    const action = ACTIONS[e.code];
+    if (action) {
+      // Space and Enter on a focused button or link belong to that control.
+      if ((e.code === 'Space' || e.code === 'Enter') && e.target.closest && e.target.closest('button, a')) return;
+      e.preventDefault();
+      onAny();
+      if (!e.repeat) onAction(action);
+    }
+  });
+  addEventListener('keyup', e => {
+    const dir = KEYS[e.code];
+    if (dir) held[dir] = false;
+  });
+  addEventListener('blur', () => { held.up = held.down = held.left = held.right = false; });
+
+  for (const b of document.querySelectorAll('[data-dir]')) {
+    const dir = b.dataset.dir;
+    const down = e => {
+      e.preventDefault();
+      onAny();
+      held.up = held.down = held.left = held.right = false;
+      held[dir] = true;
+      onDir(dir);
+    };
+    const up = () => { held[dir] = false; };
+    b.addEventListener('pointerdown', down);
+    b.addEventListener('pointerup', up);
+    b.addEventListener('pointerleave', up);
+    b.addEventListener('pointercancel', up);
+    b.addEventListener('contextmenu', e => e.preventDefault());
+  }
+  for (const b of document.querySelectorAll('[data-action]')) {
+    const action = b.dataset.action;
+    // pointerdown for the START button, so it answers as fast as the d-pad;
+    // click for the toggles, so keyboard users can press them too.
+    if (b.classList.contains('start')) {
+      b.addEventListener('pointerdown', e => { e.preventDefault(); onAny(); onAction(action); });
+    } else {
+      b.addEventListener('click', () => { onAny(); onAction(action); });
+    }
+  }
+  screen.addEventListener('pointerdown', e => { e.preventDefault(); onAny(); onAction('start'); });
+
+  return { held, get touch() { return touch; } };
+}
+
+// ---- engine/scores.js
+// The top-ten table, kept on this device only. A new browser starts with a
+// table of invented initials so the attract mode has something to show.
+const ENTRY_LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ.';
+
+function makeScores(key, defaults) {
+  let table = defaults.map(r => ({ ...r }));
+  try {
+    const saved = JSON.parse(localStorage.getItem(key) || 'null');
+    if (Array.isArray(saved) && saved.length === 10 && saved.every(r => typeof r.s === 'number' && typeof r.n === 'string')) table = saved;
+  } catch {}
+
+  return {
+    get table() { return table; },
+    get top() { return table[0].s; },
+    qualifies(score) { return score > 0 && score > table[9].s; },
+    // Returns the rank (0-9) the new row landed on.
+    add(n, s) {
+      let rank = table.findIndex(r => s > r.s);
+      if (rank === -1) return -1;
+      table.splice(rank, 0, { n, s });
+      table.length = 10;
+      try { localStorage.setItem(key, JSON.stringify(table)); } catch {}
+      return rank;
+    },
+  };
+}
+
+// ---- games/lamplight/maze.js
+// Lamplight's maze rules, with no drawing and no DOM, so the tests can run
+// them directly. Carried over from the Qlaim cabinet unchanged in behaviour.
+const MW = 21, MH = 15;
+const WALL = 1, FLOOR = 0;
+const LANTERNS = 3;
+const STEPS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+
+function isFloor(maze, x, y) {
+  return x >= 0 && y >= 0 && x < MW && y < MH && maze[y * MW + x] === FLOOR;
+}
+
+// Recursive backtracker: carves a perfect maze — exactly one route between any
+// two points. That matters here, because a maze with loops lets you escape the
+// walker by running in circles, and the whole game is that you cannot.
+function carve(rand = Math.random) {
+  const maze = new Uint8Array(MW * MH).fill(WALL);
+  const stack = [[1, 1]];
+  maze[1 * MW + 1] = FLOOR;
+  while (stack.length) {
+    const [x, y] = stack[stack.length - 1];
+    const options = [];
+    for (const [dx, dy] of [[2, 0], [-2, 0], [0, 2], [0, -2]]) {
+      const nx = x + dx, ny = y + dy;
+      if (nx > 0 && ny > 0 && nx < MW - 1 && ny < MH - 1 && maze[ny * MW + nx] === WALL) options.push([nx, ny, dx, dy]);
+    }
+    if (!options.length) { stack.pop(); continue; }
+    const [nx, ny, dx, dy] = options[Math.floor(rand() * options.length)];
+    maze[(y + dy / 2) * MW + (x + dx / 2)] = FLOOR;
+    maze[ny * MW + nx] = FLOOR;
+    stack.push([nx, ny]);
+  }
+  return maze;
+}
+
+function floorCells(maze) {
+  const list = [];
+  for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) if (maze[y * MW + x] === FLOOR) list.push([x, y]);
+  return list;
+}
+
+// Breadth-first distance from a cell — used both to place things far apart and
+// to steer the walker, so "far away" and "the way to you" agree with each other.
+function distancesFrom(maze, sx, sy) {
+  const dist = new Int32Array(MW * MH).fill(-1);
+  dist[sy * MW + sx] = 0;
+  const queue = [sx, sy];
+  for (let i = 0; i < queue.length; i += 2) {
+    const x = queue[i], y = queue[i + 1], d = dist[y * MW + x];
+    for (const [dx, dy] of STEPS) {
+      const nx = x + dx, ny = y + dy;
+      if (!isFloor(maze, nx, ny) || dist[ny * MW + nx] !== -1) continue;
+      dist[ny * MW + nx] = d + 1;
+      queue.push(nx, ny);
+    }
+  }
+  return dist;
+}
+
+// The walker sees along a straight, unbroken corridor only. A corner is the
+// one thing that hides you.
+function lineOfSight(maze, ax, ay, bx, by) {
+  if (ax === bx) {
+    const [lo, hi] = ay < by ? [ay, by] : [by, ay];
+    for (let y = lo; y <= hi; y++) if (!isFloor(maze, ax, y)) return false;
+    return true;
+  }
+  if (ay === by) {
+    const [lo, hi] = ax < bx ? [ax, bx] : [bx, ax];
+    for (let x = lo; x <= hi; x++) if (!isFloor(maze, x, ay)) return false;
+    return true;
+  }
+  return false;
+}
+
+// Door at the furthest cell from the start, lanterns spread through the far
+// 80% (never within 4 steps of each other), walker a third of the way out.
+function placeThings(maze, rand = Math.random) {
+  const dist = distancesFrom(maze, 1, 1);
+  const open = floorCells(maze).filter(([x, y]) => dist[y * MW + x] > 0);
+  open.sort((a, b) => dist[b[1] * MW + b[0]] - dist[a[1] * MW + a[0]]);
+
+  const door = { x: open[0][0], y: open[0][1] };
+  const lanterns = [];
+  const pool = open.slice(0, Math.floor(open.length * 0.8));
+  while (lanterns.length < LANTERNS && pool.length) {
+    const pick = pool.splice(Math.floor(rand() * pool.length), 1)[0];
+    if (pick[0] === door.x && pick[1] === door.y) continue;
+    if (lanterns.some(l => Math.abs(l.x - pick[0]) + Math.abs(l.y - pick[1]) < 4)) continue;
+    lanterns.push({ x: pick[0], y: pick[1], taken: false });
+  }
+
+  const far = open[Math.floor(open.length * 0.35)] || open[0];
+  return { door, lanterns, walkerStart: { x: far[0], y: far[1] } };
+}
+
+// After a catch the walker is put back somewhere more than 6 steps away.
+function respawnSpot(maze, rand = Math.random) {
+  const dist = distancesFrom(maze, 1, 1);
+  const open = floorCells(maze).filter(([x, y]) => dist[y * MW + x] > 6);
+  return open[Math.floor(rand() * open.length)] || [MW - 2, MH - 2];
+}
+
+// ---- engine/sprites.js
+// Sprites are drawn as text: one character per pixel, '.' is transparent and
+// every other character is looked up in a palette. Swapping the palette is how
+// a sprite changes state (lit, remembered, alerted) — the way the hardware did it.
+function sprite(rows, palette) {
+  const w = rows[0].length, h = rows.length;
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const g = c.getContext('2d');
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const ch = rows[y][x];
+    if (ch === '.' || !palette[ch]) continue;
+    g.fillStyle = palette[ch];
+    g.fillRect(x, y, 1, 1);
+  }
+  return c;
+}
+
+function mirrored(src) {
+  const c = document.createElement('canvas');
+  c.width = src.width; c.height = src.height;
+  const g = c.getContext('2d');
+  g.translate(src.width, 0);
+  g.scale(-1, 1);
+  g.drawImage(src, 0, 0);
+  return c;
+}
+
+// A 16x16 tile painted by a function of (x, y) -> colour or null.
+function tile(size, paint) {
+  const c = document.createElement('canvas');
+  c.width = size; c.height = size;
+  const g = c.getContext('2d');
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    const col = paint(x, y);
+    if (!col) continue;
+    g.fillStyle = col;
+    g.fillRect(x, y, 1, 1);
+  }
+  return c;
+}
+
+// ---- games/lamplight/art.js
+// Three light levels, the way a palette-swapping board would do it: LIT inside
+// the lamp, DIM at its edge, and MEMORY for what you have seen before — drawn
+// in the blue of a map rather than the warm of the lamp.
+const WALL_PAL = [
+  { face: '#141d52', hi: '#1c2870', mortar: '#070a24' }, // memory
+  { face: '#6e4222', hi: '#94602e', mortar: '#22120a' }, // dim
+  { face: '#b0703a', hi: '#e0a060', mortar: '#3a1e0e' }, // lit
+];
+const FLOOR_PAL = [
+  null,
+  { base: '#1e130b', joint: '#120b06', speck: '#2a1a0e' },
+  { base: '#3a2416', joint: '#24160c', speck: '#4e3220' },
+];
+
+const PLAYER_A = [
+  '................',
+  '.....HHHH.......',
+  '....HHHHHH......',
+  '....HHSSSSS.....',
+  '....HSSSKSS.....',
+  '....HSSSSSS.....',
+  '.....SSSS.......',
+  '....CCCCCC..G...',
+  '...CCCCCCCSGGG..',
+  '...CcCCCC..GYG..',
+  '...CcCCCC..YWY..',
+  '...SSCCCC..GOG..',
+  '.....PPPP...G...',
+  '.....PP.PP......',
+  '.....PP.PP......',
+  '....BBB.BBB.....',
+];
+const PLAYER_B = PLAYER_A.slice(0, 13).concat([
+  '....PP..PP......',
+  '...PP....PP.....',
+  '..BB......BB....',
+]);
+const PLAYER_PAL = {
+  H: '#8a4b22', S: '#f2b880', K: '#000000', C: '#5eeaf5', c: '#2a9db0',
+  P: '#8f4bff', B: '#4a2a1a', G: '#a0a0b8', Y: '#ffd23f', W: '#ffffff', O: '#ff8a1e',
+};
+const PLAYER_FLICKER = { ...PLAYER_PAL, Y: '#ffb43a', W: '#fff3a0', O: '#ffd23f' };
+
+const WALKER_A = [
+  '................',
+  '......MMMM......',
+  '.....MMMMMM.....',
+  '....MMmmmmMM....',
+  '....MmKKKKmM....',
+  '....MmEKKEmM....',
+  '....MmKKKKmM....',
+  '...MMMmKKmMMM...',
+  '..MMMMMMMMMMMM..',
+  '..MMmMMMMMMmMM..',
+  '..Mm.MMMMMM.mM..',
+  '..NN.MMmMMM.NN..',
+  '....MMMmMMMM....',
+  '....MMMmMMMMM...',
+  '...MMMMmMMMMMM..',
+  '...M.MM.MMM.MM..',
+];
+const WALKER_B = WALKER_A.slice(0, 15).concat(['...MM.MMM.MM.M..']);
+const WALKER_CALM = { M: '#5b2a86', m: '#3a1858', K: '#0a0410', E: '#c8c8e0', N: '#8f8fb0' };
+const WALKER_ALERT = { M: '#a3203f', m: '#5a0f22', K: '#0a0410', E: '#ffe14a', N: '#d9a066' };
+
+const LANTERN = [
+  '................',
+  '................',
+  '......GGGG......',
+  '......G..G......',
+  '.....GGGGGG.....',
+  '.....GYYYYG.....',
+  '.....GYOOYG.....',
+  '.....GYOWYG.....',
+  '.....GYOOYG.....',
+  '.....GYYYYG.....',
+  '.....GGGGGG.....',
+  '......GGGG......',
+  '................',
+  '................',
+  '................',
+  '................',
+];
+const LANTERN_LIT = { G: '#a0a0b8', Y: '#ffd23f', O: '#ff8a1e', W: '#ffffff' };
+const LANTERN_FLICKER = { G: '#a0a0b8', Y: '#ffb43a', O: '#ffd23f', W: '#fff3a0' };
+const LANTERN_MEMORY = { G: '#1c2870', Y: '#141d52', O: '#3a2a6a', W: '#3a2a6a' };
+const LANTERN_EMPTY = { G: '#3a3a55', Y: '#15151f', O: '#15151f', W: '#15151f' };
+
+const DOOR = [
+  '................',
+  '.....FFFFFF.....',
+  '....FBBBBBBF....',
+  '...FBBDBBDBBF...',
+  '...FBBDBBDBBF...',
+  '...FBBDBBDBBF...',
+  '...FBBDBBDBBF...',
+  '...FBBDLLLBBF...',
+  '...FBBDLkLBBF...',
+  '...FBBDLLLBBF...',
+  '...FBBDBBDBBF...',
+  '...FBBDBBDBBF...',
+  '...FBBDBBDBBF...',
+  '...FBBDBBDBBF...',
+  '...FBBDBBDBBF...',
+  '..FFFFFFFFFFFF..',
+];
+const DOOR_SHUT = { F: '#d9a066', B: '#8a4b22', D: '#5a2e12', L: '#a0a0b8', k: '#000000' };
+const DOOR_MEMORY = { F: '#1c2870', B: '#141d52', D: '#0a1036', L: '#1c2870', k: '#000000' };
+const DOOR_OPEN_A = { F: '#d9a066', B: '#fff3a0', D: '#ffd23f', L: '#fff3a0', k: '#fff3a0' };
+const DOOR_OPEN_B = { F: '#d9a066', B: '#ffd23f', D: '#fff3a0', L: '#ffd23f', k: '#ffd23f' };
+
+function brick(p) {
+  return tile(16, (x, y) => {
+    const off = (Math.floor(y / 4) % 2) * 4;
+    if (y % 4 === 3 || (x + off) % 8 === 7) return p.mortar;
+    if (y % 4 === 0) return p.hi;
+    return p.face;
+  });
+}
+
+function flagstone(p) {
+  if (!p) return tile(16, (x, y) => (x % 8 === 3 && y % 8 === 3 ? '#1c2870' : null));
+  return tile(16, (x, y) => {
+    if (x % 8 === 7 || y % 8 === 7) return p.joint;
+    return (x * 7 + y * 13) % 11 === 0 ? p.speck : p.base;
+  });
+}
+
+// Built once the page has a document; returns every image the game draws.
+function makeArt() {
+  const pa = sprite(PLAYER_A, PLAYER_PAL), pb = sprite(PLAYER_B, PLAYER_PAL);
+  const fa = sprite(PLAYER_A, PLAYER_FLICKER), fb = sprite(PLAYER_B, PLAYER_FLICKER);
+  return {
+    wall: WALL_PAL.map(brick),
+    floor: FLOOR_PAL.map(flagstone),
+    // player[facing][flicker][frame]; facing 1 = right, 0 = left
+    player: {
+      1: [[pa, pb], [fa, fb]],
+      0: [[mirrored(pa), mirrored(pb)], [mirrored(fa), mirrored(fb)]],
+    },
+    walker: [sprite(WALKER_A, WALKER_CALM), sprite(WALKER_B, WALKER_CALM)],
+    walkerAlert: [sprite(WALKER_A, WALKER_ALERT), sprite(WALKER_B, WALKER_ALERT)],
+    lantern: [sprite(LANTERN, LANTERN_LIT), sprite(LANTERN, LANTERN_FLICKER)],
+    lanternMemory: sprite(LANTERN, LANTERN_MEMORY),
+    lanternEmpty: sprite(LANTERN, LANTERN_EMPTY),
+    door: sprite(DOOR, DOOR_SHUT),
+    doorMemory: sprite(DOOR, DOOR_MEMORY),
+    doorOpen: [sprite(DOOR, DOOR_OPEN_A), sprite(DOOR, DOOR_OPEN_B)],
+  };
+}
+
+// ---- games/lamplight/game.js
+const CELL = 16, TOP = 20;
+const W = MW * CELL, H = TOP + MH * CELL + 20; // 336 x 280
+const LAMP_RADIUS = 3.1;        // in cells
+const PLAYER_SPEED = 0.075;     // cells per tick, 60 ticks a second
+const TICK_MS = 1000 / 60;
+const DEMO_TICKS = 60 * 30;
+
+const INK = {
+  red: '#ff3b3b', white: '#ffffff', yellow: '#ffd23f', orange: '#ff8a1e',
+  cyan: '#5eeaf5', pink: '#ff5fb8', grey: '#8f8fb0', dim: '#4a4a6a',
+};
+const ROW_INKS = ['#ff3b3b', '#ff8a1e', '#ffd23f', '#3fd46b', '#5eeaf5', '#8f7bff', '#ff5fb8', '#ff8a1e', '#ffd23f', '#3fd46b'];
+const LOGO_INK = ['#fff3a0', '#ffd23f', '#ffd23f', '#ff9a1e', '#ff8a1e', '#e8302f', '#b8205a'];
+const RANKS = ['1ST', '2ND', '3RD', '4TH', '5TH', '6TH', '7TH', '8TH', '9TH', '10TH'];
+
+// Invented initials, so a first visit has a table to beat.
+const DEFAULT_SCORES = [
+  ['OWL', 24000], ['LMP', 20000], ['KEY', 16000], ['FOG', 12000], ['MAP', 9000],
+  ['ASH', 7000], ['BAT', 5000], ['INK', 3500], ['RUN', 2000], ['DOT', 1000],
+].map(([n, s]) => ({ n, s }));
+
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const canvas = document.getElementById('c');
+const frameEl = document.getElementById('screen');
+const screen = makeScreen({ canvas, stage: document.getElementById('stage'), frame: frameEl, w: W, h: H, crtKey: 'lk.arcade.crt' });
+const ctx = screen.ctx;
+const sound = makeSound('lk.arcade.mute');
+const scores = makeScores('lk.lamplight.scores', DEFAULT_SCORES);
+const art = makeArt();
+
+let maze = carve();
+let seen = new Uint8Array(MW * MH);
+const player = { x: 1, y: 1, dir: null, queued: null, face: 1, moving: false };
+let walker = null, lanterns = [], door = null, carried = 0;
+let mode = 'attract', page = 'title', pageT = 0;
+let level = 1, lives = 3, score = 0, ticks = 0, timer = 0, flash = 0, sparks = [];
+let demo = false, demoT = 0, pausedFrom = null, tally = null, entry = null, highlight = -1;
+let clock = 0;
+
+const DIRS = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
+
+const SFX = {
+  start: () => {
+    sound.tune([[523, 0.12], [659, 0.12], [784, 0.12], [1047, 0.12], [0, 0.06], [784, 0.12], [1047, 0.36]], { vol: 0.045 });
+    sound.tune([[131, 0.36], [196, 0.36], [262, 0.48]], { type: 'triangle', vol: 0.12 });
+  },
+  lantern: () => sound.tune([[880, 0.06], [1175, 0.06], [1568, 0.14]], { vol: 0.045 }),
+  doorOpen: () => sound.tune([[523, 0.08], [784, 0.08], [1047, 0.08], [1568, 0.3]], { type: 'triangle', vol: 0.12 }),
+  alert: () => sound.note(330, 0.45, { to: 110, vol: 0.05 }),
+  caught: () => { sound.note(440, 0.9, { to: 55, vol: 0.055 }); sound.noise(0.5, { vol: 0.25, cutoff: 500 }); },
+  clear: () => sound.tune([[784, 0.1], [988, 0.1], [1175, 0.1], [1568, 0.1], [0, 0.06], [1175, 0.1], [1568, 0.4]], { vol: 0.045 }),
+  tick: () => sound.note(1760, 0.03, { vol: 0.025 }),
+  blip: () => sound.note(988, 0.05, { vol: 0.04 }),
+  over: () => sound.tune([[392, 0.22], [370, 0.22], [349, 0.22], [330, 0.7]], { type: 'triangle', vol: 0.12 }),
+};
+// The demo plays silently: nobody asked for noise from a screen they are not using.
+function play(name) { if (!demo) SFX[name](); }
+
+// ---------------------------------------------------------------- the game
+
+function build(full) {
+  if (full) { level = 1; lives = 3; score = 0; }
+  maze = carve();
+  seen = new Uint8Array(MW * MH);
+  resetPlayer();
+  carried = 0; sparks = []; flash = 0; ticks = 0;
+  const placed = placeThings(maze);
+  door = placed.door;
+  lanterns = placed.lanterns;
+  walker = { x: placed.walkerStart.x, y: placed.walkerStart.y, dir: null, alert: 0, last: null, speed: 0.045 + level * 0.006 };
+}
+
+function resetPlayer() {
+  Object.assign(player, { x: 1, y: 1, dir: null, queued: null, moving: false });
+}
+
+function markSeen() {
+  const px = Math.round(player.x), py = Math.round(player.y);
+  const r = Math.ceil(LAMP_RADIUS);
+  for (let y = py - r; y <= py + r; y++) for (let x = px - r; x <= px + r; x++) {
+    if (x < 0 || y < 0 || x >= MW || y >= MH) continue;
+    if (Math.hypot(x - px, y - py) <= LAMP_RADIUS) seen[y * MW + x] = 1;
+  }
+}
+
+// Grid-locked movement: an actor only ever travels between cell centres, so
+// it can never end up half inside a wall.
+function stepActor(a, speed) {
+  if (!a.dir) return;
+  const tx = a.tx, ty = a.ty;
+  a.x += Math.sign(tx - a.x) * Math.min(speed, Math.abs(tx - a.x));
+  a.y += Math.sign(ty - a.y) * Math.min(speed, Math.abs(ty - a.y));
+  if (Math.abs(a.x - tx) < 1e-6 && Math.abs(a.y - ty) < 1e-6) { a.x = tx; a.y = ty; a.dir = null; }
+}
+
+function heldDir() {
+  const held = input.held;
+  if (player.queued && held[player.queued]) return player.queued;
+  return held.up ? 'up' : held.down ? 'down' : held.left ? 'left' : held.right ? 'right' : null;
+}
+
+// The demo's player: walk the shortest path to the nearest lantern, then the
+// door. It makes no attempt to dodge, which is why demos usually end badly.
+function autopilot() {
+  const px = Math.round(player.x), py = Math.round(player.y);
+  const fromMe = distancesFrom(maze, px, py);
+  let goal = null, best = Infinity;
+  for (const l of lanterns) {
+    if (l.taken) continue;
+    const d = fromMe[l.y * MW + l.x];
+    if (d >= 0 && d < best) { best = d; goal = l; }
+  }
+  if (!goal) goal = door;
+  const toGoal = distancesFrom(maze, goal.x, goal.y);
+  const here = toGoal[py * MW + px];
+  for (const [name, [dx, dy]] of Object.entries(DIRS)) {
+    const nx = px + dx, ny = py + dy;
+    if (isFloor(maze, nx, ny) && toGoal[ny * MW + nx] === here - 1) return name;
+  }
+  return null;
+}
+
+function playerStep() {
+  if (!player.dir) {
+    const want = demo ? autopilot() : heldDir();
+    if (want) {
+      const [dx, dy] = DIRS[want];
+      const nx = Math.round(player.x) + dx, ny = Math.round(player.y) + dy;
+      if (isFloor(maze, nx, ny)) {
+        player.dir = [dx, dy]; player.tx = nx; player.ty = ny; player.queued = want;
+        if (dx) player.face = dx > 0 ? 1 : 0;
+      }
+    }
+  }
+  player.moving = !!player.dir;
+  stepActor(player, PLAYER_SPEED);
+}
+
+function walkerStep() {
+  const wx = Math.round(walker.x), wy = Math.round(walker.y);
+  const px = Math.round(player.x), py = Math.round(player.y);
+
+  if (lineOfSight(maze, wx, wy, px, py) && Math.hypot(wx - px, wy - py) <= 9) {
+    if (!walker.alert) play('alert');
+    walker.alert = 240;
+  } else if (walker.alert > 0) walker.alert--;
+
+  if (!walker.dir) {
+    let choice = null;
+    if (walker.alert > 0) {
+      // Chase along the real shortest path rather than a greedy step, which
+      // in a perfect maze would walk it straight into a dead end.
+      const dist = distancesFrom(maze, px, py);
+      let bestD = dist[wy * MW + wx];
+      for (const [dx, dy] of Object.values(DIRS)) {
+        const nx = wx + dx, ny = wy + dy;
+        if (!isFloor(maze, nx, ny)) continue;
+        const d = dist[ny * MW + nx];
+        if (d !== -1 && d < bestD) { bestD = d; choice = [dx, dy, nx, ny]; }
+      }
+    }
+    if (!choice) {
+      const options = [];
+      for (const [dx, dy] of Object.values(DIRS)) {
+        const nx = wx + dx, ny = wy + dy;
+        if (!isFloor(maze, nx, ny)) continue;
+        if (walker.last && nx === walker.last[0] && ny === walker.last[1]) continue;
+        options.push([dx, dy, nx, ny]);
+      }
+      const pool = options.length ? options : (walker.last ? [[walker.last[0] - wx, walker.last[1] - wy, walker.last[0], walker.last[1]]] : []);
+      choice = pool[Math.floor(Math.random() * pool.length)];
+    }
+    if (choice) {
+      walker.dir = [choice[0], choice[1]];
+      walker.tx = choice[2]; walker.ty = choice[3];
+      walker.last = [wx, wy];
+    }
+  }
+  stepActor(walker, walker.speed * (walker.alert > 0 ? 1.35 : 1));
+}
+
+function caught() {
+  lives--;
+  play('caught');
+  flash = reduceMotion ? 0 : 14;
+  const cx = player.x * CELL + CELL / 2, cy = TOP + player.y * CELL + CELL / 2;
+  for (let i = 0; i < (reduceMotion ? 8 : 24); i++) {
+    const a = Math.random() * Math.PI * 2, s = 0.3 + Math.random() * 1.6;
+    sparks.push({ x: cx, y: cy, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 1 });
+  }
+  mode = 'dying'; timer = 100;
+}
+
+function afterDying() {
+  if (demo) { endDemo(); return; }
+  if (lives <= 0) { mode = 'over'; timer = 200; play('over'); return; }
+  resetPlayer();
+  const spot = respawnSpot(maze);
+  Object.assign(walker, { x: spot[0], y: spot[1], dir: null, alert: 0, last: null });
+  mode = 'ready'; timer = 80;
+}
+
+function playTick() {
+  ticks++;
+  if (demo && ++demoT > DEMO_TICKS) { endDemo(); return; }
+  playerStep();
+  walkerStep();
+  markSeen();
+
+  const px = Math.round(player.x), py = Math.round(player.y);
+  for (const l of lanterns) {
+    if (!l.taken && l.x === px && l.y === py && Math.abs(player.x - px) < 0.3 && Math.abs(player.y - py) < 0.3) {
+      l.taken = true; carried++;
+      score += 250;
+      play(carried === LANTERNS ? 'doorOpen' : 'lantern');
+    }
+  }
+
+  if (carried === LANTERNS && px === door.x && py === door.y) {
+    if (demo) { endDemo(); return; }
+    const bonus = Math.max(0, 4000 - ticks * 2);
+    const doorPts = 500 * level;
+    tally = { level, doorPts, bonus, shown: score, total: score + doorPts + bonus, t: 0 };
+    score += doorPts + bonus;
+    mode = 'tally';
+    play('clear');
+    return;
+  }
+
+  if (Math.hypot(player.x - walker.x, player.y - walker.y) < 0.6) caught();
+}
+
+// Lines appear one by one, then the door and the time bonus count into the score.
+function tallyTick() {
+  const t = ++tally.t;
+  if (t === 70) tally.shown += tally.doorPts;
+  if (t > 100 && t <= 160) {
+    const before = tally.shown;
+    tally.shown = tally.total - Math.round(tally.bonus * (160 - t) / 60);
+    if (tally.shown !== before && t % 3 === 0) play('tick');
+  }
+  if (t >= 480) nextLevel();
+}
+
+function newGame() {
+  demo = false; highlight = -1;
+  build(true);
+  mode = 'ready'; timer = 150;
+  play('start');
+}
+
+function nextLevel() {
+  level++;
+  build(false);
+  tally = null;
+  mode = 'ready'; timer = 90;
+}
+
+function startDemo() {
+  demo = true; demoT = 0;
+  build(true);
+  mode = 'ready'; timer = 60;
+}
+
+function endDemo() {
+  demo = false;
+  toAttract('scores');
+}
+
+function toAttract(p) {
+  mode = 'attract'; page = p; pageT = 0; demo = false; tally = null; entry = null;
+}
+
+const PAGES = { title: ['howto', 420], howto: ['demo', 540], scores: ['title', 420] };
+function attractTick() {
+  pageT++;
+  const [next, length] = PAGES[page];
+  if (pageT < length) return;
+  if (next === 'demo') { startDemo(); return; }
+  if (next === 'title') highlight = -1;
+  toAttract(next);
+}
+
+function afterOver() {
+  if (scores.qualifies(score)) {
+    entry = { letters: [0, 0, 0], pos: 0, timer: 60 * 30 };
+    mode = 'entry';
+  } else {
+    toAttract('scores');
+  }
+}
+
+function saveEntry() {
+  const name = entry.letters.map(i => ENTRY_LETTERS[i]).join('');
+  highlight = scores.add(name, score);
+  toAttract('scores');
+}
+
+// ---------------------------------------------------------------- input
+
+function onAction(action) {
+  if (action === 'crt') { screen.toggleCrt(); syncToggles(); return; }
+  if (action === 'mute') { sound.toggleMute(); syncToggles(); return; }
+  if (action === 'back') { toAttract('title'); return; }
+  if (action === 'pause') {
+    if (mode === 'paused') { mode = pausedFrom; return; }
+    if (!demo && ['ready', 'playing', 'dying', 'tally'].includes(mode)) { pausedFrom = mode; mode = 'paused'; }
+    return;
+  }
+  // start
+  if (mode === 'attract' || demo) { newGame(); return; }
+  if (mode === 'paused') { mode = pausedFrom; return; }
+  if (mode === 'tally' && tally.t >= 60) { tally.shown = tally.total; nextLevel(); return; }
+  if (mode === 'over') { timer = 0; return; }
+  if (mode === 'entry') confirmLetter();
+}
+
+function confirmLetter() {
+  play('blip');
+  entry.pos++;
+  if (entry.pos >= 3) saveEntry();
+}
+
+function onDir(dir) {
+  if (mode !== 'entry') return;
+  const n = ENTRY_LETTERS.length, i = entry.pos;
+  if (dir === 'up') { entry.letters[i] = (entry.letters[i] + 1) % n; play('blip'); }
+  else if (dir === 'down') { entry.letters[i] = (entry.letters[i] + n - 1) % n; play('blip'); }
+  else if (dir === 'right') confirmLetter();
+  else if (dir === 'left' && entry.pos > 0) { entry.pos--; play('blip'); }
+}
+
+const input = makeInput({ screen: canvas, onAction, onDir, onAny: () => sound.wake() });
+
+const crtBtn = document.querySelector('[data-action="crt"]');
+const muteBtn = document.querySelector('[data-action="mute"]');
+function syncToggles() {
+  crtBtn.textContent = 'CRT ' + (screen.crt ? 'on' : 'off');
+  crtBtn.setAttribute('aria-pressed', String(screen.crt));
+  muteBtn.textContent = 'Sound ' + (sound.muted ? 'off' : 'on');
+  muteBtn.setAttribute('aria-pressed', String(!sound.muted));
+}
+syncToggles();
+
+// A phone that locks or switches app mid-maze comes back paused, not dead.
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && !demo && ['ready', 'playing', 'dying'].includes(mode)) { pausedFrom = mode; mode = 'paused'; }
+});
+
+// ---------------------------------------------------------------- drawing
+
+const blinkOn = (rate = 32) => reduceMotion || ((clock / rate) | 0) % 2 === 0;
+const prompt = () => (input.touch ? 'TAP START' : 'PRESS SPACE');
+const band = d => (d <= LAMP_RADIUS - 1.1 ? 2 : d <= LAMP_RADIUS + 0.6 ? 1 : 0);
+
+function banner(lines, y) {
+  const wide = Math.max(...lines.map(([s]) => s.length)) * 6 + 10;
+  ctx.fillStyle = '#000';
+  ctx.fillRect(Math.floor((W - wide) / 2), y - 5, wide, lines.length * 12 + 7);
+  lines.forEach(([s, ink], i) => text(ctx, s, W / 2, y + i * 12, ink, { align: 'center' }));
+}
+
+function drawHud() {
+  const shown = tally ? tally.shown : score;
+  const hi = Math.max(scores.top, demo ? 0 : score);
+  if (!(mode === 'playing' && !demo) || blinkOn(24)) text(ctx, '1UP', 16, 3, INK.red);
+  text(ctx, String(demo ? score : shown).padStart(2, '0'), 58, 12, INK.white, { align: 'right' });
+  text(ctx, 'HI-SCORE', W / 2, 3, INK.red, { align: 'center' });
+  text(ctx, String(hi), W / 2, 12, INK.white, { align: 'center' });
+  if (mode !== 'attract' && mode !== 'entry') {
+    text(ctx, 'MAZE', W - 16, 3, INK.red, { align: 'right' });
+    text(ctx, String(level).padStart(2, '0'), W - 16, 12, INK.white, { align: 'right' });
+  }
+}
+
+function drawMaze() {
+  const px = player.x, py = player.y;
+  for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) {
+    if (!seen[y * MW + x]) continue;
+    const b = band(Math.hypot(x - px, y - py));
+    const img = maze[y * MW + x] === WALL ? art.wall[b] : art.floor[b];
+    ctx.drawImage(img, x * CELL, TOP + y * CELL);
+  }
+
+  // the door only reads as a door once you can actually use it
+  if (seen[door.y * MW + door.x]) {
+    const lit = band(Math.hypot(door.x - px, door.y - py)) > 0;
+    const img = carried === LANTERNS ? art.doorOpen[(clock >> 3) & 1] : lit ? art.door : art.doorMemory;
+    ctx.drawImage(img, door.x * CELL, TOP + door.y * CELL);
+  }
+
+  const flick = reduceMotion ? 0 : (clock >> 3) & 1;
+  for (const l of lanterns) {
+    if (l.taken) continue;
+    const d = Math.hypot(l.x - px, l.y - py);
+    if (!seen[l.y * MW + l.x] && d > LAMP_RADIUS) continue;
+    ctx.drawImage(d <= LAMP_RADIUS + 1 ? art.lantern[flick] : art.lanternMemory, l.x * CELL, TOP + l.y * CELL);
+  }
+
+  // The walker is drawn only when the lamp reaches it. Everywhere else it is
+  // a sound and a memory, which is the whole tension of the cabinet.
+  if (Math.hypot(walker.x - px, walker.y - py) <= LAMP_RADIUS + 0.8) {
+    const f = walker.dir ? (clock >> 3) & 1 : 0;
+    const img = walker.alert > 0 ? art.walkerAlert[f] : art.walker[f];
+    ctx.drawImage(img, Math.round(walker.x * CELL), Math.round(TOP + walker.y * CELL));
+  }
+
+  const showPlayer = mode !== 'dying' || (timer > 60 && (timer >> 2) % 2 === 0);
+  if (showPlayer) {
+    const f = player.moving ? (clock >> 3) & 1 : 0;
+    ctx.drawImage(art.player[player.face][flick][f], Math.round(player.x * CELL), Math.round(TOP + player.y * CELL));
+  }
+
+  for (const s of sparks) {
+    ctx.fillStyle = s.life > 0.6 ? INK.white : s.life > 0.3 ? INK.yellow : INK.orange;
+    ctx.fillRect(Math.round(s.x), Math.round(s.y), 2, 2);
+  }
+}
+
+function drawBottom() {
+  const y = TOP + MH * CELL + 2;
+  for (let i = 0; i < lives - 1; i++) ctx.drawImage(art.player[1][0][0], 4 + i * 18, y);
+  for (let i = 0; i < LANTERNS; i++) {
+    ctx.drawImage(i < carried ? art.lantern[0] : art.lanternEmpty, W - 4 - (LANTERNS - i) * 14, y);
+  }
+  if (demo) {
+    if (blinkOn()) text(ctx, 'DEMO PLAY', W / 2, y + 5, INK.cyan, { align: 'center' });
+  } else if (mode === 'playing' && walker.alert > 0 && blinkOn(12)) {
+    text(ctx, 'IT HAS SEEN YOU', W / 2, y + 5, INK.orange, { align: 'center' });
+  }
+}
+
+function drawTally() {
+  const w = 232, h = 92, x0 = (W - w) / 2, y0 = TOP + 70;
+  ctx.fillStyle = '#000';
+  ctx.fillRect(x0, y0, w, h);
+  ctx.fillStyle = INK.cyan;
+  ctx.fillRect(x0, y0, w, 1); ctx.fillRect(x0, y0 + h - 1, w, 1);
+  ctx.fillRect(x0, y0, 1, h); ctx.fillRect(x0 + w - 1, y0, 1, h);
+  const t = tally.t;
+  text(ctx, 'MAZE ' + tally.level + ' CLEAR!', W / 2, y0 + 10, INK.yellow, { align: 'center' });
+  const row = (i, label, value, at) => {
+    if (t < at) return;
+    const y = y0 + 28 + i * 14;
+    text(ctx, label, x0 + 12, y, INK.grey);
+    text(ctx, String(value), x0 + w - 12, y, INK.white, { align: 'right' });
+  };
+  row(0, 'LANTERNS 3 X 250', LANTERNS * 250, 30);
+  row(1, 'DOOR 500 X ' + tally.level, tally.doorPts, 60);
+  const counted = t <= 100 ? 0 : t >= 160 ? tally.bonus : Math.round(tally.bonus * (t - 100) / 60);
+  row(2, 'TIME BONUS', counted, 90);
+  if (t >= 180 && blinkOn()) text(ctx, prompt(), W / 2, y0 + h + 8, INK.yellow, { align: 'center' });
+}
+
+function drawCorridor(cx, y0) {
+  // the title's little lit corridor: same tiles, same light bands as the game
+  for (let i = -4; i <= 4; i++) {
+    const x = cx + i * CELL - CELL / 2;
+    const d = Math.abs(i);
+    ctx.drawImage(art.wall[band(Math.hypot(d, 1))], x, y0);
+    ctx.drawImage(art.floor[band(d)], x, y0 + CELL);
+    ctx.drawImage(art.wall[band(Math.hypot(d, 1))], x, y0 + CELL * 2);
+  }
+  const f = reduceMotion ? 0 : (clock >> 3) & 1;
+  ctx.drawImage(art.player[1][f][0], cx - CELL / 2, y0 + CELL);
+}
+
+function drawTitle() {
+  text(ctx, 'LAMPLIGHT', W / 2 + 2, 46, '#1c2870', { align: 'center', scale: 4 });
+  text(ctx, 'LAMPLIGHT', W / 2, 44, LOGO_INK, { align: 'center', scale: 4 });
+  text(ctx, 'A MAZE IN THE DARK', W / 2, 84, INK.grey, { align: 'center' });
+  drawCorridor(W / 2, 108);
+  if (blinkOn()) text(ctx, prompt(), W / 2, 182, INK.yellow, { align: 'center' });
+  text(ctx, input.touch ? 'D-PAD TO MOVE' : 'ARROWS OR WASD TO MOVE', W / 2, 200, INK.grey, { align: 'center' });
+  text(ctx, 'LEON KARSTEN 2026', W / 2, 262, INK.dim, { align: 'center' });
+}
+
+function drawHowTo() {
+  text(ctx, 'HOW TO PLAY', W / 2, 30, INK.cyan, { align: 'center' });
+  text(ctx, 'FIND 3 LANTERNS, THEN THE DOOR.', W / 2, 48, INK.white, { align: 'center' });
+  const rows = [
+    [art.lantern[0], 'LANTERN', '250 PTS', INK.yellow],
+    [art.doorOpen[0], 'OPEN DOOR', '500 X MAZE', INK.yellow],
+    [art.walker[0], 'IT CANNOT BE FOUGHT.', '', INK.pink],
+    [art.walkerAlert[0], 'CORNERS BREAK ITS SIGHT.', '', INK.orange],
+  ];
+  rows.forEach(([img, label, value, ink], i) => {
+    const y = 66 + i * 24;
+    ctx.drawImage(img, 48, y);
+    text(ctx, label, 74, y + 5, ink);
+    if (value) text(ctx, value, 288, y + 5, INK.white, { align: 'right' });
+  });
+  text(ctx, 'WHAT YOU HAVE SEEN STAYS ON YOUR MAP.', W / 2, 176, INK.grey, { align: 'center' });
+  text(ctx, 'A QUICK EXIT EARNS A TIME BONUS.', W / 2, 190, INK.grey, { align: 'center' });
+  if (blinkOn()) text(ctx, prompt(), W / 2, 230, INK.yellow, { align: 'center' });
+}
+
+function drawScores() {
+  text(ctx, 'HIGH SCORES', W / 2, 30, INK.yellow, { align: 'center' });
+  text(ctx, 'RANK', 72, 48, INK.grey);
+  text(ctx, 'SCORE', 196, 48, INK.grey, { align: 'right' });
+  text(ctx, 'NAME', 228, 48, INK.grey);
+  scores.table.forEach((r, i) => {
+    if (i === highlight && !blinkOn(16)) return;
+    const y = 64 + i * 16;
+    const ink = i === highlight ? INK.white : ROW_INKS[i];
+    text(ctx, RANKS[i], 72, y, ink);
+    text(ctx, String(r.s), 196, y, ink, { align: 'right' });
+    text(ctx, r.n, 228, y, ink);
+  });
+  if (blinkOn()) text(ctx, prompt(), W / 2, 238, INK.yellow, { align: 'center' });
+}
+
+function drawEntry() {
+  text(ctx, 'YOU MADE THE TOP TEN', W / 2, 36, INK.cyan, { align: 'center' });
+  text(ctx, String(score), W / 2, 54, INK.yellow, { align: 'center', scale: 2 });
+  text(ctx, 'ENTER YOUR INITIALS', W / 2, 92, INK.white, { align: 'center' });
+  for (let i = 0; i < 3; i++) {
+    const x = W / 2 - 39 + i * 30;
+    const current = i === entry.pos;
+    if (!current || blinkOn(16)) text(ctx, ENTRY_LETTERS[entry.letters[i]], x, 114, current ? INK.yellow : INK.white, { scale: 3 });
+    ctx.fillStyle = current ? INK.yellow : INK.dim;
+    ctx.fillRect(x - 2, 140, 18, 2);
+  }
+  text(ctx, 'UP / DOWN   CHANGE LETTER', W / 2, 168, INK.grey, { align: 'center' });
+  text(ctx, (input.touch ? 'RIGHT OR START' : 'RIGHT OR SPACE') + '   NEXT', W / 2, 182, INK.grey, { align: 'center' });
+  text(ctx, 'LEFT   BACK', W / 2, 196, INK.grey, { align: 'center' });
+  text(ctx, 'TIME ' + Math.ceil(entry.timer / 60), W / 2, 226, INK.orange, { align: 'center' });
+}
+
+function draw() {
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, W, H);
+  drawHud();
+  if (mode === 'attract') {
+    if (page === 'title') drawTitle();
+    else if (page === 'howto') drawHowTo();
+    else drawScores();
+    return;
+  }
+  if (mode === 'entry') { drawEntry(); return; }
+
+  ctx.save();
+  if (flash > 0) ctx.translate(Math.round((Math.random() - 0.5) * flash / 2), Math.round((Math.random() - 0.5) * flash / 2));
+  drawMaze();
+  ctx.restore();
+  drawBottom();
+
+  const mid = TOP + 112;
+  if (mode === 'ready') banner(demo ? [['DEMO PLAY', INK.cyan]] : [['PLAYER ONE', INK.cyan], ['READY!', INK.yellow]], mid);
+  else if (mode === 'paused') banner([['PAUSED', INK.white], [input.touch ? 'TAP START' : 'PRESS P', INK.grey]], mid);
+  else if (mode === 'over') banner([['GAME OVER', INK.red]], mid);
+  else if (mode === 'tally') drawTally();
+}
+
+// ---------------------------------------------------------------- loop
+
+function tick() {
+  clock++;
+  for (const s of sparks) { s.x += s.vx; s.y += s.vy; s.life -= 0.018; }
+  sparks = sparks.filter(s => s.life > 0);
+  if (flash > 0) flash--;
+  switch (mode) {
+    case 'attract': attractTick(); break;
+    case 'ready': markSeen(); if (--timer <= 0) mode = 'playing'; break;
+    case 'playing': playTick(); break;
+    case 'dying': if (--timer <= 0) afterDying(); break;
+    case 'tally': tallyTick(); break;
+    case 'over': if (--timer <= 0) afterOver(); break;
+    case 'entry': if (--entry.timer <= 0) saveEntry(); break;
+  }
+}
+
+// A fixed 60 ticks a second whatever the display's refresh rate, so a 120 Hz
+// phone plays at the same speed as a 60 Hz laptop.
+let acc = 0, lastT = 0;
+function frame(t) {
+  requestAnimationFrame(frame);
+  if (!lastT) lastT = t;
+  acc += Math.min(100, t - lastT);
+  lastT = t;
+  while (acc >= TICK_MS) { tick(); acc -= TICK_MS; }
+  draw();
+}
+
+build(true);
+requestAnimationFrame(frame);
+
+// Read-only view for the page checks, plus two shortcuts so a check can reach
+// the high-score screens without playing a whole game.
+window.__lamplight = {
+  get mode() { return mode; },
+  get page() { return page; },
+  get demo() { return demo; },
+  get score() { return score; },
+  get player() { return { x: player.x, y: player.y }; },
+  attract(p) { toAttract(p); },
+  endGame(s) { demo = false; score = s; lives = 0; mode = 'over'; timer = 1; },
+};
+})();
+</script>
+</body>
+</html>
