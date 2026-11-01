@@ -63,7 +63,9 @@ const games = (await getCollection('games')).sort((a, b) => a.data.name.localeCo
         <div class="grid">
           {games.map((g) => (
             <a class="card cab" href={g.data.app}>
-              <div class="cab-art" />
+              <div class="cab-art">
+                {g.data.image && <img src={g.data.image} alt="" width="960" height="720" loading="lazy" decoding="async" />}
+              </div>
               <div class="cab-body">
                 <div class="cab-row">
                   <p class="cab-name">{g.data.name}</p>
@@ -152,6 +154,13 @@ const games = (await getCollection('games')).sort((a, b) => a.data.name.localeCo
     aspect-ratio: 4 / 3;
     background: linear-gradient(160deg, #2b1c6b, #0e0826);
     border-bottom: 3px solid #ff5fb8;
+    overflow: hidden;
+  }
+  .cab-art img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
   }
   .cab-body {
     display: flex;

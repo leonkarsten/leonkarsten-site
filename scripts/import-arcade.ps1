@@ -27,6 +27,11 @@ foreach ($g in $games) {
   New-Item -ItemType Directory -Force -Path $dest | Out-Null
   Copy-Item (Join-Path $g.FullName "index.html") (Join-Path $dest "index.html") -Force
   Write-Host "Copied $($g.Name) -> $dest\index.html"
+  $card = Join-Path $Source "cards\$($g.Name).png"
+  if (Test-Path $card) {
+    Copy-Item $card (Join-Path $dest "card.png") -Force
+    Write-Host "Copied card -> $dest\card.png"
+  }
   if (-not (Test-Path (Join-Path $site "src\content\games\$($g.Name).json"))) {
     Write-Warning "No catalogue entry src\content\games\$($g.Name).json, so the Games page will not list it."
   }

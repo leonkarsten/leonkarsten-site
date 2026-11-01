@@ -32,7 +32,9 @@ Nothing personal: interests, facts, instructions, coaching, experiences only.
   attract mode, top-ten initials), synthwave only on the page around it; rules in that repo's
   `docs/style.md`. Import with `.\scripts\import-arcade.ps1 -Build`. First game **Lamplight**
   (`/play/lamplight/`, ported from Leon's Qlaim arcade) added 2026-11-01; not yet played through
-  by Leon. Its card on `/games/` still shows the placeholder gradient (no card art field yet).
+  by Leon. Card pictures: each game draws its own 4:3 card (`npm run cards` in the arcade repo
+  saves `cards/<slug>.png`); the import copies it to `public/play/<slug>/card.png` and the
+  catalogue entry's optional `image` field shows it on `/games/`.
 - **Content:** one draft post and one draft guide, both `draft: true` placeholders. About page
   has a bracketed contact placeholder.
 
@@ -89,7 +91,7 @@ the same path collide in Astro.
    Sankey repo, not this one). After that ships, rerun `scripts/import-sankey-studio.ps1 -Build`
    here and push.
 5. **Games.** Lamplight is live. Next: Leon plays it on his iPhone and decides on the CRT switch;
-   card art for `/games/` (e.g. a title-screen image); the next game (a paddle or ladder game was
+   the next game (a paddle or ladder game was
    suggested). The "How these are made" box links to Writing, which has no build notes yet.
 6. Optional: raise DNS TTLs from 600 to 3600 once everything is stable; add a privacy-respecting
    page counter (Plausible or GoatCounter), never Google Analytics.

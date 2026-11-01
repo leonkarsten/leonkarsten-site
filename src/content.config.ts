@@ -32,6 +32,8 @@ const appSchema = z.object({
   summary: z.string(),
   /** path to the self-contained app under /public, e.g. /apps/sankey-studio/ (tools) or /play/<slug>/ (games) */
   app: z.string(),
+  /** optional card picture under /public, 4:3, e.g. /play/<slug>/card.png */
+  image: z.string().optional(),
   /** optional source repo */
   repo: z.string().url().optional(),
   version: z.string().optional(),

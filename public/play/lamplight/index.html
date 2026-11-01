@@ -1337,6 +1337,45 @@ function draw() {
   else if (mode === 'tally') drawTally();
 }
 
+// ---------------------------------------------------------------- card art
+
+// The picture on the site's Games page, 320x240 (the card is 4:3), drawn with
+// the game's own tiles, sprites and font. scripts/cards.mjs saves it as a PNG.
+const CARD_MAP = [
+  '####################',
+  '#.....#.......#....#',
+  '#.###.#.#####.#.##.#',
+  '#...#...#...#...#..#',
+  '###.#####.#.#####.##',
+  '#.......#.#.......#.',
+  '#.#####.#.#######.#.',
+  '#.....#...#.........',
+  '####################',
+];
+function drawCard() {
+  const c = document.createElement('canvas');
+  c.width = 320; c.height = 240;
+  const g = c.getContext('2d');
+  g.fillStyle = '#000';
+  g.fillRect(0, 0, 320, 240);
+  text(g, 'LAMPLIGHT', 162, 16, '#1c2870', { align: 'center', scale: 4 });
+  text(g, 'LAMPLIGHT', 160, 14, LOGO_INK, { align: 'center', scale: 4 });
+  text(g, 'A MAZE IN THE DARK', 160, 50, INK.grey, { align: 'center' });
+  const y0 = 64, mx = 4, my = 5;
+  CARD_MAP.forEach((row, y) => [...row].forEach((ch, x) => {
+    const b = band(Math.hypot(x - mx, y - my));
+    g.drawImage(ch === '#' ? art.wall[b] : art.floor[b], x * CELL, y0 + y * CELL);
+  }));
+  g.drawImage(art.doorMemory, 18 * CELL, y0 + 1 * CELL);
+  g.drawImage(art.lantern[0], 3 * CELL, y0 + 3 * CELL);
+  g.drawImage(art.walkerAlert[0], 7 * CELL, y0 + 5 * CELL);
+  g.drawImage(art.player[1][0][1], mx * CELL, y0 + my * CELL);
+  for (let i = 0; i < 2; i++) g.drawImage(art.player[1][0][0], 6 + i * 18, 216);
+  for (let i = 0; i < LANTERNS; i++) g.drawImage(i < 1 ? art.lantern[0] : art.lanternEmpty, 320 - 6 - (LANTERNS - i) * 14, 216);
+  text(g, 'IT HAS SEEN YOU', 160, 221, INK.orange, { align: 'center' });
+  return c;
+}
+
 // ---------------------------------------------------------------- loop
 
 function tick() {
@@ -1381,6 +1420,7 @@ window.__lamplight = {
   attract(p) { toAttract(p); },
   endGame(s) { demo = false; score = s; lives = 0; mode = 'over'; timer = 1; },
 };
+window.__arcade = { card: drawCard };
 })();
 </script>
 </body>

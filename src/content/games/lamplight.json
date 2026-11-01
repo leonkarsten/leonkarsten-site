@@ -3,5 +3,6 @@
   "slug": "lamplight",
   "summary": "A maze in the dark. Find three lanterns, then the door, while something you cannot fight walks the corridors.",
   "app": "/play/lamplight/",
+  "image": "/play/lamplight/card.png",
   "tags": ["maze", "keyboard or touch"]
 }
