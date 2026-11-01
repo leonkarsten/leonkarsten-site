@@ -1,0 +1,1167 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Wings Level</title>
+<meta name="description" content="A tilt maze. Hold the phone level and roll the ball home without dropping it.">
+<meta name="theme-color" content="#000000">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2016%2016'%20shape-rendering='crispEdges'%3E%3Crect%20width='16'%20height='16'%20fill='%235a3a20'/%3E%3Crect%20x='0'%20y='5'%20width='10'%20height='2'%20fill='%23d9a066'/%3E%3Crect%20x='6'%20y='10'%20width='10'%20height='2'%20fill='%23d9a066'/%3E%3Crect%20x='2'%20y='9'%20width='3'%20height='3'%20fill='%23c8c8d8'/%3E%3Crect%20x='11'%20y='1'%20width='3'%20height='3'%20fill='%233fd46b'/%3E%3C/svg%3E">
+<style>
+:root {
+  --void: #000;
+  --chrome: #8f8fb0;
+  --chrome-hi: #5eeaf5;
+  --edge: #2a2a40;
+  --start: #e8302f;
+  --ui: ui-monospace, 'Cascadia Mono', Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; height: 100%; background: var(--void); color: var(--chrome); }
+body {
+  font-family: var(--ui);
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  height: 100dvh;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: 'bar' 'stage' 'pad';
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.bar {
+  grid-area: bar;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+}
+.bar a, .bar button {
+  font: 700 12px/1 var(--ui);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--chrome);
+  background: none;
+  border: 1px solid transparent;
+  padding: 9px 10px;
+  text-decoration: none;
+  cursor: pointer;
+  border-radius: 0;
+}
+.bar a:hover, .bar button:hover, .bar a:focus-visible, .bar button:focus-visible {
+  color: var(--chrome-hi);
+  border-color: var(--edge);
+  outline: none;
+}
+.bar button[aria-pressed='true'] { color: var(--chrome-hi); }
+.toggles { display: flex; gap: 2px; }
+
+.stage {
+  grid-area: stage;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  padding: 8px 16px;
+}
+/* A faint edge, so an unexplored black playfield still has a size. */
+.screen { position: relative; line-height: 0; touch-action: none; box-shadow: 0 0 0 1px #1c1c2c; }
+.screen canvas {
+  display: block;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+/* The CRT switch. Off by default: sharp pixels are the honest picture, the
+   tube is a costume. Scanlines are one per game pixel row (--px is set by
+   the screen fit), so they never beat against the art. */
+.screen.crt { border-radius: 3% / 4%; overflow: hidden; box-shadow: 0 0 0 4px #0b0b14, 0 0 36px rgba(94, 234, 245, 0.12); }
+.screen.crt canvas { filter: saturate(1.25) brightness(1.12) contrast(1.05) blur(calc(var(--px) * 0.18)); }
+.screen.crt::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background:
+    radial-gradient(ellipse at center, rgba(0, 0, 0, 0) 58%, rgba(0, 0, 0, 0.6) 100%),
+    repeating-linear-gradient(to bottom,
+      rgba(0, 0, 0, 0) 0, rgba(0, 0, 0, 0) calc(var(--px) * 0.55),
+      rgba(0, 0, 0, 0.38) calc(var(--px) * 0.55), rgba(0, 0, 0, 0.38) var(--px));
+  box-shadow: inset 0 0 48px rgba(0, 0, 0, 0.75);
+}
+
+/* Touch controls: shown on touch screens only. */
+.pad {
+  grid-area: pad;
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  max-width: 380px;
+  margin: 0 auto;
+  padding: 4px 20px 16px;
+}
+body.touch .pad { display: flex; }
+.dpad {
+  display: grid;
+  grid-template-columns: repeat(3, 54px);
+  grid-template-rows: repeat(3, 50px);
+  gap: 3px;
+}
+.dpad button, .start {
+  font: 700 18px/1 var(--ui);
+  color: var(--chrome);
+  background: #12121e;
+  border: 2px solid var(--edge);
+  border-radius: 6px;
+  padding: 0;
+  touch-action: none;
+  cursor: pointer;
+}
+.dpad button:active { background: #24243a; color: var(--chrome-hi); }
+.dpad .up { grid-area: 1 / 2; }
+.dpad .left { grid-area: 2 / 1; }
+.dpad .right { grid-area: 2 / 3; }
+.dpad .down { grid-area: 3 / 2; }
+.start {
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  background: var(--start);
+  border: 4px solid #7a1414;
+  color: #fff;
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  box-shadow: inset 0 -6px 0 rgba(0, 0, 0, 0.25);
+}
+.start:active { transform: translateY(2px); box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.25); }
+
+/* A phone on its side: d-pad left of the screen, START right of it. A game
+   with no d-pad (its keys are on the screen) moves the bar to a column
+   instead, so an upright screen gets the full height. */
+@media (orientation: landscape) and (max-height: 520px) {
+  body.no-pad {
+    grid-template-rows: minmax(0, 1fr);
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas: 'bar stage';
+  }
+  body.no-pad .bar { flex-direction: column; justify-content: flex-start; align-items: flex-start; }
+  body.no-pad .toggles { flex-direction: column; }
+  .stage { padding: 4px 8px; }
+  body.touch:not(.no-pad) {
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas: 'bar bar bar' 'dpad stage start';
+  }
+  body.touch:not(.no-pad) .pad { display: contents; }
+  body.touch .dpad { grid-area: dpad; align-self: center; margin-left: 12px; }
+  body.touch .start { grid-area: start; align-self: center; margin-right: 16px; }
+}
+
+/* Two-button pairs, for games with two things to turn (Sorted's loops). */
+.pair { display: grid; grid-template-columns: repeat(2, 54px); grid-template-rows: 54px auto; gap: 3px; justify-items: center; }
+.pair button {
+  width: 54px; height: 54px;
+  font: 700 18px/1 var(--ui); color: var(--chrome);
+  background: #12121e; border: 2px solid var(--edge); border-radius: 6px;
+  padding: 0; touch-action: none; cursor: pointer;
+}
+.pair button:active { background: #24243a; color: var(--chrome-hi); }
+.pair span { grid-column: 1 / 3; font: 700 10px/1 var(--ui); letter-spacing: 0.14em; color: var(--chrome); }
+@media (orientation: landscape) and (max-height: 520px) {
+  body.touch:not(.no-pad) .pad.loops { display: flex; flex-direction: column; gap: 12px; grid-area: start; align-self: center; margin-right: 12px; padding: 0; }
+  body.touch:not(.no-pad) .pad.loops .start { margin: 0; }
+}
+</style>
+</head>
+<body>
+
+<header class="bar">
+  <a href="/games/">&larr; Games</a>
+  <div class="toggles">
+    <button type="button" data-action="crt" aria-pressed="false">CRT off</button>
+    <button type="button" data-action="mute" aria-pressed="true">Sound on</button>
+    <button type="button" data-action="pause">Pause</button>
+  </div>
+</header>
+
+<main class="stage" id="stage">
+  <div class="screen" id="screen">
+    <canvas id="c" role="img" aria-label="Wings Level game screen. Tilt the phone, or use the arrow keys, to roll the ball to the green ring."></canvas>
+  </div>
+</main>
+
+<div class="pad">
+  <div class="dpad">
+    <button type="button" class="up" data-dir="up" aria-label="Up">&#9650;</button>
+    <button type="button" class="left" data-dir="left" aria-label="Left">&#9664;</button>
+    <button type="button" class="right" data-dir="right" aria-label="Right">&#9654;</button>
+    <button type="button" class="down" data-dir="down" aria-label="Down">&#9660;</button>
+  </div>
+  <button type="button" class="start" data-action="start">Start</button>
+</div>
+
+<script>
+(() => {
+'use strict';
+// ---- engine/font.js
+// 5x7 bitmap font, one string per glyph, rows separated by spaces. Drawn with
+// fillRect so it stays on the pixel grid at any scale; there is no web font.
+const GLYPHS = {
+  A: '.###. #...# #...# ##### #...# #...# #...#',
+  B: '####. #...# #...# ####. #...# #...# ####.',
+  C: '.###. #...# #.... #.... #.... #...# .###.',
+  D: '####. #...# #...# #...# #...# #...# ####.',
+  E: '##### #.... #.... ####. #.... #.... #####',
+  F: '##### #.... #.... ####. #.... #.... #....',
+  G: '.###. #...# #.... #.### #...# #...# .####',
+  H: '#...# #...# #...# ##### #...# #...# #...#',
+  I: '.###. ..#.. ..#.. ..#.. ..#.. ..#.. .###.',
+  J: '..### ...#. ...#. ...#. ...#. #..#. .##..',
+  K: '#...# #..#. #.#.. ##... #.#.. #..#. #...#',
+  L: '#.... #.... #.... #.... #.... #.... #####',
+  M: '#...# ##.## #.#.# #.#.# #...# #...# #...#',
+  N: '#...# #...# ##..# #.#.# #..## #...# #...#',
+  O: '.###. #...# #...# #...# #...# #...# .###.',
+  P: '####. #...# #...# ####. #.... #.... #....',
+  Q: '.###. #...# #...# #...# #.#.# #..#. .##.#',
+  R: '####. #...# #...# ####. #.#.. #..#. #...#',
+  S: '.###. #...# #.... .###. ....# #...# .###.',
+  T: '##### ..#.. ..#.. ..#.. ..#.. ..#.. ..#..',
+  U: '#...# #...# #...# #...# #...# #...# .###.',
+  V: '#...# #...# #...# #...# #...# .#.#. ..#..',
+  W: '#...# #...# #...# #.#.# #.#.# #.#.# .#.#.',
+  X: '#...# #...# .#.#. ..#.. .#.#. #...# #...#',
+  Y: '#...# #...# .#.#. ..#.. ..#.. ..#.. ..#..',
+  Z: '##### ....# ...#. ..#.. .#... #.... #####',
+  0: '.###. #...# #..## #.#.# ##..# #...# .###.',
+  1: '..#.. .##.. ..#.. ..#.. ..#.. ..#.. .###.',
+  2: '.###. #...# ....# ...#. ..#.. .#... #####',
+  3: '##### ...#. ..#.. ...#. ....# #...# .###.',
+  4: '...#. ..##. .#.#. #..#. ##### ...#. ...#.',
+  5: '##### #.... ####. ....# ....# #...# .###.',
+  6: '..##. .#... #.... ####. #...# #...# .###.',
+  7: '##### ....# ...#. ..#.. .#... .#... .#...',
+  8: '.###. #...# #...# .###. #...# #...# .###.',
+  9: '.###. #...# #...# .#### ....# ...#. .##..',
+  ' ': '..... ..... ..... ..... ..... ..... .....',
+  '.': '..... ..... ..... ..... ..... .##.. .##..',
+  ',': '..... ..... ..... ..... .##.. ..#.. .#...',
+  '!': '..#.. ..#.. ..#.. ..#.. ..#.. ..... ..#..',
+  '?': '.###. #...# ....# ...#. ..#.. ..... ..#..',
+  '-': '..... ..... ..... .###. ..... ..... .....',
+  '+': '..... ..#.. ..#.. ##### ..#.. ..#.. .....',
+  '=': '..... ..... ##### ..... ##### ..... .....',
+  ':': '..... .##.. .##.. ..... .##.. .##.. .....',
+  '/': '....# ...#. ...#. ..#.. .#... .#... #....',
+  "'": '..#.. ..#.. .#... ..... ..... ..... .....',
+  '<': '...#. ..#.. .#... #.... .#... ..#.. ...#.',
+  '>': '.#... ..#.. ...#. ....# ...#. ..#.. .#...',
+  '*': '..... #...# .#.#. ..#.. .#.#. #...# .....',
+  '%': '##..# ##.#. ...#. ..#.. .#... .#.## #..##',
+};
+const FONT_CHARS = Object.keys(GLYPHS).join('');
+
+const FONT_BITS = {};
+for (const [ch, rows] of Object.entries(GLYPHS)) FONT_BITS[ch] = rows.split(' ');
+
+const GLYPH_W = 5, GLYPH_H = 7, ADVANCE = 6;
+
+function textWidth(str, scale = 1) {
+  return str.length ? (str.length * ADVANCE - 1) * scale : 0;
+}
+
+// `color` is one colour, or an array of seven (one per glyph row) for the
+// striped logos arcade title screens used.
+function text(ctx, str, x, y, color, opts = {}) {
+  const scale = opts.scale || 1;
+  const s = String(str).toUpperCase();
+  let left = x;
+  if (opts.align === 'center') left = x - Math.floor(textWidth(s, scale) / 2);
+  else if (opts.align === 'right') left = x - textWidth(s, scale);
+  for (let i = 0; i < s.length; i++) {
+    const rows = FONT_BITS[s[i]] || FONT_BITS['?'];
+    const gx = left + i * ADVANCE * scale;
+    for (let r = 0; r < GLYPH_H; r++) {
+      ctx.fillStyle = Array.isArray(color) ? color[r] : color;
+      const row = rows[r];
+      for (let c = 0; c < GLYPH_W; c++) {
+        if (row[c] === '#') ctx.fillRect(gx + c * scale, y + r * scale, scale, scale);
+      }
+    }
+  }
+}
+
+// ---- engine/screen.js
+// The arcade screen: a small fixed-resolution canvas, scaled up in whole
+// DEVICE pixels so every game pixel is the same size and stays sharp. A 336px
+// screen on a 3x phone is drawn at exactly 3 device pixels per game pixel,
+// never 3.35, which is what makes uneven, shimmering pixels.
+function makeScreen({ canvas, stage, frame, w, h, crtKey }) {
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+
+  function fit() {
+    const dpr = window.devicePixelRatio || 1;
+    // clientWidth/Height include the stage's padding; the screen gets only
+    // what is inside it.
+    const cs = getComputedStyle(stage);
+    const aw = stage.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    const ah = stage.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+    const s = Math.max(1, Math.floor(Math.min((aw * dpr) / w, (ah * dpr) / h)));
+    canvas.style.width = (s * w) / dpr + 'px';
+    canvas.style.height = (s * h) / dpr + 'px';
+    frame.style.setProperty('--px', s / dpr + 'px');
+  }
+  addEventListener('resize', fit);
+  if (window.visualViewport) visualViewport.addEventListener('resize', fit);
+  fit();
+
+  let crt = false;
+  try { crt = localStorage.getItem(crtKey) === '1'; } catch { crt = false; }
+  function setCrt(on) {
+    crt = on;
+    frame.classList.toggle('crt', on);
+    try { localStorage.setItem(crtKey, on ? '1' : '0'); } catch {}
+  }
+  setCrt(crt);
+
+  return {
+    ctx, w, h, fit,
+    get crt() { return crt; },
+    toggleCrt() { setCrt(!crt); return crt; },
+  };
+}
+
+// ---- engine/sound.js
+// Chip sound: square, triangle and noise voices made in the browser. No audio
+// files. Browsers only allow sound after a tap or key, so `wake()` is called
+// from every input handler and does nothing until then.
+function makeSound(muteKey) {
+  let ac = null, out = null;
+  let muted = false;
+  try { muted = localStorage.getItem(muteKey) === '1'; } catch { muted = false; }
+
+  function wake() {
+    if (ac) { if (ac.state === 'suspended') ac.resume(); return; }
+    const Ctor = window.AudioContext || window.webkitAudioContext;
+    if (!Ctor) return;
+    ac = new Ctor();
+    out = ac.createGain();
+    out.gain.value = muted ? 0 : 1;
+    out.connect(ac.destination);
+  }
+
+  // One note. `at` is seconds from now, `to` slides the pitch.
+  function note(freq, dur, { type = 'square', vol = 0.05, at = 0, to = null } = {}) {
+    if (!ac) return;
+    const t = ac.currentTime + at;
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(freq, t);
+    if (to) o.frequency.exponentialRampToValueAtTime(to, t + dur);
+    g.gain.setValueAtTime(vol, t);
+    g.gain.setValueAtTime(vol, t + dur * 0.7);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(out);
+    o.start(t); o.stop(t + dur + 0.02);
+  }
+
+  // A run of notes: [[freq, dur], ...], each after the last; 0 is a rest.
+  function tune(notes, opts = {}) {
+    let at = opts.at || 0;
+    for (const [f, d] of notes) {
+      if (f) note(f, d * 0.92, { ...opts, at });
+      at += d;
+    }
+  }
+
+  function noise(dur, { vol = 0.2, cutoff = 900, at = 0 } = {}) {
+    if (!ac) return;
+    const len = Math.floor(ac.sampleRate * dur);
+    const buf = ac.createBuffer(1, len, ac.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len) ** 2;
+    const s = ac.createBufferSource(); s.buffer = buf;
+    const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = cutoff;
+    const g = ac.createGain(); g.gain.value = vol;
+    s.connect(f); f.connect(g); g.connect(out);
+    s.start(ac.currentTime + at);
+  }
+
+  // A held sound (an engine): filtered noise that runs for the whole session
+  // and is gated by its gain. Starting a source every frame is what makes
+  // engine sound crackle. Returns set(on); safe to call before wake().
+  function drone({ cutoff = 420, vol = 0.16 } = {}) {
+    let gain = null;
+    return on => {
+      if (!ac) return;
+      if (!gain) {
+        const len = ac.sampleRate * 2;
+        const buf = ac.createBuffer(1, len, ac.sampleRate);
+        const d = buf.getChannelData(0);
+        for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+        const s = ac.createBufferSource(); s.buffer = buf; s.loop = true;
+        const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = cutoff;
+        gain = ac.createGain(); gain.gain.value = 0;
+        s.connect(f); f.connect(gain); gain.connect(out);
+        s.start();
+      }
+      gain.gain.setTargetAtTime(on ? vol : 0, ac.currentTime, 0.03);
+    };
+  }
+
+  function setMuted(on) {
+    muted = on;
+    if (out) out.gain.value = on ? 0 : 1;
+    try { localStorage.setItem(muteKey, on ? '1' : '0'); } catch {}
+  }
+
+  return {
+    wake, note, tune, noise, drone,
+    get muted() { return muted; },
+    toggleMute() { setMuted(!muted); return muted; },
+  };
+}
+
+// ---- engine/input.js
+// Keyboard and touch in one place. `held` is what a game polls each tick;
+// `onDir` fires once per press (menus, initials); `onAction` carries the
+// buttons: start, pause, back, crt, mute.
+//
+// A word game passes `onLetter`: then every letter key is a letter (WASD stop
+// being directions, P/C/M stop being shortcuts; those stay on the buttons) and
+// only the arrows move. `onKey(code)` gets any other key and returns true if
+// it used it. `onPoint(x, y)` receives taps on the screen in GAME
+// pixels; returning true means the game used the tap, otherwise it is START.
+function makeInput({ screen, onAction, onDir, onAny, onLetter = null, onPoint = null, onKey = null }) {
+  // `fire` is Space, Enter or the START button while held, for games that
+  // hold a trigger down; every other game ignores it.
+  const held = { up: false, down: false, left: false, right: false, fire: false };
+  const KEYS = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
+  const ACTIONS = { Space: 'start', Enter: 'start', Escape: 'back' };
+  if (!onLetter) {
+    Object.assign(KEYS, { KeyW: 'up', KeyS: 'down', KeyA: 'left', KeyD: 'right' });
+    Object.assign(ACTIONS, { KeyP: 'pause', KeyC: 'crt', KeyM: 'mute' });
+  }
+
+  let touch = matchMedia('(pointer: coarse)').matches;
+  const markTouch = on => {
+    touch = on;
+    document.body.classList.toggle('touch', on);
+  };
+  markTouch(touch);
+  addEventListener('touchstart', () => { if (!touch) markTouch(true); }, { passive: true });
+
+  addEventListener('keydown', e => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const dir = KEYS[e.code];
+    if (dir) {
+      e.preventDefault();
+      onAny();
+      if (!e.repeat) onDir(dir);
+      held[dir] = true;
+      return;
+    }
+    const action = ACTIONS[e.code];
+    if (action) {
+      if (action === 'start') held.fire = true;
+      // Space and Enter on a focused button or link belong to that control.
+      if ((e.code === 'Space' || e.code === 'Enter') && e.target.closest && e.target.closest('button, a')) return;
+      e.preventDefault();
+      onAny();
+      if (!e.repeat) onAction(action);
+      return;
+    }
+    // e.key, not e.code: the letter printed on the key, whatever the layout.
+    // Digits come through the same door, for games that number their keys.
+    if (onLetter && /^[a-z0-9]$/i.test(e.key)) {
+      e.preventDefault();
+      onAny();
+      if (!e.repeat) onLetter(e.key.toUpperCase());
+    }
+    // Anything else a game asked for by code (Z for undo, R for restart).
+    else if (onKey && !e.repeat && onKey(e.code)) { e.preventDefault(); onAny(); }
+  });
+  addEventListener('keyup', e => {
+    const dir = KEYS[e.code];
+    if (dir) held[dir] = false;
+    if (ACTIONS[e.code] === 'start') held.fire = false;
+  });
+  addEventListener('blur', () => { held.up = held.down = held.left = held.right = held.fire = false; });
+
+  for (const b of document.querySelectorAll('[data-dir]')) {
+    const dir = b.dataset.dir;
+    const down = e => {
+      e.preventDefault();
+      onAny();
+      held.up = held.down = held.left = held.right = false;
+      held[dir] = true;
+      onDir(dir);
+    };
+    const up = () => { held[dir] = false; };
+    b.addEventListener('pointerdown', down);
+    b.addEventListener('pointerup', up);
+    b.addEventListener('pointerleave', up);
+    b.addEventListener('pointercancel', up);
+    b.addEventListener('contextmenu', e => e.preventDefault());
+  }
+  // Buttons that send a letter (Sorted's left loop is A and D).
+  for (const b of document.querySelectorAll('[data-letter]')) {
+    b.addEventListener('pointerdown', e => { e.preventDefault(); onAny(); if (onLetter) onLetter(b.dataset.letter); });
+    b.addEventListener('contextmenu', e => e.preventDefault());
+  }
+  for (const b of document.querySelectorAll('[data-action]')) {
+    const action = b.dataset.action;
+    // pointerdown for the START button, so it answers as fast as the d-pad;
+    // click for the toggles, so keyboard users can press them too.
+    if (b.classList.contains('start')) {
+      b.addEventListener('pointerdown', e => { e.preventDefault(); onAny(); held.fire = true; onAction(action); });
+      for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(ev, () => { held.fire = false; });
+    } else {
+      b.addEventListener('click', () => { onAny(); onAction(action); });
+    }
+  }
+  screen.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    onAny();
+    if (onPoint) {
+      const r = screen.getBoundingClientRect();
+      const x = ((e.clientX - r.left) * screen.width) / r.width;
+      const y = ((e.clientY - r.top) * screen.height) / r.height;
+      if (onPoint(x, y)) return;
+    }
+    onAction('start');
+  });
+
+  return { held, get touch() { return touch; } };
+}
+
+// ---- engine/scores.js
+// The top-ten table, kept on this device only. A new browser starts with a
+// table of invented initials so the attract mode has something to show.
+const ENTRY_LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ.';
+
+function makeScores(key, defaults) {
+  let table = defaults.map(r => ({ ...r }));
+  try {
+    const saved = JSON.parse(localStorage.getItem(key) || 'null');
+    if (Array.isArray(saved) && saved.length === 10 && saved.every(r => typeof r.s === 'number' && typeof r.n === 'string')) table = saved;
+  } catch {}
+
+  return {
+    get table() { return table; },
+    get top() { return table[0].s; },
+    qualifies(score) { return score > 0 && score > table[9].s; },
+    // Returns the rank (0-9) the new row landed on.
+    add(n, s) {
+      let rank = table.findIndex(r => s > r.s);
+      if (rank === -1) return -1;
+      table.splice(rank, 0, { n, s });
+      table.length = 10;
+      try { localStorage.setItem(key, JSON.stringify(table)); } catch {}
+      return rank;
+    },
+  };
+}
+
+// ---- games/wings-level/board.js
+// Wings Level's mazes and ball, with no drawing and no sensors, so the tests
+// can roll it. Carried over from the Qlaim cabinet unchanged: the same maze,
+// hole placement off the solution path, ball size, gravity and damping, all in
+// CELL units (pixels are worked out only when drawing, so a resize can never
+// strand the ball).
+const N = 1, E = 2, S = 4, WEST = 8;
+const OPP = { [N]: S, [E]: WEST, [S]: N, [WEST]: E };
+const DX = { [N]: 0, [E]: 1, [S]: 0, [WEST]: -1 };
+const DY = { [N]: -1, [E]: 0, [S]: 1, [WEST]: 0 };
+const BALL_R = 0.28, HOLE_R = 0.24, GOAL_R = 0.3, GRAVITY = 26;
+
+function carve(cols, rows, rand = Math.random) {
+  const walls = new Array(cols * rows).fill(N | E | S | WEST);
+  const seen = new Array(cols * rows).fill(false);
+  const at = (x, y) => y * cols + x;
+  const stack = [[0, 0]];
+  seen[0] = true;
+  while (stack.length) {
+    const [x, y] = stack[stack.length - 1];
+    const options = [];
+    for (const dir of [N, E, S, WEST]) {
+      const nx = x + DX[dir], ny = y + DY[dir];
+      if (nx < 0 || ny < 0 || nx >= cols || ny >= rows || seen[at(nx, ny)]) continue;
+      options.push(dir);
+    }
+    if (!options.length) { stack.pop(); continue; }
+    const dir = options[(rand() * options.length) | 0];
+    const nx = x + DX[dir], ny = y + DY[dir];
+    walls[at(x, y)] &= ~dir;
+    walls[at(nx, ny)] &= ~OPP[dir];
+    seen[at(nx, ny)] = true;
+    stack.push([nx, ny]);
+  }
+  return { cols, rows, walls };
+}
+
+function distances(m, sx, sy) {
+  const d = new Array(m.cols * m.rows).fill(-1);
+  const at = (x, y) => y * m.cols + x;
+  d[at(sx, sy)] = 0;
+  const queue = [[sx, sy]];
+  for (let head = 0; head < queue.length; head++) {
+    const [x, y] = queue[head];
+    for (const dir of [N, E, S, WEST]) {
+      if (m.walls[at(x, y)] & dir) continue;
+      const nx = x + DX[dir], ny = y + DY[dir];
+      if (nx < 0 || ny < 0 || nx >= m.cols || ny >= m.rows || d[at(nx, ny)] !== -1) continue;
+      d[at(nx, ny)] = d[at(x, y)] + 1;
+      queue.push([nx, ny]);
+    }
+  }
+  return d;
+}
+
+// The way from (sx, sy) to the goal, as cells, following the BFS distances.
+function route(m, sx, sy, goal) {
+  const d = distances(m, goal.x, goal.y), at = (x, y) => y * m.cols + x;
+  const cells = [[sx, sy]];
+  let cx = sx, cy = sy;
+  for (let guard = 0; guard < m.cols * m.rows && !(cx === goal.x && cy === goal.y); guard++) {
+    for (const dir of [N, E, S, WEST]) {
+      if (m.walls[at(cx, cy)] & dir) continue;
+      const nx = cx + DX[dir], ny = cy + DY[dir];
+      if (nx < 0 || ny < 0 || nx >= m.cols || ny >= m.rows) continue;
+      if (d[at(nx, ny)] === d[at(cx, cy)] - 1) { cx = nx; cy = ny; cells.push([cx, cy]); break; }
+    }
+  }
+  return cells;
+}
+
+// A level: it grows, but never past what a thumb can steer on a small
+// screen. Holes go only on cells OFF the solution path, so a level is never
+// impossible: someone patient can always walk the ball home.
+function buildLevel(level, rand = Math.random) {
+  const cols = Math.min(5 + level, 11), rows = Math.min(7 + level, 15);
+  const maze = carve(cols, rows, rand);
+  const d = distances(maze, 0, 0);
+  let far = 0;
+  for (let i = 0; i < d.length; i++) if (d[i] > d[far]) far = i;
+  const goal = { x: far % cols, y: (far / cols) | 0 };
+  const path = new Set(route(maze, 0, 0, goal).map(([x, y]) => y * cols + x));
+  const spare = [];
+  for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) if (!path.has(y * cols + x)) spare.push({ x, y });
+  const holes = [];
+  const wanted = Math.min(2 + level * 2, Math.floor(spare.length * 0.5));
+  for (let i = 0; i < wanted && spare.length; i++) holes.push(spare.splice((rand() * spare.length) | 0, 1)[0]);
+  return { maze, goal, holes, segments: segmentsOf(maze) };
+}
+
+// Only N and W per cell, plus the far borders, or every inner wall would be
+// drawn and collided against twice.
+function segmentsOf(maze) {
+  const segs = [], at = (x, y) => y * maze.cols + x;
+  for (let y = 0; y < maze.rows; y++) for (let x = 0; x < maze.cols; x++) {
+    const w = maze.walls[at(x, y)];
+    if (w & N) segs.push([x, y, x + 1, y]);
+    if (w & WEST) segs.push([x, y, x, y + 1]);
+    if (x === maze.cols - 1 && (w & E)) segs.push([x + 1, y, x + 1, y + 1]);
+    if (y === maze.rows - 1 && (w & S)) segs.push([x, y + 1, x + 1, y + 1]);
+  }
+  return segs;
+}
+
+const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
+
+// One step of dt seconds with tilt { x, y } in -1..1. Returns 'hole', 'goal',
+// or null; `bumps` gets the speed of any wall hit, for the sound.
+function roll(ball, tilt, dt, lv, bumps = []) {
+  ball.vx += tilt.x * GRAVITY * dt;
+  ball.vy += tilt.y * GRAVITY * dt;
+  const damp = Math.pow(0.12, dt);
+  ball.vx *= damp; ball.vy *= damp;
+  ball.x += ball.vx * dt; ball.y += ball.vy * dt;
+  for (const [ax, ay, bx, by] of lv.segments) {
+    const dx = bx - ax, dy = by - ay, len2 = dx * dx + dy * dy;
+    const t = clamp(len2 ? ((ball.x - ax) * dx + (ball.y - ay) * dy) / len2 : 0, 0, 1);
+    let nx = ball.x - (ax + dx * t), ny = ball.y - (ay + dy * t);
+    let dist = Math.hypot(nx, ny);
+    if (dist >= BALL_R) continue;
+    if (dist < 1e-6) { nx = 0; ny = -1; dist = 1e-6 }
+    nx /= dist; ny /= dist;
+    ball.x += nx * (BALL_R - dist); ball.y += ny * (BALL_R - dist);
+    // Kill the velocity going INTO the wall and keep what runs along it, so a
+    // ball held against a wall still slides rather than sticking.
+    const into = ball.vx * nx + ball.vy * ny;
+    if (into < 0) { ball.vx -= into * nx * 1.35; ball.vy -= into * ny * 1.35; bumps.push(-into); }
+  }
+  ball.x = clamp(ball.x, BALL_R, lv.maze.cols - BALL_R);
+  ball.y = clamp(ball.y, BALL_R, lv.maze.rows - BALL_R);
+  for (const h of lv.holes) if (Math.hypot(ball.x - (h.x + 0.5), ball.y - (h.y + 0.5)) < HOLE_R) return 'hole';
+  if (Math.hypot(ball.x - (lv.goal.x + 0.5), ball.y - (lv.goal.y + 0.5)) < GOAL_R) return 'goal';
+  return null;
+}
+
+// The demo's hand: tilt toward the middle of the next cell on the way home.
+function steerHome(ball, lv) {
+  const cx = Math.floor(ball.x), cy = Math.floor(ball.y);
+  const way = route(lv.maze, cx, cy, lv.goal);
+  const [tx, ty] = way.length > 1 ? way[1] : way[0];
+  const ex = tx + 0.5 - ball.x, ey = ty + 0.5 - ball.y;
+  return { x: clamp(ex * 1.4 - ball.vx * 0.35, -1, 1), y: clamp(ey * 1.4 - ball.vy * 0.35, -1, 1) };
+}
+
+// ---- games/wings-level/game.js
+const W = 240, H = 264, BOARD = 220, BTOP = 24;
+const TICK_MS = 1000 / 60;
+const LIVES = 3;
+
+const INK = {
+  red: '#ff3b3b', white: '#ffffff', yellow: '#ffd23f', orange: '#ff8a1e', green: '#3fd46b',
+  cyan: '#5eeaf5', grey: '#8f8fb0', dim: '#4a4a6a',
+};
+const ROW_INKS = ['#ff3b3b', '#ff8a1e', '#ffd23f', '#3fd46b', '#5eeaf5', '#8f7bff', '#ff5fb8', '#ff8a1e', '#ffd23f', '#3fd46b'];
+const LOGO_INK = ['#ffffff', '#e8e8f0', '#c8c8d8', '#d9a066', '#a3501e', '#a3501e', '#5a2e12'];
+const RANKS = ['1ST', '2ND', '3RD', '4TH', '5TH', '6TH', '7TH', '8TH', '9TH', '10TH'];
+const DEFAULT_SCORES = [
+  ['ROL', 6000], ['TIL', 5000], ['PIT', 4000], ['BAL', 3200], ['LEV', 2500],
+  ['STL', 1800], ['RIM', 1200], ['DIP', 800], ['WOB', 500], ['TIP', 250],
+].map(([n, s]) => ({ n, s }));
+
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const canvas = document.getElementById('c');
+const screen = makeScreen({ canvas, stage: document.getElementById('stage'), frame: document.getElementById('screen'), w: W, h: H, crtKey: 'lk.arcade.crt' });
+const ctx = screen.ctx;
+const sound = makeSound('lk.arcade.mute');
+const scores = makeScores('lk.wingslevel.scores', DEFAULT_SCORES);
+
+let lv = buildLevel(1), level = 1, lives = LIVES, score = 0, levelTicks = 0;
+const ball = { x: 0.5, y: 0.5, vx: 0, vy: 0 };
+let mode = 'attract', page = 'title', pageT = 0, t = 0, clock = 0, timer = 0, falling = 0, tally = null;
+let demo = false, demoT = 0, entry = null, highlight = -1, pausedFrom = null, note = '', noteUntil = 0;
+
+const SFX = {
+  start: () => sound.tune([[523, 0.12], [659, 0.12], [784, 0.12], [1047, 0.3]], { vol: 0.045 }),
+  bump: v => sound.note(150, 0.05, { to: 90, vol: Math.min(0.08, v / 90) }),
+  drop: () => sound.note(320, 0.45, { type: 'sawtooth', to: 60, vol: 0.12 }),
+  home: () => sound.tune([[523, 0.1], [784, 0.1], [1047, 0.25]], { type: 'triangle', vol: 0.12 }),
+  level: () => sound.note(660, 0.09, { to: 880, vol: 0.06 }),
+  tick: () => sound.note(1760, 0.03, { vol: 0.025 }),
+  blip: () => sound.note(988, 0.05, { vol: 0.04 }),
+  over: () => sound.tune([[392, 0.22], [370, 0.22], [349, 0.22], [330, 0.7]], { type: 'triangle', vol: 0.12 }),
+};
+// The demo plays silently: nobody asked for noise from a screen they are not using.
+function sfx(name, arg) { if (!demo) SFX[name](arg); }
+
+// ------------------------------------------------------------------ tilt
+//
+// From the Qlaim cabinet, where it was learned the hard way:
+// 1. iOS will not send orientation events until the page ASKS, inside a real
+//    tap, so the request is made by the tap that starts the game.
+// 2. Nobody holds a phone flat, so the attitude when play starts is level, and
+//    a tap on the board makes the current attitude level again.
+// 3. Landscape swaps the axes; the screen angle is read every frame.
+// 4. Granted is not the same as working (Chrome on iOS accepts and then sends
+//    nothing), so silence has a deadline, after which the d-pad is offered.
+const tilt = { x: 0, y: 0 };
+let zero = null, lastReading = null, asked = false, watchdog = null;
+const RANGE = 26, DEAD = 0.06;
+const deadzone = v => (Math.abs(v) < DEAD ? 0 : (v - Math.sign(v) * DEAD) / (1 - DEAD));
+
+function onOrientation(e) {
+  if (e.beta === null && e.gamma === null) return;
+  if (watchdog) { clearTimeout(watchdog); watchdog = null; }
+  lastReading = { beta: e.beta || 0, gamma: e.gamma || 0 };
+  if (!zero) zero = { ...lastReading };
+}
+
+function readMotion() {
+  if (!lastReading || !zero) return false;
+  let dx = (lastReading.gamma - zero.gamma) / RANGE, dy = (lastReading.beta - zero.beta) / RANGE;
+  const angle = (window.screen.orientation && window.screen.orientation.angle) || window.orientation || 0;
+  if (angle === 90) { const k = dx; dx = -dy; dy = k; }
+  else if (angle === -90 || angle === 270) { const k = dx; dx = dy; dy = -k; }
+  else if (angle === 180) { dx = -dx; dy = -dy; }
+  tilt.x = deadzone(clamp(dx, -1, 1));
+  tilt.y = deadzone(clamp(dy, -1, 1));
+  return true;
+}
+
+function say(s) { note = s; noteUntil = clock + 60 * 9; }
+
+async function askForMotion() {
+  if (asked) return;
+  asked = true;
+  const DOE = window.DeviceOrientationEvent;
+  if (!DOE || !input.touch) return;
+  try {
+    if (typeof DOE.requestPermission === 'function' && (await DOE.requestPermission()) !== 'granted') { say('NO TILT. USE THE D-PAD.'); return; }
+  } catch { say('NO TILT. USE THE D-PAD.'); return; }
+  addEventListener('deviceorientation', onOrientation);
+  watchdog = setTimeout(() => { watchdog = null; if (!lastReading) say('NO TILT ARRIVING. ON AN IPHONE TRY SAFARI. THE D-PAD WORKS MEANWHILE.'); }, 1600);
+}
+
+function readTilt() {
+  if (demo) { const s = steerHome(ball, lv); tilt.x = s.x; tilt.y = s.y; return; }
+  const h = input.held;
+  const kx = (h.right ? 1 : 0) - (h.left ? 1 : 0), ky = (h.down ? 1 : 0) - (h.up ? 1 : 0);
+  if (kx || ky) { tilt.x = kx; tilt.y = ky; return; }
+  if (!readMotion()) { tilt.x = 0; tilt.y = 0; }
+}
+
+// ---------------------------------------------------------------- the game
+
+function cellSize() { return Math.floor(Math.min(BOARD / lv.maze.cols, BOARD / lv.maze.rows)); }
+function origin() {
+  const c = cellSize();
+  return { x: Math.round((W - c * lv.maze.cols) / 2), y: BTOP + Math.round((BOARD - c * lv.maze.rows) / 2) };
+}
+
+function home() { Object.assign(ball, { x: 0.5, y: 0.5, vx: 0, vy: 0 }); }
+
+function newGame(isDemo) {
+  demo = isDemo; demoT = 0; highlight = -1;
+  level = 1; lives = LIVES; score = 0;
+  lv = buildLevel(level); home(); levelTicks = 0;
+  if (lastReading) zero = { ...lastReading };
+  mode = isDemo ? 'playing' : 'ready'; timer = 90;
+  if (!isDemo) { sfx('start'); askForMotion(); }
+}
+
+function toAttract(p) { mode = 'attract'; page = p; pageT = 0; demo = false; entry = null; }
+
+function playTick() {
+  if (demo && ++demoT > 60 * 35) { demo = false; toAttract('scores'); return; }
+  levelTicks++;
+  readTilt();
+  const bumps = [];
+  const r = roll(ball, tilt, 1 / 60, lv, bumps);
+  for (const b of bumps) if (b > 5) sfx('bump', b);
+  if (r === 'hole') {
+    lives--; falling = 30; sfx('drop');
+    mode = 'falling'; t = 0;
+  } else if (r === 'goal') {
+    const secs = Math.floor(levelTicks / 60);
+    tally = { level, pts: 100 * level, quick: Math.max(0, 60 - secs), from: score };
+    tally.quickPts = tally.quick * 5;
+    tally.total = tally.pts + tally.quickPts;
+    score += tally.total;
+    sfx('home');
+    mode = 'cleared'; t = 0;
+  }
+}
+
+function afterFall() {
+  if (demo) { demo = false; toAttract('scores'); return; }
+  if (lives <= 0) { mode = 'over'; timer = 200; sfx('over'); return; }
+  home();
+  mode = 'playing';
+}
+
+function nextLevel() {
+  if (demo) { demo = false; toAttract('scores'); return; }
+  level++;
+  lv = buildLevel(level); home(); levelTicks = 0; tally = null;
+  sfx('level');
+  mode = 'ready'; timer = 60;
+}
+
+function afterOver() {
+  if (scores.qualifies(score)) { entry = { letters: [0, 0, 0], pos: 0, timer: 60 * 30 }; mode = 'entry'; }
+  else toAttract('scores');
+}
+
+function saveEntry() {
+  const name = entry.letters.map(i => ENTRY_LETTERS[i]).join('');
+  highlight = scores.add(name, score);
+  toAttract('scores');
+}
+
+function confirmLetter() { sfx('blip'); entry.pos++; if (entry.pos >= 3) saveEntry(); }
+
+// ---------------------------------------------------------------- input
+
+function onAction(action) {
+  if (action === 'crt') { screen.toggleCrt(); syncToggles(); return; }
+  if (action === 'mute') { sound.toggleMute(); syncToggles(); return; }
+  if (action === 'back') { toAttract('title'); return; }
+  if (action === 'pause') {
+    if (mode === 'paused') { mode = pausedFrom; return; }
+    if (!demo && (mode === 'playing' || mode === 'ready')) { pausedFrom = mode; mode = 'paused'; }
+    return;
+  }
+  if (mode === 'attract' || demo) { newGame(false); return; }
+  if (mode === 'paused') { mode = pausedFrom; return; }
+  if (mode === 'cleared' && t >= 40) { nextLevel(); return; }
+  if (mode === 'over') { timer = 0; return; }
+  if (mode === 'entry') confirmLetter();
+}
+
+function onDir(dir) {
+  if (mode !== 'entry') return;
+  const n = ENTRY_LETTERS.length, i = entry.pos;
+  if (dir === 'up') { entry.letters[i] = (entry.letters[i] + 1) % n; sfx('blip'); }
+  else if (dir === 'down') { entry.letters[i] = (entry.letters[i] + n - 1) % n; sfx('blip'); }
+  else if (dir === 'right') confirmLetter();
+  else if (dir === 'left' && entry.pos > 0) { entry.pos--; sfx('blip'); }
+}
+
+// A tap on the board while rolling makes the way the phone is held now level.
+function onPoint() {
+  if (mode === 'playing' && !demo) {
+    if (lastReading) { zero = { ...lastReading }; sfx('level'); say('LEVELLED'); }
+    return true;
+  }
+  return false;
+}
+
+const input = makeInput({ screen: canvas, onAction, onDir, onPoint, onAny: () => sound.wake() });
+
+const crtBtn = document.querySelector('[data-action="crt"]');
+const muteBtn = document.querySelector('[data-action="mute"]');
+function syncToggles() {
+  crtBtn.textContent = 'CRT ' + (screen.crt ? 'on' : 'off');
+  crtBtn.setAttribute('aria-pressed', String(screen.crt));
+  muteBtn.textContent = 'Sound ' + (sound.muted ? 'off' : 'on');
+  muteBtn.setAttribute('aria-pressed', String(!sound.muted));
+}
+syncToggles();
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && !demo && (mode === 'playing' || mode === 'ready')) { pausedFrom = mode; mode = 'paused'; }
+});
+
+// ---------------------------------------------------------------- drawing
+
+const blinkOn = (rate = 32) => reduceMotion || ((clock / rate) | 0) % 2 === 0;
+const prompt = () => (input.touch ? 'TAP START' : 'PRESS SPACE');
+
+function disc(g, cx, cy, r, col) {
+  g.fillStyle = col;
+  const R = Math.floor(r);
+  for (let dy = -R; dy <= R; dy++) { const w = Math.floor(Math.sqrt(Math.max(0, r * r - dy * dy))); g.fillRect(Math.round(cx) - w, Math.round(cy) + dy, w * 2 + 1, 1); }
+}
+
+function drawBoard(g, L, ox, oy, c, ballScale) {
+  const bw = c * L.maze.cols, bh = c * L.maze.rows;
+  for (let y = 0; y < bh; y++) {
+    g.fillStyle = (y + ((y / 7) | 0)) % 9 === 0 ? '#4a2e18' : '#5a3a20';
+    g.fillRect(ox, oy + y, bw, 1);
+  }
+  for (const h of L.holes) {
+    disc(g, ox + (h.x + 0.5) * c, oy + (h.y + 0.5) * c, HOLE_R * c + 1, '#2a1a10');
+    disc(g, ox + (h.x + 0.5) * c, oy + (h.y + 0.5) * c, HOLE_R * c, '#000');
+  }
+  const gx = ox + (L.goal.x + 0.5) * c, gy = oy + (L.goal.y + 0.5) * c;
+  disc(g, gx, gy, GOAL_R * c + 1, blinkOn(10) ? INK.green : '#1f7a3a');
+  disc(g, gx, gy, GOAL_R * c - 1, '#0f3a1e');
+  for (const [ax, ay, bx, by] of L.segments) {
+    const x0 = ox + Math.min(ax, bx) * c, y0 = oy + Math.min(ay, by) * c;
+    if (ay === by) { g.fillStyle = '#d9a066'; g.fillRect(x0 - 1, y0 - 1, (bx - ax) * c + 2, 2); g.fillStyle = '#2a1a10'; g.fillRect(x0 - 1, y0 + 1, (bx - ax) * c + 2, 1); }
+    else { g.fillStyle = '#d9a066'; g.fillRect(x0 - 1, y0 - 1, 2, (by - ay) * c + 2); g.fillStyle = '#2a1a10'; g.fillRect(x0 + 1, y0, 1, (by - ay) * c + 1); }
+  }
+  if (ballScale > 0) {
+    const r = BALL_R * c * ballScale, bx = ox + ball.x * c, by = oy + ball.y * c;
+    disc(g, bx + 1, by + 1, r, '#1a1008');
+    disc(g, bx, by, r, '#8f8fb0');
+    disc(g, bx - r * 0.2, by - r * 0.2, r * 0.7, '#c8c8d8');
+    g.fillStyle = '#ffffff'; g.fillRect(Math.round(bx - r * 0.45), Math.round(by - r * 0.45), 2, 2);
+  }
+}
+
+function drawHud() {
+  const shown = tally ? tally.from + Math.round(tally.total * Math.max(0, Math.min(1, (t - 20) / 30))) : score;
+  const hi = Math.max(scores.top, demo ? 0 : score);
+  if (!(mode === 'playing' && !demo) || blinkOn(24)) text(ctx, '1UP', 6, 3, INK.red);
+  text(ctx, String(mode === 'attract' ? 0 : shown).padStart(2, '0'), 46, 12, INK.white, { align: 'right' });
+  text(ctx, 'HI-SCORE', W / 2, 3, INK.red, { align: 'center' });
+  text(ctx, String(hi), W / 2, 12, INK.white, { align: 'center' });
+  if (mode === 'attract' || mode === 'entry') return;
+  text(ctx, 'LEVEL ' + level, W - 6, 3, INK.red, { align: 'right' });
+  for (let i = 0; i < lives; i++) disc(ctx, W - 10 - i * 9, 15, 3, '#c8c8d8');
+}
+
+function banner(lines, y) {
+  const wide = Math.max(...lines.map(([s]) => s.length)) * 6 + 10;
+  ctx.fillStyle = '#000';
+  ctx.fillRect(Math.floor((W - wide) / 2), y - 5, wide, lines.length * 12 + 7);
+  lines.forEach(([s, ink], i) => text(ctx, s, W / 2, y + i * 12, ink, { align: 'center' }));
+}
+
+function drawGame() {
+  const c = cellSize(), o = origin();
+  drawBoard(ctx, lv, o.x, o.y, c, mode === 'falling' ? Math.max(0, t < 30 ? 1 - t / 30 : 0) : 1);
+  let status = '';
+  if (demo) status = blinkOn() ? 'DEMO PLAY' : '';
+  else if (clock < noteUntil) status = note;
+  else if (lastReading) status = 'TILT TO ROLL. TAP TO LEVEL.';
+  else status = input.touch ? 'D-PAD TO ROLL' : 'ARROWS TO ROLL';
+  if (status) {
+    const words = status.split(' '), lines = [''];
+    for (const w of words) { if ((lines[lines.length - 1] + ' ' + w).trim().length > 38) lines.push(w); else lines[lines.length - 1] = (lines[lines.length - 1] + ' ' + w).trim(); }
+    lines.forEach((s, i) => text(ctx, s, W / 2, 248 + i * 9, demo ? INK.yellow : INK.grey, { align: 'center' }));
+  }
+  const mid = 100;
+  if (mode === 'ready') banner([['LEVEL ' + level, INK.cyan], ['ROLL IT HOME', INK.yellow]], mid);
+  else if (mode === 'paused') banner([['PAUSED', INK.white]], mid);
+  else if (mode === 'over') banner([['GAME OVER', INK.red]], mid);
+  else if (mode === 'falling' && t > 20) banner([['DOWN THE HOLE', INK.red], [lives > 0 ? (lives === 1 ? '1 BALL LEFT' : lives + ' BALLS LEFT') : '', INK.grey]], mid);
+  else if (mode === 'cleared' && tally) {
+    const lines = [['HOME!', INK.green], ['LEVEL ' + tally.level + ' X 100   ' + tally.pts, INK.white]];
+    if (tally.quick) lines.push([tally.quick + ' SECONDS TO SPARE X 5   ' + tally.quickPts, INK.white]);
+    if (t >= 40 && !demo && blinkOn()) lines.push([prompt(), INK.cyan]);
+    banner(lines, mid - 10);
+  }
+}
+
+function drawTitle() {
+  text(ctx, 'WINGS', W / 2 + 2, 26, '#1c2870', { align: 'center', scale: 4 });
+  text(ctx, 'WINGS', W / 2, 24, LOGO_INK, { align: 'center', scale: 4 });
+  text(ctx, 'LEVEL', W / 2 + 2, 58, '#1c2870', { align: 'center', scale: 4 });
+  text(ctx, 'LEVEL', W / 2, 56, LOGO_INK, { align: 'center', scale: 4 });
+  const keep = { ...ball };
+  Object.assign(ball, { x: 1.5 + Math.sin(clock / 50) * 0.8, y: 1.5 + Math.cos(clock / 70) * 0.5 });
+  drawBoard(ctx, TITLE_LEVEL, 90, 88, 10, 1);
+  Object.assign(ball, keep);
+  text(ctx, input.touch ? 'TILT THE PHONE TO ROLL THE BALL' : 'ARROWS TILT THE BOARD', W / 2, 178, INK.white, { align: 'center' });
+  text(ctx, 'HOME BEFORE THE HOLES', W / 2, 190, INK.orange, { align: 'center' });
+  if (blinkOn()) text(ctx, prompt(), W / 2, 216, INK.yellow, { align: 'center' });
+  text(ctx, 'LEON KARSTEN 2026', W / 2, 250, INK.dim, { align: 'center' });
+}
+const TITLE_LEVEL = (() => { let s = 21; const rnd = () => ((s = (s * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff); const L = buildLevel(1, rnd); return { ...L, maze: { ...L.maze } }; })();
+
+function drawHowTo() {
+  text(ctx, 'HOW TO PLAY', W / 2, 26, INK.cyan, { align: 'center' });
+  const rows = input.touch
+    ? [['TILT THE PHONE TO ROLL THE BALL.', INK.white], ['TAP THE BOARD TO SET LEVEL', INK.white], ['TO HOW YOU ARE HOLDING IT.', INK.white], ['NO TILT? THE D-PAD WORKS TOO.', INK.grey]]
+    : [['THE ARROW KEYS TILT THE BOARD.', INK.white], ['ON A PHONE, YOU TILT THE PHONE.', INK.grey]];
+  rows.forEach(([s, ink], i) => text(ctx, s, W / 2, 46 + i * 12, ink, { align: 'center' }));
+  text(ctx, 'ROLL INTO THE GREEN RING. A HOLE', W / 2, 108, INK.green, { align: 'center' });
+  text(ctx, 'COSTS A BALL. THERE IS ALWAYS A WAY', W / 2, 120, INK.orange, { align: 'center' });
+  text(ctx, 'HOME THAT MISSES EVERY HOLE.', W / 2, 132, INK.orange, { align: 'center' });
+  text(ctx, 'SCORING', W / 2, 156, INK.yellow, { align: 'center' });
+  text(ctx, 'EACH LEVEL', 30, 172, INK.grey); text(ctx, '100 X LEVEL', 210, 172, INK.white, { align: 'right' });
+  text(ctx, 'EACH SECOND UNDER A MINUTE', 30, 184, INK.grey); text(ctx, '5', 210, 184, INK.white, { align: 'right' });
+  if (blinkOn()) text(ctx, prompt(), W / 2, 214, INK.yellow, { align: 'center' });
+}
+
+function drawScores() {
+  text(ctx, 'HIGH SCORES', W / 2, 28, INK.yellow, { align: 'center' });
+  text(ctx, 'RANK', 40, 46, INK.grey); text(ctx, 'SCORE', 150, 46, INK.grey, { align: 'right' }); text(ctx, 'NAME', 170, 46, INK.grey);
+  scores.table.forEach((r, i) => {
+    if (i === highlight && !blinkOn(16)) return;
+    const y = 62 + i * 16, ink = i === highlight ? INK.white : ROW_INKS[i];
+    text(ctx, RANKS[i], 40, y, ink); text(ctx, String(r.s), 150, y, ink, { align: 'right' }); text(ctx, r.n, 170, y, ink);
+  });
+  if (blinkOn()) text(ctx, prompt(), W / 2, 236, INK.yellow, { align: 'center' });
+}
+
+function drawEntry() {
+  text(ctx, 'YOU MADE THE TOP TEN', W / 2, 36, INK.cyan, { align: 'center' });
+  text(ctx, String(score), W / 2, 52, INK.yellow, { align: 'center', scale: 2 });
+  text(ctx, 'ENTER YOUR INITIALS', W / 2, 84, INK.white, { align: 'center' });
+  for (let i = 0; i < 3; i++) {
+    const x = W / 2 - 39 + i * 30, current = i === entry.pos;
+    if (!current || blinkOn(16)) text(ctx, ENTRY_LETTERS[entry.letters[i]], x, 102, current ? INK.yellow : INK.white, { scale: 3 });
+    ctx.fillStyle = current ? INK.yellow : INK.dim; ctx.fillRect(x - 2, 128, 18, 2);
+  }
+  text(ctx, 'UP / DOWN   CHANGE LETTER', W / 2, 150, INK.grey, { align: 'center' });
+  text(ctx, (input.touch ? 'RIGHT OR START' : 'RIGHT OR SPACE') + '   NEXT', W / 2, 162, INK.grey, { align: 'center' });
+  text(ctx, 'TIME ' + Math.ceil(entry.timer / 60), W / 2, 190, INK.orange, { align: 'center' });
+}
+
+function draw() {
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, W, H);
+  drawHud();
+  if (mode === 'attract') { if (page === 'title') drawTitle(); else if (page === 'howto') drawHowTo(); else drawScores(); return; }
+  if (mode === 'entry') { drawEntry(); return; }
+  drawGame();
+}
+
+// ---------------------------------------------------------------- card art
+
+function drawCard() {
+  const c = document.createElement('canvas');
+  c.width = 320; c.height = 240;
+  const g = c.getContext('2d');
+  g.fillStyle = '#000'; g.fillRect(0, 0, 320, 240);
+  let s = 33;
+  const rnd = () => ((s = (s * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+  const L = buildLevel(4, rnd);
+  const keep = { ...ball };
+  Object.assign(ball, { x: 2.5, y: 3.4 });
+  const cs = Math.floor(Math.min(300 / L.maze.cols, 196 / L.maze.rows));
+  drawBoard(g, L, Math.round((320 - cs * L.maze.cols) / 2), 40, cs, 1);
+  Object.assign(ball, keep);
+  text(g, 'WINGS LEVEL', 162, 10, '#1c2870', { align: 'center', scale: 3 });
+  text(g, 'WINGS LEVEL', 160, 8, LOGO_INK, { align: 'center', scale: 3 });
+  return c;
+}
+
+// ---------------------------------------------------------------- loop
+
+const PAGES = { title: ['howto', 480], howto: ['demo', 540], scores: ['title', 420] };
+function attractTick() {
+  pageT++;
+  const [next, length] = PAGES[page];
+  if (pageT < length) return;
+  if (next === 'demo') { newGame(true); return; }
+  if (next === 'title') highlight = -1;
+  toAttract(next);
+}
+
+function tick() {
+  clock++;
+  switch (mode) {
+    case 'attract': attractTick(); break;
+    case 'ready': if (--timer <= 0) mode = 'playing'; break;
+    case 'playing': playTick(); break;
+    case 'falling': if (++t >= 70) afterFall(); break;
+    case 'cleared':
+      t++;
+      if (t > 20 && t <= 50 && t % 3 === 0) sfx('tick');
+      if ((demo && t >= 90) || t >= 600) nextLevel();
+      break;
+    case 'over': if (--timer <= 0) afterOver(); break;
+    case 'entry': if (--entry.timer <= 0) saveEntry(); break;
+  }
+}
+
+let acc = 0, lastT = 0;
+function frame(now) {
+  requestAnimationFrame(frame);
+  if (!lastT) lastT = now;
+  acc += Math.min(100, now - lastT);
+  lastT = now;
+  while (acc >= TICK_MS) { tick(); acc -= TICK_MS; }
+  draw();
+}
+requestAnimationFrame(frame);
+
+window.__wingslevel = {
+  get mode() { return mode; },
+  get page() { return page; },
+  get demo() { return demo; },
+  get score() { return score; },
+  get lives() { return lives; },
+  get level() { return level; },
+  get ball() { return { ...ball }; },
+  attract(p) { toAttract(p); },
+  // Put the ball next to the goal, or on a hole.
+  nearGoal() { Object.assign(ball, { x: lv.goal.x + 0.5, y: lv.goal.y + 0.5 - 0.1, vx: 0, vy: 0 }); },
+  intoHole() { const h = lv.holes[0]; if (h) Object.assign(ball, { x: h.x + 0.5, y: h.y + 0.5, vx: 0, vy: 0 }); },
+  endGame(s) { demo = false; score = s; lives = 0; mode = 'over'; timer = 1; },
+};
+window.__arcade = { card: drawCard };
+})();
+</script>
+</body>
+</html>
