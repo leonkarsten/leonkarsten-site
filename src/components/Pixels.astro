@@ -1,0 +1,45 @@
+---
+import { toRects } from '../lib/pixels';
+
+interface Props {
+  rows: string[];
+  palette: Record<string, string>;
+  /** CSS px per art pixel; a parent can override it with --px for narrow screens */
+  scale?: number;
+  /** drop shadow one art pixel down and right */
+  shadow?: string;
+  /** read aloud; omit for decoration */
+  label?: string;
+  class?: string;
+}
+
+const { rows, palette, scale = 4, shadow, label, class: cls } = Astro.props;
+const cols = Math.max(...rows.map((r) => r.length));
+const pad = shadow ? 1 : 0;
+const w = cols + pad;
+const h = rows.length + pad;
+const rects = toRects(rows, palette);
+---
+
+<svg
+  class:list={['pixels', cls]}
+  viewBox={`0 0 ${w} ${h}`}
+  width={w * scale}
+  height={h * scale}
+  style={`width: calc(var(--px, ${scale}) * ${w}px)`}
+  shape-rendering="crispEdges"
+  role={label ? 'img' : undefined}
+  aria-label={label}
+  aria-hidden={label ? undefined : 'true'}
+>
+  {shadow && rects.map((r) => <rect x={r.x + 1} y={r.y + 1} width={r.w} height="1" fill={shadow} />)}
+  {rects.map((r) => <rect x={r.x} y={r.y} width={r.w} height="1" fill={r.fill} />)}
+</svg>
+
+<style>
+  .pixels {
+    display: block;
+    max-width: 100%;
+    height: auto;
+  }
+</style>

@@ -1,0 +1,329 @@
+---
+import Base from '../../layouts/Base.astro';
+import Pixels from '../../components/Pixels.astro';
+import { textRows, textPalette } from '../../lib/pixels';
+
+// A fan page. Every picture is original pixel art of an idea (a tank, a
+// soldier), never EA's logos, box art, screenshots or unit sprites.
+
+const STRIPES = ['#ffc857', '#ffc857', '#ff8a5b', '#ff8a5b', '#ff5fb8', '#ff5fb8', '#8f7bff'];
+const SHADOW = '#2a1a66';
+
+const TANK = [
+  '........kkkkkk.............',
+  '.......kGGGGGGk............',
+  '......kGGgggggGkkkkkkkkkkkk',
+  '......kGggggggGGGGGGGGGGGGk',
+  '......kgggggggkkkkkkkkkkkkk',
+  '...kkkkkkkkkkkkkkkkkkk.....',
+  '..kGGGGGGGGGGGGGGGGGGGk....',
+  '.kGgggggggggggggggggggGk...',
+  '.kgggggggggggggggggggggk...',
+  'kkkkkkkkkkkkkkkkkkkkkkkkk..',
+  'kdwdkdwdkdwdkdwdkdwdkdwdk..',
+  'kddddddddddddddddddddddk...',
+  '.kkkkkkkkkkkkkkkkkkkkkk....',
+];
+const TANK_COLORS = { k: '#0e0826', G: '#c4b8ff', g: '#8f7bff', d: '#3a2c7a', w: '#5eeaf5' };
+
+const SOLDIER = [
+  '....kkkk......',
+  '...khhhhk.....',
+  '..khhhhhhk....',
+  '..kssssssk....',
+  '..kskssksk....',
+  '...kssssk.....',
+  '..kkggggkk....',
+  '.kggggggggk...',
+  '.kgrrrrrrrrrrr',
+  '.ksgggggggsk..',
+  '..kggggggk....',
+  '...kgkkgk.....',
+  '...kgk.kgk....',
+  '..kggk.kggk...',
+  '..kkkk.kkkk...',
+];
+const SOLDIER_COLORS = { k: '#0e0826', h: '#c9601e', s: '#f7c78e', g: '#ff8a5b', r: '#a99bd6' };
+
+const heading = (text: string) => ({ rows: textRows(text), palette: textPalette(STRIPES) });
+---
+
+<Base
+  title="Command & Conquer"
+  section="games"
+  theme="night"
+  description="A fan page for Command & Conquer: Red Alert 2 and Renegade, and where to play them today."
+>
+  <section class="wrap hero">
+    <div class="frame">
+      <div class="screen">
+        <h1>
+          <span class="sr">Command &amp; Conquer: a fan page</span>
+          <Pixels class="logo" rows={textRows('COMMAND &')} palette={textPalette(STRIPES)} shadow={SHADOW} scale={8} />
+          <Pixels class="logo" rows={textRows('CONQUER')} palette={textPalette(STRIPES)} shadow={SHADOW} scale={8} />
+        </h1>
+        <Pixels class="sub" rows={textRows('A FAN PAGE')} palette={textPalette('#5eeaf5')} scale={3} />
+        <div class="field" aria-hidden="true">
+          <Pixels rows={TANK} palette={TANK_COLORS} scale={6} />
+          <Pixels rows={SOLDIER} palette={SOLDIER_COLORS} scale={6} />
+        </div>
+        <p class="insert">Red Alert 2 · Renegade</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="wrap why">
+    <h2>
+      <span class="sr">Why I still play them</span>
+      <Pixels {...heading('WHY I STILL PLAY')} shadow={SHADOW} scale={4} />
+    </h2>
+    <blockquote>
+      <p>
+        These games remind me of simple joy and endless fun. I love the strategy. The playability is
+        great, and the storylines are phenomenal.
+      </p>
+      <p>
+        They are extremely well balanced, which is why online play is still a lot of fun, even now
+        in 2026. Any team can win. There is almost no advantage one side has over the other, except
+        strategy and guts.
+      </p>
+      <footer>Leon</footer>
+    </blockquote>
+  </section>
+
+  <section class="wrap games">
+    <article class="inlay">
+      <div class="bars" aria-hidden="true"></div>
+      <h2>
+        <span class="sr">Red Alert 2</span>
+        <Pixels {...heading('RED ALERT 2')} shadow={SHADOW} scale={5} />
+      </h2>
+      <dl>
+        <div><dt>Made by</dt><dd>Westwood Pacific</dd></div>
+        <div><dt>Released</dt><dd>October 2000</dd></div>
+        <div><dt>Kind</dt><dd>Real-time strategy</dd></div>
+      </dl>
+      <p>
+        An alternate-history war between the Allies and the Soviets. Build a base, mine ore for money,
+        and build an army to break the other side. The expansion, <em>Yuri's Revenge</em> (October
+        2001), adds Yuri as a third side.
+      </p>
+    </article>
+
+    <article class="inlay">
+      <div class="bars" aria-hidden="true"></div>
+      <h2>
+        <span class="sr">Renegade</span>
+        <Pixels {...heading('RENEGADE')} shadow={SHADOW} scale={5} />
+      </h2>
+      <dl>
+        <div><dt>Made by</dt><dd>Westwood Studios</dd></div>
+        <div><dt>Released</dt><dd>February 2002</dd></div>
+        <div><dt>Kind</dt><dd>First- and third-person shooter</dd></div>
+      </dl>
+      <p>
+        The first Command &amp; Conquer war between GDI and Nod, seen from the ground. The campaign
+        follows Havoc, a GDI commando. Online, two teams each hold a base: earn credits, buy soldiers
+        and vehicles, and destroy the other team's base.
+      </p>
+    </article>
+  </section>
+
+  <section class="wrap today">
+    <h2>
+      <span class="sr">Play them today</span>
+      <Pixels {...heading('PLAY THEM TODAY')} shadow={SHADOW} scale={4} />
+    </h2>
+    <ul>
+      <li>
+        <p class="what">Buy the games</p>
+        <p>Both are sold on Steam and the EA app: <a href="https://store.steampowered.com/app/2229850/">Red Alert 2 and Yuri's Revenge</a> and <a href="https://store.steampowered.com/app/2229890/">Renegade</a>.</p>
+      </li>
+      <li>
+        <p class="what">Red Alert 2 online</p>
+        <p><a href="https://cncnet.org/red-alert-2">CnCNet</a> is a free community client for online play and the campaigns. You need your own copy of the game.</p>
+      </li>
+      <li>
+        <p class="what">Renegade online</p>
+        <p>The community's Tiberian Technologies patch brings online play back, and the <a href="https://w3dhub.com/">W3D Hub</a> launcher lists the servers. CnCNet has a <a href="https://cncnet.org/renegade">step-by-step guide</a>.</p>
+      </li>
+      <li>
+        <p class="what">Renegade X</p>
+        <p>A free, fan-made spiritual successor to Renegade by <a href="https://totemarts.games/">Totem Arts</a>, built on Unreal Engine 3. It reached version 1.0 in 2026, after twelve years in beta.</p>
+      </li>
+      <li>
+        <p class="what">The source code</p>
+        <p>In March 2025 EA published the <a href="https://github.com/electronicarts/CnC_Renegade">source code of Renegade</a> under the GPL, along with the first Command &amp; Conquer, Red Alert and Generals. The code only, not the art. Red Alert 2 was not included.</p>
+      </li>
+    </ul>
+  </section>
+
+  <section class="wrap fine">
+    <p>
+      A fan page, not affiliated with or endorsed by Electronic Arts. Command &amp; Conquer, Red Alert
+      and Renegade are trademarks of Electronic Arts Inc. The pictures here are original pixel art.
+    </p>
+    <p><a href="/games/">← Back to the arcade</a></p>
+  </section>
+</Base>
+
+<style>
+  .sr {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  /* the hero is a loading screen: a black screen inside a raster-bar border */
+  .hero { padding-top: 40px; }
+  .frame {
+    padding: 14px;
+    background: repeating-linear-gradient(180deg, #ff5fb8 0 8px, #ffc857 8px 16px, #5eeaf5 16px 24px, #8f7bff 24px 32px);
+  }
+  .screen {
+    background: #000;
+    padding: 40px 16px 28px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 18px;
+  }
+  .screen h1 {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+  }
+  .field {
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    gap: clamp(24px, 10vw, 120px);
+    width: 100%;
+    max-width: 560px;
+    padding: 12px 0 10px;
+    border-bottom: 4px solid #3a2c7a;
+  }
+  .field :global(svg) { min-width: 0; }
+
+  /* art pixels stay whole CSS pixels on narrow screens (Pixels reads --px) */
+  @media (max-width: 900px) { .inlay h2 { --px: 4; } }
+  @media (max-width: 560px) {
+    .screen h1 { --px: 5; }
+    .why h2, .today h2 { --px: 3; }
+  }
+  @media (max-width: 400px) {
+    .screen h1, .field { --px: 4; }
+    .inlay h2 { --px: 3; }
+  }
+  .insert {
+    margin: 0;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+
+  .why {
+    padding-top: 56px;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+  }
+  blockquote {
+    margin: 0;
+    max-width: 720px;
+    padding-left: 20px;
+    border-left: 4px solid #ffc857;
+    font-size: 20px;
+    color: var(--ink-soft);
+  }
+  blockquote p { margin: 0 0 1em; }
+  blockquote footer {
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #ffc857;
+  }
+
+  .games {
+    padding-top: 56px;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 20px;
+  }
+  @media (max-width: 760px) { .games { grid-template-columns: 1fr; } }
+  .inlay {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    padding: 0 22px 24px;
+    background: var(--paper-2);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+  .bars {
+    height: 12px;
+    margin: 0 -22px 6px;
+    background: var(--stripe-rule);
+  }
+  .inlay p { margin: 0; color: var(--ink-muted); }
+  dl {
+    margin: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 24px;
+    font-size: 14px;
+  }
+  dt {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #5eeaf5;
+  }
+  dd { margin: 0; color: var(--ink); }
+
+  .today {
+    padding-top: 56px;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+  }
+  .today ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
+    gap: 16px;
+  }
+  .today li {
+    padding: 18px 20px;
+    border: 1px dashed var(--line);
+    border-radius: var(--radius-sm);
+  }
+  .today li p { margin: 0; font-size: 15px; color: var(--ink-muted); }
+  .today .what {
+    margin-bottom: 6px;
+    font-family: var(--font-display);
+    font-size: 19px;
+    color: #fff;
+  }
+
+  .fine {
+    padding-top: 48px;
+    padding-bottom: 64px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .fine p { margin: 0; font-size: 13px; color: var(--ink-faint); max-width: 720px; }
+  .fine p:last-child { font-size: 15px; font-weight: 600; }
+</style>

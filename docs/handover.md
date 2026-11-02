@@ -46,6 +46,13 @@ Nothing personal: interests, facts, instructions, coaching, experiences only.
   seen Lamplight live; neither has been played through on his iPhone yet. Card pictures: each game draws its own 4:3 card (`npm run cards` in the arcade repo
   saves `cards/<slug>.png`); the import copies it to `public/play/<slug>/card.png` and the
   catalogue entry's optional `image` field shows it on `/games/`.
+- **Fan page:** `/games/command-and-conquer/` (2 Nov), Red Alert 2 and Renegade: Leon's own words
+  on why he plays them, facts checked against sources, where to play them today, linked from the
+  Games page. Pictures are original pixel art drawn as SVG from text grids (`src/lib/pixels.ts`,
+  `src/components/Pixels.astro`, the arcade's 5x7 font plus `&`); never EA logos, box art,
+  screenshots or unit sprites, and the footer says it is unaffiliated. Art pixels stay whole CSS
+  pixels at every width (`--px` per breakpoint), checked at 14 widths from 320 to 1280.
+  Astro drops a space between text and a link that starts a new line: keep such links on one line.
 - **Content:** one draft post and one draft guide, both `draft: true` placeholders. About page
   has a bracketed contact placeholder.
 
