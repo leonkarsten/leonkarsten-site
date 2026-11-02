@@ -19,10 +19,8 @@ Nothing personal: interests, facts, instructions, coaching, experiences only.
 - **DNS:** registrar and DNS host is domains.co.za (nameservers `ns*.tld-ns.com/.net`).
   Root → GitHub's four A records; `www` → CNAME `leonkarsten.github.io`. No AAAA, no MX.
   Verified correct from public resolvers.
-- **HTTPS:** GitHub's custom-domain check was still showing a stale failure on the evening of
-  2026-11-01 despite correct DNS, which blocks certificate issuance. Expected to clear on its own.
-  Once Settings → Pages shows the check green, tick **Enforce HTTPS**. Until then Chrome refuses
-  the site on machines that visited the old Wix site (HSTS memory); Edge allows click-through.
+- **HTTPS:** working since 2 Nov 2026: Let's Encrypt certificate for leonkarsten.com (valid to
+  31 Jan 2027, GitHub renews it), and http now redirects to https (Enforce HTTPS on).
 - **Previous occupant:** the domain served Leon's wife's Wix site. Wix is disconnected and
   cancelled; nothing to migrate.
 - **Sankey Studio** is imported at `public/apps/sankey-studio/index.html` (single-file Vite build,
@@ -98,8 +96,7 @@ the same path collide in Astro.
 
 ## Open tasks, in rough priority
 
-1. **HTTPS:** check GitHub Pages settings; tick Enforce HTTPS when available. If still failing
-   after 24 h with DNS correct, remove/re-add the domain, then GitHub support.
+1. ~~HTTPS~~ done 2 Nov (certificate issued, Enforce HTTPS on).
 2. **Contact method** on `/about/` (replace the bracketed placeholder). Leon to decide:
    email alias, form service, or link.
 3. **First real post and guide.** Edit the placeholders in `src/content/writing/` and
