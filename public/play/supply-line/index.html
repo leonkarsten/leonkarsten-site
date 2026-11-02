@@ -1,0 +1,1584 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Supply Line</title>
+<meta name="description" content="Two bases, three lanes, one supply depot in each. Send trucks for money, build rifles, rockets and tanks, and break the CPU base. Same rules, same money.">
+<meta name="theme-color" content="#000000">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2016%2016'%20shape-rendering='crispEdges'%3E%3Crect%20width='16'%20height='16'%20fill='%2306061a'/%3E%3Crect%20x='0'%20y='0'%20width='3'%20height='16'%20fill='%235eeaf5'/%3E%3Crect%20x='13'%20y='0'%20width='3'%20height='16'%20fill='%23ff8a1e'/%3E%3Crect%20x='3'%20y='7'%20width='10'%20height='3'%20fill='%230a0a16'/%3E%3Crect%20x='6'%20y='6'%20width='4'%20height='4'%20fill='%23ffd23f'/%3E%3Crect%20x='7'%20y='4'%20width='2'%20height='2'%20fill='%23c88a2a'/%3E%3C/svg%3E">
+<style>
+:root {
+  --void: #000;
+  --chrome: #8f8fb0;
+  --chrome-hi: #5eeaf5;
+  --edge: #2a2a40;
+  --start: #e8302f;
+  --ui: ui-monospace, 'Cascadia Mono', Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; height: 100%; background: var(--void); color: var(--chrome); }
+body {
+  font-family: var(--ui);
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  height: 100dvh;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: 'bar' 'stage' 'pad';
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.bar {
+  grid-area: bar;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+}
+.bar a, .bar button {
+  font: 700 12px/1 var(--ui);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--chrome);
+  background: none;
+  border: 1px solid transparent;
+  padding: 9px 10px;
+  text-decoration: none;
+  cursor: pointer;
+  border-radius: 0;
+}
+.bar a:hover, .bar button:hover, .bar a:focus-visible, .bar button:focus-visible {
+  color: var(--chrome-hi);
+  border-color: var(--edge);
+  outline: none;
+}
+.bar button[aria-pressed='true'] { color: var(--chrome-hi); }
+.toggles { display: flex; gap: 2px; }
+
+.stage {
+  grid-area: stage;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  padding: 8px 16px;
+}
+/* A faint edge, so an unexplored black playfield still has a size. */
+.screen { position: relative; line-height: 0; touch-action: none; box-shadow: 0 0 0 1px #1c1c2c; }
+.screen canvas {
+  display: block;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+/* The CRT switch. Off by default: sharp pixels are the honest picture, the
+   tube is a costume. Scanlines are one per game pixel row (--px is set by
+   the screen fit), so they never beat against the art. */
+.screen.crt { border-radius: 3% / 4%; overflow: hidden; box-shadow: 0 0 0 4px #0b0b14, 0 0 36px rgba(94, 234, 245, 0.12); }
+.screen.crt canvas { filter: saturate(1.25) brightness(1.12) contrast(1.05) blur(calc(var(--px) * 0.18)); }
+.screen.crt::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background:
+    radial-gradient(ellipse at center, rgba(0, 0, 0, 0) 58%, rgba(0, 0, 0, 0.6) 100%),
+    repeating-linear-gradient(to bottom,
+      rgba(0, 0, 0, 0) 0, rgba(0, 0, 0, 0) calc(var(--px) * 0.55),
+      rgba(0, 0, 0, 0.38) calc(var(--px) * 0.55), rgba(0, 0, 0, 0.38) var(--px));
+  box-shadow: inset 0 0 48px rgba(0, 0, 0, 0.75);
+}
+
+/* Touch controls: shown on touch screens only. */
+.pad {
+  grid-area: pad;
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  max-width: 380px;
+  margin: 0 auto;
+  padding: 4px 20px 16px;
+}
+body.touch .pad { display: flex; }
+.dpad {
+  display: grid;
+  grid-template-columns: repeat(3, 54px);
+  grid-template-rows: repeat(3, 50px);
+  gap: 3px;
+}
+.dpad button, .start {
+  font: 700 18px/1 var(--ui);
+  color: var(--chrome);
+  background: #12121e;
+  border: 2px solid var(--edge);
+  border-radius: 6px;
+  padding: 0;
+  touch-action: none;
+  cursor: pointer;
+}
+.dpad button:active { background: #24243a; color: var(--chrome-hi); }
+.dpad .up { grid-area: 1 / 2; }
+.dpad .left { grid-area: 2 / 1; }
+.dpad .right { grid-area: 2 / 3; }
+.dpad .down { grid-area: 3 / 2; }
+.start {
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  background: var(--start);
+  border: 4px solid #7a1414;
+  color: #fff;
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  box-shadow: inset 0 -6px 0 rgba(0, 0, 0, 0.25);
+}
+.start:active { transform: translateY(2px); box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.25); }
+
+/* A phone on its side: d-pad left of the screen, START right of it. A game
+   with no d-pad (its keys are on the screen) moves the bar to a column
+   instead, so an upright screen gets the full height. */
+@media (orientation: landscape) and (max-height: 520px) {
+  body.no-pad {
+    grid-template-rows: minmax(0, 1fr);
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas: 'bar stage';
+  }
+  body.no-pad .bar { flex-direction: column; justify-content: flex-start; align-items: flex-start; }
+  body.no-pad .toggles { flex-direction: column; }
+  .stage { padding: 4px 8px; }
+  body.touch:not(.no-pad) {
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas: 'bar bar bar' 'dpad stage start';
+  }
+  body.touch:not(.no-pad) .pad { display: contents; }
+  body.touch .dpad { grid-area: dpad; align-self: center; margin-left: 12px; }
+  body.touch .start { grid-area: start; align-self: center; margin-right: 16px; }
+}
+
+/* Two-button pairs, for games with two things to turn (Sorted's loops). */
+.pair { display: grid; grid-template-columns: repeat(2, 54px); grid-template-rows: 54px auto; gap: 3px; justify-items: center; }
+.pair button {
+  width: 54px; height: 54px;
+  font: 700 18px/1 var(--ui); color: var(--chrome);
+  background: #12121e; border: 2px solid var(--edge); border-radius: 6px;
+  padding: 0; touch-action: none; cursor: pointer;
+}
+.pair button:active { background: #24243a; color: var(--chrome-hi); }
+.pair span { grid-column: 1 / 3; font: 700 10px/1 var(--ui); letter-spacing: 0.14em; color: var(--chrome); }
+@media (orientation: landscape) and (max-height: 520px) {
+  body.touch:not(.no-pad) .pad.loops { display: flex; flex-direction: column; gap: 12px; grid-area: start; align-self: center; margin-right: 12px; padding: 0; }
+  body.touch:not(.no-pad) .pad.loops .start { margin: 0; }
+}
+</style>
+</head>
+<body>
+
+<header class="bar">
+  <a href="/games/">&larr; Games</a>
+  <div class="toggles">
+    <button type="button" data-action="crt" aria-pressed="false">CRT off</button>
+    <button type="button" data-action="mute" aria-pressed="true">Sound on</button>
+    <button type="button" data-action="pause">Pause</button>
+  </div>
+</header>
+
+<main class="stage" id="stage">
+  <div class="screen" id="screen">
+    <canvas id="c" role="img" aria-label="Supply Line game screen. Up and down pick a lane, left and right pick a unit, Space builds it."></canvas>
+  </div>
+</main>
+
+<div class="pad">
+  <div class="dpad">
+    <button type="button" class="up" data-dir="up" aria-label="Up">&#9650;</button>
+    <button type="button" class="left" data-dir="left" aria-label="Left">&#9664;</button>
+    <button type="button" class="right" data-dir="right" aria-label="Right">&#9654;</button>
+    <button type="button" class="down" data-dir="down" aria-label="Down">&#9660;</button>
+  </div>
+  <button type="button" class="start" data-action="start">Start</button>
+</div>
+
+<script>
+(() => {
+'use strict';
+// ---- engine/font.js
+// 5x7 bitmap font, one string per glyph, rows separated by spaces. Drawn with
+// fillRect so it stays on the pixel grid at any scale; there is no web font.
+const GLYPHS = {
+  A: '.###. #...# #...# ##### #...# #...# #...#',
+  B: '####. #...# #...# ####. #...# #...# ####.',
+  C: '.###. #...# #.... #.... #.... #...# .###.',
+  D: '####. #...# #...# #...# #...# #...# ####.',
+  E: '##### #.... #.... ####. #.... #.... #####',
+  F: '##### #.... #.... ####. #.... #.... #....',
+  G: '.###. #...# #.... #.### #...# #...# .####',
+  H: '#...# #...# #...# ##### #...# #...# #...#',
+  I: '.###. ..#.. ..#.. ..#.. ..#.. ..#.. .###.',
+  J: '..### ...#. ...#. ...#. ...#. #..#. .##..',
+  K: '#...# #..#. #.#.. ##... #.#.. #..#. #...#',
+  L: '#.... #.... #.... #.... #.... #.... #####',
+  M: '#...# ##.## #.#.# #.#.# #...# #...# #...#',
+  N: '#...# #...# ##..# #.#.# #..## #...# #...#',
+  O: '.###. #...# #...# #...# #...# #...# .###.',
+  P: '####. #...# #...# ####. #.... #.... #....',
+  Q: '.###. #...# #...# #...# #.#.# #..#. .##.#',
+  R: '####. #...# #...# ####. #.#.. #..#. #...#',
+  S: '.###. #...# #.... .###. ....# #...# .###.',
+  T: '##### ..#.. ..#.. ..#.. ..#.. ..#.. ..#..',
+  U: '#...# #...# #...# #...# #...# #...# .###.',
+  V: '#...# #...# #...# #...# #...# .#.#. ..#..',
+  W: '#...# #...# #...# #.#.# #.#.# #.#.# .#.#.',
+  X: '#...# #...# .#.#. ..#.. .#.#. #...# #...#',
+  Y: '#...# #...# .#.#. ..#.. ..#.. ..#.. ..#..',
+  Z: '##### ....# ...#. ..#.. .#... #.... #####',
+  0: '.###. #...# #..## #.#.# ##..# #...# .###.',
+  1: '..#.. .##.. ..#.. ..#.. ..#.. ..#.. .###.',
+  2: '.###. #...# ....# ...#. ..#.. .#... #####',
+  3: '##### ...#. ..#.. ...#. ....# #...# .###.',
+  4: '...#. ..##. .#.#. #..#. ##### ...#. ...#.',
+  5: '##### #.... ####. ....# ....# #...# .###.',
+  6: '..##. .#... #.... ####. #...# #...# .###.',
+  7: '##### ....# ...#. ..#.. .#... .#... .#...',
+  8: '.###. #...# #...# .###. #...# #...# .###.',
+  9: '.###. #...# #...# .#### ....# ...#. .##..',
+  ' ': '..... ..... ..... ..... ..... ..... .....',
+  '.': '..... ..... ..... ..... ..... .##.. .##..',
+  ',': '..... ..... ..... ..... .##.. ..#.. .#...',
+  '!': '..#.. ..#.. ..#.. ..#.. ..#.. ..... ..#..',
+  '?': '.###. #...# ....# ...#. ..#.. ..... ..#..',
+  '-': '..... ..... ..... .###. ..... ..... .....',
+  '+': '..... ..#.. ..#.. ##### ..#.. ..#.. .....',
+  '=': '..... ..... ##### ..... ##### ..... .....',
+  ':': '..... .##.. .##.. ..... .##.. .##.. .....',
+  '/': '....# ...#. ...#. ..#.. .#... .#... #....',
+  "'": '..#.. ..#.. .#... ..... ..... ..... .....',
+  '<': '...#. ..#.. .#... #.... .#... ..#.. ...#.',
+  '>': '.#... ..#.. ...#. ....# ...#. ..#.. .#...',
+  '*': '..... #...# .#.#. ..#.. .#.#. #...# .....',
+  '%': '##..# ##.#. ...#. ..#.. .#... .#.## #..##',
+};
+const FONT_CHARS = Object.keys(GLYPHS).join('');
+
+const FONT_BITS = {};
+for (const [ch, rows] of Object.entries(GLYPHS)) FONT_BITS[ch] = rows.split(' ');
+
+const GLYPH_W = 5, GLYPH_H = 7, ADVANCE = 6;
+
+function textWidth(str, scale = 1) {
+  return str.length ? (str.length * ADVANCE - 1) * scale : 0;
+}
+
+// `color` is one colour, or an array of seven (one per glyph row) for the
+// striped logos arcade title screens used.
+function text(ctx, str, x, y, color, opts = {}) {
+  const scale = opts.scale || 1;
+  const s = String(str).toUpperCase();
+  let left = x;
+  if (opts.align === 'center') left = x - Math.floor(textWidth(s, scale) / 2);
+  else if (opts.align === 'right') left = x - textWidth(s, scale);
+  for (let i = 0; i < s.length; i++) {
+    const rows = FONT_BITS[s[i]] || FONT_BITS['?'];
+    const gx = left + i * ADVANCE * scale;
+    for (let r = 0; r < GLYPH_H; r++) {
+      ctx.fillStyle = Array.isArray(color) ? color[r] : color;
+      const row = rows[r];
+      for (let c = 0; c < GLYPH_W; c++) {
+        if (row[c] === '#') ctx.fillRect(gx + c * scale, y + r * scale, scale, scale);
+      }
+    }
+  }
+}
+
+// ---- engine/sprites.js
+// Sprites are drawn as text: one character per pixel, '.' is transparent and
+// every other character is looked up in a palette. Swapping the palette is how
+// a sprite changes state (lit, remembered, alerted) — the way the hardware did it.
+function sprite(rows, palette) {
+  const w = rows[0].length, h = rows.length;
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const g = c.getContext('2d');
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const ch = rows[y][x];
+    if (ch === '.' || !palette[ch]) continue;
+    g.fillStyle = palette[ch];
+    g.fillRect(x, y, 1, 1);
+  }
+  return c;
+}
+
+function mirrored(src) {
+  const c = document.createElement('canvas');
+  c.width = src.width; c.height = src.height;
+  const g = c.getContext('2d');
+  g.translate(src.width, 0);
+  g.scale(-1, 1);
+  g.drawImage(src, 0, 0);
+  return c;
+}
+
+// A 16x16 tile painted by a function of (x, y) -> colour or null.
+function tile(size, paint) {
+  const c = document.createElement('canvas');
+  c.width = size; c.height = size;
+  const g = c.getContext('2d');
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    const col = paint(x, y);
+    if (!col) continue;
+    g.fillStyle = col;
+    g.fillRect(x, y, 1, 1);
+  }
+  return c;
+}
+
+// ---- engine/screen.js
+// The arcade screen: a small fixed-resolution canvas, scaled up in whole
+// DEVICE pixels so every game pixel is the same size and stays sharp. A 336px
+// screen on a 3x phone is drawn at exactly 3 device pixels per game pixel,
+// never 3.35, which is what makes uneven, shimmering pixels.
+function makeScreen({ canvas, stage, frame, w, h, crtKey }) {
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+
+  function fit() {
+    const dpr = window.devicePixelRatio || 1;
+    // clientWidth/Height include the stage's padding; the screen gets only
+    // what is inside it.
+    const cs = getComputedStyle(stage);
+    const aw = stage.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    const ah = stage.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+    const s = Math.max(1, Math.floor(Math.min((aw * dpr) / w, (ah * dpr) / h)));
+    canvas.style.width = (s * w) / dpr + 'px';
+    canvas.style.height = (s * h) / dpr + 'px';
+    frame.style.setProperty('--px', s / dpr + 'px');
+  }
+  addEventListener('resize', fit);
+  if (window.visualViewport) visualViewport.addEventListener('resize', fit);
+  fit();
+
+  let crt = false;
+  try { crt = localStorage.getItem(crtKey) === '1'; } catch { crt = false; }
+  function setCrt(on) {
+    crt = on;
+    frame.classList.toggle('crt', on);
+    try { localStorage.setItem(crtKey, on ? '1' : '0'); } catch {}
+  }
+  setCrt(crt);
+
+  return {
+    ctx, w, h, fit,
+    get crt() { return crt; },
+    toggleCrt() { setCrt(!crt); return crt; },
+  };
+}
+
+// ---- engine/sound.js
+// Chip sound: square, triangle and noise voices made in the browser. No audio
+// files. Browsers only allow sound after a tap or key, so `wake()` is called
+// from every input handler and does nothing until then.
+function makeSound(muteKey) {
+  let ac = null, out = null;
+  let muted = false;
+  try { muted = localStorage.getItem(muteKey) === '1'; } catch { muted = false; }
+
+  function wake() {
+    if (ac) { if (ac.state === 'suspended') ac.resume(); return; }
+    const Ctor = window.AudioContext || window.webkitAudioContext;
+    if (!Ctor) return;
+    ac = new Ctor();
+    out = ac.createGain();
+    out.gain.value = muted ? 0 : 1;
+    out.connect(ac.destination);
+  }
+
+  // One note. `at` is seconds from now, `to` slides the pitch.
+  function note(freq, dur, { type = 'square', vol = 0.05, at = 0, to = null } = {}) {
+    if (!ac) return;
+    const t = ac.currentTime + at;
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(freq, t);
+    if (to) o.frequency.exponentialRampToValueAtTime(to, t + dur);
+    g.gain.setValueAtTime(vol, t);
+    g.gain.setValueAtTime(vol, t + dur * 0.7);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(out);
+    o.start(t); o.stop(t + dur + 0.02);
+  }
+
+  // A run of notes: [[freq, dur], ...], each after the last; 0 is a rest.
+  function tune(notes, opts = {}) {
+    let at = opts.at || 0;
+    for (const [f, d] of notes) {
+      if (f) note(f, d * 0.92, { ...opts, at });
+      at += d;
+    }
+  }
+
+  function noise(dur, { vol = 0.2, cutoff = 900, at = 0 } = {}) {
+    if (!ac) return;
+    const len = Math.floor(ac.sampleRate * dur);
+    const buf = ac.createBuffer(1, len, ac.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len) ** 2;
+    const s = ac.createBufferSource(); s.buffer = buf;
+    const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = cutoff;
+    const g = ac.createGain(); g.gain.value = vol;
+    s.connect(f); f.connect(g); g.connect(out);
+    s.start(ac.currentTime + at);
+  }
+
+  // A held sound (an engine): filtered noise that runs for the whole session
+  // and is gated by its gain. Starting a source every frame is what makes
+  // engine sound crackle. Returns set(on); safe to call before wake().
+  function drone({ cutoff = 420, vol = 0.16 } = {}) {
+    let gain = null;
+    return on => {
+      if (!ac) return;
+      if (!gain) {
+        const len = ac.sampleRate * 2;
+        const buf = ac.createBuffer(1, len, ac.sampleRate);
+        const d = buf.getChannelData(0);
+        for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+        const s = ac.createBufferSource(); s.buffer = buf; s.loop = true;
+        const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = cutoff;
+        gain = ac.createGain(); gain.gain.value = 0;
+        s.connect(f); f.connect(gain); gain.connect(out);
+        s.start();
+      }
+      gain.gain.setTargetAtTime(on ? vol : 0, ac.currentTime, 0.03);
+    };
+  }
+
+  function setMuted(on) {
+    muted = on;
+    if (out) out.gain.value = on ? 0 : 1;
+    try { localStorage.setItem(muteKey, on ? '1' : '0'); } catch {}
+  }
+
+  return {
+    wake, note, tune, noise, drone,
+    get muted() { return muted; },
+    toggleMute() { setMuted(!muted); return muted; },
+  };
+}
+
+// ---- engine/input.js
+// Keyboard and touch in one place. `held` is what a game polls each tick;
+// `onDir` fires once per press (menus, initials); `onAction` carries the
+// buttons: start, pause, back, crt, mute.
+//
+// A word game passes `onLetter`: then every letter key is a letter (WASD stop
+// being directions, P/C/M stop being shortcuts; those stay on the buttons) and
+// only the arrows move. `onKey(code)` gets any other key and returns true if
+// it used it. `onPoint(x, y)` receives taps on the screen in GAME
+// pixels; returning true means the game used the tap, otherwise it is START.
+function makeInput({ screen, onAction, onDir, onAny, onLetter = null, onPoint = null, onKey = null }) {
+  // `fire` is Space, Enter or the START button while held, for games that
+  // hold a trigger down; every other game ignores it.
+  const held = { up: false, down: false, left: false, right: false, fire: false };
+  const KEYS = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
+  const ACTIONS = { Space: 'start', Enter: 'start', Escape: 'back' };
+  if (!onLetter) {
+    Object.assign(KEYS, { KeyW: 'up', KeyS: 'down', KeyA: 'left', KeyD: 'right' });
+    Object.assign(ACTIONS, { KeyP: 'pause', KeyC: 'crt', KeyM: 'mute' });
+  }
+
+  let touch = matchMedia('(pointer: coarse)').matches;
+  const markTouch = on => {
+    touch = on;
+    document.body.classList.toggle('touch', on);
+  };
+  markTouch(touch);
+  addEventListener('touchstart', () => { if (!touch) markTouch(true); }, { passive: true });
+
+  addEventListener('keydown', e => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const dir = KEYS[e.code];
+    if (dir) {
+      e.preventDefault();
+      onAny();
+      if (!e.repeat) onDir(dir);
+      held[dir] = true;
+      return;
+    }
+    const action = ACTIONS[e.code];
+    if (action) {
+      if (action === 'start') held.fire = true;
+      // Space and Enter on a focused button or link belong to that control.
+      if ((e.code === 'Space' || e.code === 'Enter') && e.target.closest && e.target.closest('button, a')) return;
+      e.preventDefault();
+      onAny();
+      if (!e.repeat) onAction(action);
+      return;
+    }
+    // e.key, not e.code: the letter printed on the key, whatever the layout.
+    // Digits come through the same door, for games that number their keys.
+    if (onLetter && /^[a-z0-9]$/i.test(e.key)) {
+      e.preventDefault();
+      onAny();
+      if (!e.repeat) onLetter(e.key.toUpperCase());
+    }
+    // Anything else a game asked for by code (Z for undo, R for restart).
+    else if (onKey && !e.repeat && onKey(e.code)) { e.preventDefault(); onAny(); }
+  });
+  addEventListener('keyup', e => {
+    const dir = KEYS[e.code];
+    if (dir) held[dir] = false;
+    if (ACTIONS[e.code] === 'start') held.fire = false;
+  });
+  addEventListener('blur', () => { held.up = held.down = held.left = held.right = held.fire = false; });
+
+  for (const b of document.querySelectorAll('[data-dir]')) {
+    const dir = b.dataset.dir;
+    const down = e => {
+      e.preventDefault();
+      onAny();
+      held.up = held.down = held.left = held.right = false;
+      held[dir] = true;
+      onDir(dir);
+    };
+    const up = () => { held[dir] = false; };
+    b.addEventListener('pointerdown', down);
+    b.addEventListener('pointerup', up);
+    b.addEventListener('pointerleave', up);
+    b.addEventListener('pointercancel', up);
+    b.addEventListener('contextmenu', e => e.preventDefault());
+  }
+  // Buttons that send a letter (Sorted's left loop is A and D).
+  for (const b of document.querySelectorAll('[data-letter]')) {
+    b.addEventListener('pointerdown', e => { e.preventDefault(); onAny(); if (onLetter) onLetter(b.dataset.letter); });
+    b.addEventListener('contextmenu', e => e.preventDefault());
+  }
+  for (const b of document.querySelectorAll('[data-action]')) {
+    const action = b.dataset.action;
+    // pointerdown for the START button, so it answers as fast as the d-pad;
+    // click for the toggles, so keyboard users can press them too.
+    if (b.classList.contains('start')) {
+      b.addEventListener('pointerdown', e => { e.preventDefault(); onAny(); held.fire = true; onAction(action); });
+      for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(ev, () => { held.fire = false; });
+    } else {
+      b.addEventListener('click', () => { onAny(); onAction(action); });
+    }
+  }
+  screen.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    onAny();
+    if (onPoint) {
+      const r = screen.getBoundingClientRect();
+      const x = ((e.clientX - r.left) * screen.width) / r.width;
+      const y = ((e.clientY - r.top) * screen.height) / r.height;
+      if (onPoint(x, y)) return;
+    }
+    onAction('start');
+  });
+
+  return { held, get touch() { return touch; } };
+}
+
+// ---- engine/scores.js
+// The top-ten table, kept on this device only. A new browser starts with a
+// table of invented initials so the attract mode has something to show.
+const ENTRY_LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ.';
+
+function makeScores(key, defaults) {
+  let table = defaults.map(r => ({ ...r }));
+  try {
+    const saved = JSON.parse(localStorage.getItem(key) || 'null');
+    if (Array.isArray(saved) && saved.length === 10 && saved.every(r => typeof r.s === 'number' && typeof r.n === 'string')) table = saved;
+  } catch {}
+
+  return {
+    get table() { return table; },
+    get top() { return table[0].s; },
+    qualifies(score) { return score > 0 && score > table[9].s; },
+    // Returns the rank (0-9) the new row landed on.
+    add(n, s) {
+      let rank = table.findIndex(r => s > r.s);
+      if (rank === -1) return -1;
+      table.splice(rank, 0, { n, s });
+      table.length = 10;
+      try { localStorage.setItem(key, JSON.stringify(table)); } catch {}
+      return rank;
+    },
+  };
+}
+
+// ---- engine/entry.js
+// Three initials, drawn large, with tap targets for games that have no d-pad:
+// on a touch screen a tap above a letter's middle steps it up, below steps it
+// down, and a tap anywhere else accepts it. (Without this a phone player in a
+// tap-only game could only ever enter AAA.)
+function initialsLayout(w, y) {
+  return { x0: Math.round(w / 2 - 39), y, step: 30 };
+}
+
+function arrow(ctx, cx, y, up, ink) {
+  ctx.fillStyle = ink;
+  for (let r = 0; r < 4; r++) ctx.fillRect(cx - r, up ? y + r : y + 3 - r, r * 2 + 1, 1);
+}
+
+function drawInitials(ctx, entry, L, { blinkOn, touch, ink }) {
+  for (let i = 0; i < 3; i++) {
+    const x = L.x0 + i * L.step;
+    const current = i === entry.pos;
+    if (!current || blinkOn) text(ctx, ENTRY_LETTERS[entry.letters[i]], x, L.y, current ? ink.yellow : ink.white, { scale: 3 });
+    ctx.fillStyle = current ? ink.yellow : ink.dim;
+    ctx.fillRect(x - 2, L.y + 26, 18, 2);
+    if (touch && current) {
+      arrow(ctx, x + 7, L.y - 9, true, ink.yellow);
+      arrow(ctx, x + 7, L.y + 32, false, ink.yellow);
+    }
+  }
+}
+
+// 'up', 'down' or 'next' for a tap at (x, y) in game pixels.
+function tapInitials(entry, L, x, y) {
+  const left = L.x0 + entry.pos * L.step - 8, right = left + 32;
+  if (x < left || x > right) return 'next';
+  if (y >= L.y - 16 && y < L.y + 11) return 'up';
+  if (y >= L.y + 11 && y <= L.y + 40) return 'down';
+  return 'next';
+}
+
+// ---- games/supply-line/rules.js
+// Supply Line's rules: two bases, three lanes, one supply depot in the middle
+// of each lane. Both sides play by exactly these rules and prices; the CPU
+// differs only in how quickly and how carefully it thinks (brain below).
+// Pure: no drawing, no sound, no clock. The game and the tests both step it.
+
+const W = 320;            // field width in pixels, one unit to the pixel
+const LANES = 3;
+const HQ_FACE = [24, 296]; // where each HQ's wall is; attackers stop here
+const TURRET_X = [44, 276];
+const SPAWN_X = [26, 294];
+const DEPOT_X = 160;
+const DIR = [1, -1];        // left side marches right, right side left
+
+// A unit's place is `d`, how far it has come from its own door; x is drawn
+// from it. Both sides count the same way, so the field is exactly mirrored:
+// left-to-right counting would round differently on each side and decide
+// mirror matches by floating-point luck.
+const GAP = SPAWN_X[1] - SPAWN_X[0];           // door to door
+const FOE_TURRET_D = TURRET_X[1] - SPAWN_X[0];       // the enemy turret, from my door
+const FOE_WALL_D = HQ_FACE[1] - SPAWN_X[0];          // the enemy HQ wall
+const OWN_TURRET_D = TURRET_X[0] - SPAWN_X[0];       // my own turret
+const DEPOT_D = DEPOT_X - SPAWN_X[0] - 4;            // trucks queue 4 short of the pile
+const xOf = (side, d) => SPAWN_X[side] + DIR[side] * d;
+
+const START_CREDITS = 400;
+const TRICKLE = 5;          // credits per second to each side, always
+const CARGO = 50;           // credits a truck brings home per trip
+const LOAD_TICKS = 60;
+const BUILD_COOL = 20;      // ticks between two builds by one side
+const UNIT_CAP = 24;        // per side, trucks included
+const TRUCK_CAP = 4;
+const TURRET_HP = 400, HQ_HP = 1000;
+const TURRET = { range: 38, dmg: 10, cool: 24 };
+
+// Rifles beat Rockets, Rockets beat Tanks, Tanks beat Rifles, money for money.
+const KINDS = ['truck', 'rifle', 'rocket', 'tank'];
+const UNITS = {
+  truck: { cost: 100, hp: 50, speed: 0.35, range: 0, cool: 0 },
+  rifle: { cost: 50, hp: 30, speed: 0.3, range: 20, cool: 30 },
+  rocket: { cost: 75, hp: 30, speed: 0.28, range: 34, cool: 60 },
+  tank: { cost: 150, hp: 140, speed: 0.25, range: 26, cool: 50 },
+};
+// DAMAGE[attacker][target class]; 'inf' is rifle or rocket, 'bld' a turret or HQ.
+const DAMAGE = {
+  rifle: { inf: 6, tank: 1.5, truck: 6, bld: 3 },
+  rocket: { inf: 4, tank: 30, truck: 20, bld: 20 },
+  tank: { inf: 14, tank: 12, truck: 14, bld: 16 },
+  turret: { inf: 10, tank: 10, truck: 10, bld: 0 },
+};
+const classOf = kind => (kind === 'rifle' || kind === 'rocket' ? 'inf' : kind);
+
+function newBattle() {
+  return {
+    t: 0,
+    nextId: 1,
+    winner: null,      // 0 or 1, or 2 when both HQs fall on the same tick
+    pending: [],
+    units: [],
+    queued: [],        // built this tick; they join the field at the next
+    events: [],
+    sides: [0, 1].map(() => ({
+      credits: START_CREDITS, cool: 0, hq: HQ_HP,
+      turrets: Array(LANES).fill(TURRET_HP), turretCd: Array(LANES).fill(0),
+      // what this side destroyed, valued at cost (turret 500, HQ 2000)
+      destroyed: 0,
+    })),
+  };
+}
+
+const count = (b, side, kind) => b.units.concat(b.queued).filter(u => u.side === side && (!kind || u.kind === kind)).length;
+
+// Why a build would be refused, or null if it can go ahead.
+function refusal(b, side, kind, lane) {
+  const s = b.sides[side];
+  if (b.winner !== null) return 'over';
+  if (s.cool > 0) return 'busy';
+  if (s.credits < UNITS[kind].cost) return 'credits';
+  if (count(b, side) >= UNIT_CAP) return 'full';
+  if (kind === 'truck' && count(b, side, 'truck') >= TRUCK_CAP) return 'trucks';
+  if (lane < 0 || lane >= LANES) return 'lane';
+  return null;
+}
+
+function build(b, side, kind, lane) {
+  if (refusal(b, side, kind, lane)) return null;
+  const s = b.sides[side];
+  s.credits -= UNITS[kind].cost;
+  s.cool = BUILD_COOL;
+  const u = { id: b.nextId++, side, kind, lane, d: 0, x: SPAWN_X[side], hp: UNITS[kind].hp, cd: 0, job: 'out', load: 0, cargo: 0 };
+  // Queued, not placed: the other side must not see it before its own turn
+  // to think this tick, or whoever thinks second would always know more.
+  b.queued.push(u);
+  b.events.push({ type: 'build', side, kind, lane });
+  return u;
+}
+
+// The nearest enemy this unit can shoot, in front of it or level with it.
+function targetFor(b, u, range) {
+  let best = null, bestD = Infinity;
+  for (const e of b.units) {
+    if (e.side === u.side || e.lane !== u.lane || e.hp <= 0) continue;
+    const ahead = GAP - e.d - u.d;
+    if (ahead < -4 || ahead > range) continue;
+    if (ahead < bestD) { bestD = ahead; best = e; }
+  }
+  if (best) return { unit: best };
+  const foe = 1 - u.side;
+  if (b.sides[foe].turrets[u.lane] > 0) {
+    if (FOE_TURRET_D - u.d <= range) return { turret: foe };
+  } else if (FOE_WALL_D - u.d <= range) return { hq: foe };
+  return null;
+}
+
+// Shots are aimed during a tick and land together at its end, so neither
+// side gains from being first in the list: a mirror match is a draw.
+function hit(b, shooterKind, shooterSide, from, target) {
+  b.pending.push({ shooterKind, shooterSide, lane: from.lane, x: from.x, target });
+}
+
+function land(b, { shooterKind, shooterSide, lane, x, target }) {
+  const dmgTo = DAMAGE[shooterKind];
+  if (target.unit) {
+    const e = target.unit;
+    e.hp -= dmgTo[classOf(e.kind)];
+    b.events.push({ type: 'shot', side: shooterSide, kind: shooterKind, lane, from: x, to: e.x, at: 'unit', id: e.id });
+  } else if (target.turret !== undefined) {
+    const s = b.sides[target.turret];
+    if (s.turrets[lane] <= 0) return;
+    s.turrets[lane] = Math.max(0, s.turrets[lane] - dmgTo.bld);
+    b.events.push({ type: 'shot', side: shooterSide, kind: shooterKind, lane, from: x, to: TURRET_X[target.turret], at: 'turret' });
+    if (s.turrets[lane] === 0) {
+      b.sides[shooterSide].destroyed += 500;
+      b.events.push({ type: 'turret', side: target.turret, lane });
+    }
+  } else {
+    const s = b.sides[target.hq];
+    s.hq = Math.max(0, s.hq - dmgTo.bld);
+    b.events.push({ type: 'shot', side: shooterSide, kind: shooterKind, lane, from: x, to: HQ_FACE[target.hq], at: 'hq' });
+  }
+}
+
+// One tick, 1/60 of a second.
+function step(b) {
+  if (b.winner !== null) return;
+  b.t++;
+  b.pending = [];
+  b.units.push(...b.queued);
+  b.queued = [];
+  for (const s of b.sides) {
+    if (s.cool > 0) s.cool--;
+    if (b.t % 60 === 0) s.credits += TRICKLE;
+  }
+
+  // Everyone aims from where they stand before anyone moves, for the same
+  // reason shots land together: list order must not matter.
+  const aims = b.units.map(u => (u.kind === 'truck' ? null : targetFor(b, u, UNITS[u.kind].range)));
+  b.units.forEach((u, i) => {
+    const spec = UNITS[u.kind];
+    if (u.kind === 'truck') {
+      // out to the depot, load, home to the base, unload; and again.
+      if (u.job === 'out') {
+        u.d += spec.speed;
+        if (u.d >= DEPOT_D) { u.d = DEPOT_D; u.job = 'load'; u.load = LOAD_TICKS; }
+      } else if (u.job === 'load') {
+        if (--u.load <= 0) { u.cargo = CARGO; u.job = 'home'; }
+      } else {
+        u.d -= spec.speed;
+        if (u.d <= 0) {
+          u.d = 0;
+          b.sides[u.side].credits += u.cargo;
+          b.events.push({ type: 'cash', side: u.side, amount: u.cargo, lane: u.lane });
+          u.cargo = 0; u.job = 'out';
+        }
+      }
+      u.x = xOf(u.side, u.d);
+      return;
+    }
+    if (u.cd > 0) u.cd--;
+    const target = aims[i];
+    if (target) {
+      if (u.cd <= 0) { hit(b, u.kind, u.side, u, target); u.cd = spec.cool; }
+    } else {
+      // never walk through an enemy turret or wall that is still standing
+      const wall = b.sides[1 - u.side].turrets[u.lane] > 0 ? FOE_TURRET_D : FOE_WALL_D;
+      u.d = Math.min(wall, u.d + spec.speed);
+      u.x = xOf(u.side, u.d);
+    }
+  });
+
+  for (let side = 0; side < 2; side++) {
+    const s = b.sides[side];
+    for (let lane = 0; lane < LANES; lane++) {
+      if (s.turrets[lane] <= 0) continue;
+      if (s.turretCd[lane] > 0) { s.turretCd[lane]--; continue; }
+      let best = null, bestD = Infinity;
+      for (const e of b.units) {
+        if (e.side === side || e.lane !== lane || e.hp <= 0) continue;
+        const d = Math.abs(GAP - e.d - OWN_TURRET_D);
+        if (d <= TURRET.range && d < bestD) { bestD = d; best = e; }
+      }
+      if (best) { hit(b, 'turret', side, { lane, x: TURRET_X[side] }, { unit: best }); s.turretCd[lane] = TURRET.cool; }
+    }
+  }
+
+  for (const p of b.pending) land(b, p);
+
+  const alive = [];
+  for (const u of b.units) {
+    if (u.hp > 0) { alive.push(u); continue; }
+    b.sides[1 - u.side].destroyed += UNITS[u.kind].cost;
+    b.events.push({ type: 'die', side: u.side, kind: u.kind, lane: u.lane, x: u.x });
+  }
+  b.units = alive;
+
+  const fallen = [0, 1].filter(side => b.sides[side].hq <= 0);
+  for (const side of fallen) b.events.push({ type: 'hq', side });
+  // Both on the same tick is a draw (winner 2); otherwise the other side wins.
+  if (fallen.length === 2) b.winner = 2;
+  else if (fallen.length === 1) { b.winner = 1 - fallen[0]; b.sides[b.winner].destroyed += 2000; }
+}
+
+// ---------------------------------------------------------------- the CPU
+
+// What beats what: the unit to send against each kind.
+const COUNTER = { tank: 'rocket', rocket: 'rifle', rifle: 'tank', truck: 'rifle' };
+
+// A brain thinks every `think` ticks; with chance `careless` it sends
+// something random instead of the right answer. The same brain can play
+// either side, which is how the demo and the balance test work.
+function brain(think, careless, rand = Math.random, trucks = 3) {
+  return { think, careless, rand, trucks, wait: 0, plan: null };
+}
+
+// How much enemy is in each lane, and how deep into my half it has come.
+function threat(b, side) {
+  const lanes = Array.from({ length: LANES }, () => ({ value: 0, kinds: { truck: 0, rifle: 0, rocket: 0, tank: 0 } }));
+  for (const u of b.units) {
+    if (u.side === side) continue;
+    const depth = u.d / GAP; // 1 at my door
+    const v = u.kind === 'truck' ? 0 : UNITS[u.kind].cost * (0.5 + depth);
+    lanes[u.lane].value += v;
+    lanes[u.lane].kinds[u.kind] += UNITS[u.kind].cost;
+  }
+  for (const u of b.units) if (u.side === side && u.kind !== 'truck') lanes[u.lane].value -= UNITS[u.kind].cost * 0.8;
+  return lanes;
+}
+
+function think(b, side, br) {
+  if (b.winner !== null) return null;
+  if (br.wait > 0) { br.wait--; return null; }
+  // A decision, once made, waits for the money; then the brain rests.
+  if (!br.plan) br.plan = decide(b, side, br);
+  const { kind, lane } = br.plan;
+  const why = refusal(b, side, kind, lane);
+  if (why === 'credits' || why === 'busy') return null;
+  br.plan = null;
+  br.wait = br.think;
+  return why ? null : build(b, side, kind, lane);
+}
+
+function decide(b, side, br) {
+  const r = br.rand;
+  if (r() < br.careless) return { kind: KINDS[1 + Math.floor(r() * 3)], lane: Math.floor(r() * LANES) };
+  const lanes = threat(b, side);
+  const trucks = count(b, side, 'truck');
+  const wantTrucks = Math.min(br.trucks, b.t < 60 * 40 ? 2 : 3);
+  // the lane under the worst pressure, if any
+  let worst = 0;
+  for (let i = 1; i < LANES; i++) if (lanes[i].value > lanes[worst].value) worst = i;
+  if (lanes[worst].value > 60) {
+    const k = lanes[worst].kinds;
+    const top = ['tank', 'rocket', 'rifle'].reduce((a, c) => (k[c] > k[a] ? c : a), 'tank');
+    return { kind: COUNTER[top], lane: worst };
+  }
+  if (trucks < wantTrucks) {
+    let calm = 0;
+    for (let i = 1; i < LANES; i++) if (lanes[i].value < lanes[calm].value) calm = i;
+    return { kind: 'truck', lane: calm };
+  }
+  // otherwise push: the lane whose enemy turret is weakest, with whatever
+  // beats what the enemy keeps there, or rockets for the walls.
+  const foe = b.sides[1 - side];
+  let lane = 0;
+  for (let i = 1; i < LANES; i++) if (foe.turrets[i] < foe.turrets[lane]) lane = i;
+  const k = lanes[lane].kinds;
+  const top = ['tank', 'rocket', 'rifle'].reduce((a, c) => (k[c] > k[a] ? c : a), 'tank');
+  const kind = k[top] > 0 ? COUNTER[top] : r() < 0.6 ? 'rocket' : 'tank';
+  return { kind, lane };
+}
+
+// The CPU never gets more money or better units, only better play: each
+// round it thinks quicker, slips less, and runs more trucks (one in round 1).
+function cpuBrain(round, rand = Math.random) {
+  return brain(Math.max(20, 150 - (round - 1) * 30), Math.max(0.05, 0.5 - (round - 1) * 0.1), rand, Math.min(3, round));
+}
+
+// ---- games/supply-line/game.js
+// 320x200: a 20px bar on top, three 52px lanes, the build bar at the bottom.
+const H = 200, TOP = 20, LANE_H = 52, BAR_Y = TOP + LANES * LANE_H; // 176
+const TICK_MS = 1000 / 60;
+const laneMid = lane => TOP + lane * LANE_H + LANE_H / 2;
+
+const INK = {
+  red: '#ff3b3b', white: '#ffffff', yellow: '#ffd23f', orange: '#ff8a1e', green: '#3fd46b',
+  cyan: '#5eeaf5', grey: '#8f8fb0', dim: '#4a4a6a',
+};
+const SIDE_INK = [INK.cyan, INK.orange];
+const LOGO_INK = ['#ffffff', '#ffe9a0', '#ffd23f', '#ffd23f', '#ff8a1e', '#e8542f', '#b8205a'];
+const ROW_INKS = ['#ff3b3b', '#ff8a1e', '#ffd23f', '#3fd46b', '#5eeaf5', '#8f7bff', '#ff5fb8', '#ff8a1e', '#ffd23f', '#3fd46b'];
+const RANKS = ['1ST', '2ND', '3RD', '4TH', '5TH', '6TH', '7TH', '8TH', '9TH', '10TH'];
+const NAMES = { truck: 'TRUCK', rifle: 'RIFLE', rocket: 'ROCKET', tank: 'TANK' };
+
+// Invented initials, so a first visit has a table to beat.
+const DEFAULT_SCORES = [
+  ['HQX', 12000], ['RUN', 10000], ['DPT', 8500], ['GRD', 7000], ['TNK', 5500],
+  ['OIL', 4500], ['CRT', 3500], ['RAD', 2500], ['MAP', 1500], ['JOE', 800],
+].map(([n, s]) => ({ n, s }));
+
+// ---------------------------------------------------------------- sprites
+
+const RIFLE = [
+  ['.AA.....', '.SS.....', '.AAgggg.', '.AA.....', '.AA.....', '.A.A....', '.A.A....', 'BB.BB...'],
+  ['.AA.....', '.SS.....', '.AAgggg.', '.AA.....', '.AA.....', '.AA.....', 'A..A....', 'B...B...'],
+];
+const ROCKET = [
+  ['.AA.....', '.SS.....', 'gggggggR', '.AA.....', '.AA.....', '.A.A....', '.A.A....', 'BB.BB...'],
+  ['.AA.....', '.SS.....', 'gggggggR', '.AA.....', '.AA.....', '.AA.....', 'A..A....', 'B...B...'],
+];
+const TANK = [
+  ['....CCCC....', '...CAAAAgggg', '...AAAAA....', '.AAAAAAAAAA.', 'CCCCCCCCCCCC', 'BkBkBkBkBkBk', '.BBBBBBBBBB.'],
+  ['....CCCC....', '...CAAAAgggg', '...AAAAA....', '.AAAAAAAAAA.', 'CCCCCCCCCCCC', 'kBkBkBkBkBkB', '.BBBBBBBBBB.'],
+];
+const TRUCK = [
+  ['........AA..', '........ACC.', 'LLLLLLL.AAAA', 'BBBBBBBBAAAA', 'BBBBBBBBBBBB', '.kk....kk...', '.kk....kk...'],
+  ['........AA..', '........ACC.', 'LLLLLLL.AAAA', 'BBBBBBBBAAAA', 'BBBBBBBBBBBB', '.kk....kk...', '.kk....kk...'],
+];
+const TURRET_ART = ['...CCCC.....', '..CAAAAC....', '..AAAAAAgggg', '..AAAAAA....', '...BBBB.....', '..BBBBBB....', '.BBBBBBBB...', '.BkBBBBkB...', 'BBBBBBBBBB..', 'BBBBBBBBBB..'];
+const RUBBLE = ['..........', '...g......', '.gBg..g...', 'gBBgBgBg..', 'BBBBBBBBB.'];
+
+const SIDE_PAL = [
+  { A: '#5eeaf5', B: '#2a6a8a', C: '#c8faff' },
+  { A: '#ff8a1e', B: '#8a3a10', C: '#ffd8a8' },
+];
+const COMMON = { S: '#f7c78e', g: '#a0a0b8', R: '#ff3b3b', k: '#1a1a2a' };
+const FLASH = { A: '#ffffff', B: '#ffffff', C: '#ffffff', S: '#ffffff', g: '#ffffff', R: '#ffffff', k: '#ffffff', L: '#ffffff' };
+
+// art[side][kind][frame], facing the way that side marches; trucks also have
+// a loaded variant and a facing-home variant.
+function makeArt() {
+  const art = [0, 1].map(side => {
+    const pal = { ...COMMON, ...SIDE_PAL[side] };
+    const face = c => (side === 0 ? c : mirrored(c));
+    const back = c => (side === 0 ? mirrored(c) : c);
+    const set = { rifle: RIFLE, rocket: ROCKET, tank: TANK };
+    const out = {};
+    for (const [k, frames] of Object.entries(set)) out[k] = frames.map(f => face(sprite(f, pal)));
+    out.truckOut = face(sprite(TRUCK[0], { ...pal, L: '#3a3a55' }));
+    out.truckHome = back(sprite(TRUCK[0], { ...pal, L: '#ffd23f' }));
+    out.turret = face(sprite(TURRET_ART, pal));
+    out.turretHit = face(sprite(TURRET_ART, FLASH));
+    out.rubble = sprite(RUBBLE, { g: '#6a6a80', B: '#3a3a55' });
+    out.flash = { rifle: face(sprite(RIFLE[0], FLASH)), rocket: face(sprite(ROCKET[0], FLASH)), tank: face(sprite(TANK[0], FLASH)), truck: face(sprite(TRUCK[0], FLASH)) };
+    return out;
+  });
+  return art;
+}
+
+// ---------------------------------------------------------------- set-up
+
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const canvas = document.getElementById('c');
+const screen = makeScreen({ canvas, stage: document.getElementById('stage'), frame: document.getElementById('screen'), w: W, h: H, crtKey: 'lk.arcade.crt' });
+const ctx = screen.ctx;
+const sound = makeSound('lk.arcade.mute');
+const scores = makeScores('lk.supplyline.scores', DEFAULT_SCORES);
+const art = makeArt();
+const ENTRY_AT = initialsLayout(W, 92);
+
+let battle = newBattle(), cpu = cpuBrain(1), demoBrain = null;
+let mode = 'attract', page = 'title', pageT = 0, clock = 0, timer = 0, t = 0;
+let round = 1, banked = 0, lane = 1, pick = 1, note = null, demo = false, pausedFrom = null;
+let entry = null, highlight = -1, effects = [], sparks = [], flashes = new Map();
+let lastShotSound = 0;
+
+const score = () => banked + (demo ? 0 : battle.sides[0].destroyed);
+
+const SFX = {
+  start: () => sound.tune([[392, 0.1], [523, 0.1], [659, 0.1], [784, 0.25]], { vol: 0.045 }),
+  build: () => sound.note(660, 0.06, { vol: 0.04, to: 990 }),
+  refuse: () => sound.note(140, 0.12, { vol: 0.05 }),
+  move: () => sound.note(1200, 0.02, { vol: 0.02 }),
+  rifle: () => sound.noise(0.04, { vol: 0.05, cutoff: 3000 }),
+  rocket: () => sound.note(400, 0.12, { type: 'sawtooth', to: 120, vol: 0.03 }),
+  tank: () => sound.noise(0.12, { vol: 0.1, cutoff: 500 }),
+  turret: () => sound.noise(0.06, { vol: 0.06, cutoff: 1500 }),
+  die: () => sound.noise(0.18, { vol: 0.12, cutoff: 900 }),
+  cash: () => sound.tune([[1319, 0.05], [1760, 0.08]], { vol: 0.03 }),
+  fall: () => { sound.noise(0.6, { vol: 0.3, cutoff: 600 }); sound.note(110, 0.5, { to: 40, vol: 0.06 }); },
+  won: () => sound.tune([[523, 0.1], [659, 0.1], [784, 0.1], [1047, 0.3]], { vol: 0.045 }),
+  lost: () => sound.tune([[392, 0.18], [330, 0.18], [262, 0.4]], { vol: 0.045, type: 'triangle' }),
+  blip: () => sound.note(988, 0.05, { vol: 0.04 }),
+};
+// The demo plays silently.
+function sfx(name) { if (!demo) SFX[name](); }
+
+// ---------------------------------------------------------------- the game
+
+function newGame() {
+  demo = false; banked = 0; round = 1;
+  newRound();
+  sfx('start');
+}
+
+function newRound() {
+  battle = newBattle();
+  cpu = cpuBrain(round);
+  effects = []; sparks = []; flashes.clear(); note = null;
+  lane = 1; pick = 1;
+  mode = 'ready'; timer = 120;
+}
+
+function startDemo() {
+  demo = true; round = 1; banked = 0;
+  battle = newBattle();
+  demoBrain = brain(50, 0.2);
+  cpu = brain(50, 0.2);
+  effects = []; sparks = []; flashes.clear(); note = null;
+  mode = 'playing'; t = 0;
+}
+
+const REFUSED = {
+  credits: k => 'NEED ' + UNITS[k].cost + ' CREDITS',
+  busy: () => 'STILL BUILDING',
+  full: () => '24 UNITS AT MOST',
+  trucks: () => '4 TRUCKS AT MOST',
+};
+
+function order(kind) {
+  if (mode !== 'playing' || demo) return;
+  const why = refusal(battle, 0, kind, lane);
+  if (why) { note = { text: REFUSED[why] ? REFUSED[why](kind) : '', t: 70 }; sfx('refuse'); return; }
+  build(battle, 0, kind, lane);
+}
+
+function events() {
+  for (const e of battle.events) {
+    if (e.type === 'shot') {
+      effects.push({ ...e, t: e.kind === 'rocket' ? 10 : 5 });
+      const foe = 1 - e.side;
+      flashes.set(e.at === 'unit' ? e.id : e.at === 'turret' ? 't' + foe + e.lane : 'hq' + foe, 4);
+      if (e.kind === 'turret' || e.kind === 'tank' || clock - lastShotSound > 5) { sfx(e.kind); lastShotSound = clock; }
+    } else if (e.type === 'die') {
+      burst(e.x, laneMid(e.lane), e.kind === 'tank' || e.kind === 'truck' ? 18 : 8);
+      sfx('die');
+    } else if (e.type === 'turret') {
+      burst(TURRET_X[e.side], laneMid(e.lane), 30);
+      sfx('fall');
+    } else if (e.type === 'cash') {
+      if (e.side === 0) { flashes.set('cash', 20); sfx('cash'); }
+    } else if (e.type === 'build') {
+      if (e.side === 0) sfx('build');
+    } else if (e.type === 'hq') {
+      for (let i = 0; i < 4; i++) burst(e.side === 0 ? 12 : W - 12, TOP + 20 + i * 40, 24);
+    }
+  }
+  battle.events.length = 0;
+}
+
+function burst(x, y, n) {
+  if (reduceMotion) n = Math.min(n, 6);
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * Math.PI * 2, s = 0.3 + Math.random() * 1.2;
+    sparks.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 0.3, life: 1 });
+  }
+}
+
+function playTick() {
+  t++;
+  think(battle, 1, cpu);
+  if (demo) think(battle, 0, demoBrain);
+  step(battle);
+  events();
+  if (battle.winner === null) return;
+  t = 0;
+  if (demo) { mode = 'over-demo'; return; }
+  if (battle.winner === 0) {
+    banked += battle.sides[0].destroyed + 1000 * round;
+    mode = 'won'; sfx('won');
+  } else if (battle.winner === 1) {
+    banked += battle.sides[0].destroyed;
+    mode = 'lost'; sfx('lost');
+  } else {
+    mode = 'draw'; sfx('lost');
+  }
+}
+
+function afterLost() {
+  if (scores.qualifies(banked)) { entry = { letters: [0, 0, 0], pos: 0, timer: 60 * 30 }; mode = 'entry'; }
+  else toAttract('scores');
+}
+
+function saveEntry() {
+  highlight = scores.add(entry.letters.map(i => ENTRY_LETTERS[i]).join(''), banked);
+  toAttract('scores');
+}
+
+function toAttract(p) { mode = 'attract'; page = p; pageT = 0; demo = false; entry = null; }
+
+// ---------------------------------------------------------------- input
+
+function onAction(action) {
+  if (action === 'crt') { screen.toggleCrt(); syncToggles(); return; }
+  if (action === 'mute') { sound.toggleMute(); syncToggles(); return; }
+  if (action === 'back') { toAttract('title'); return; }
+  if (action === 'pause') {
+    if (mode === 'paused') { mode = pausedFrom; return; }
+    if (!demo && ['ready', 'playing'].includes(mode)) { pausedFrom = mode; mode = 'paused'; }
+    return;
+  }
+  if (mode === 'attract' || demo) { newGame(); return; }
+  if (mode === 'paused') { mode = pausedFrom; return; }
+  if (mode === 'playing') { order(KINDS[pick]); return; }
+  if (mode === 'won' && t >= 60) { round++; newRound(); return; }
+  if (mode === 'draw' && t >= 60) { newRound(); return; }
+  if (mode === 'lost' && t >= 60) { afterLost(); return; }
+  if (mode === 'entry') confirmLetter();
+}
+
+function confirmLetter() {
+  sfx('blip');
+  entry.pos++;
+  if (entry.pos >= 3) saveEntry();
+}
+
+function onDir(dir) {
+  if (mode === 'entry') {
+    const n = ENTRY_LETTERS.length, i = entry.pos;
+    if (dir === 'up') { entry.letters[i] = (entry.letters[i] + 1) % n; sfx('blip'); }
+    else if (dir === 'down') { entry.letters[i] = (entry.letters[i] + n - 1) % n; sfx('blip'); }
+    else if (dir === 'right') confirmLetter();
+    else if (dir === 'left' && entry.pos > 0) { entry.pos--; sfx('blip'); }
+    return;
+  }
+  if (mode !== 'playing' && mode !== 'ready') return;
+  if (demo) return;
+  if (dir === 'up' && lane > 0) { lane--; sfx('move'); }
+  else if (dir === 'down' && lane < LANES - 1) { lane++; sfx('move'); }
+  else if (dir === 'left') { pick = (pick + KINDS.length - 1) % KINDS.length; sfx('move'); }
+  else if (dir === 'right') { pick = (pick + 1) % KINDS.length; sfx('move'); }
+}
+
+// Digits 1-4 build that unit at once.
+function onKey(code) {
+  const m = /^Digit([1-4])$/.exec(code);
+  if (!m || mode !== 'playing' || demo) return false;
+  pick = Number(m[1]) - 1;
+  order(KINDS[pick]);
+  return true;
+}
+
+// A tap on a lane picks it; a tap on a unit in the build bar picks and builds it.
+function onPoint(x, y) {
+  if (mode === 'entry') {
+    const r = tapInitials(entry, ENTRY_AT, x, y);
+    if (r === 'next') confirmLetter(); else onDir(r);
+    return true;
+  }
+  if ((mode !== 'playing' && mode !== 'ready') || demo) return false;
+  if (y >= BAR_Y) {
+    pick = Math.min(KINDS.length - 1, Math.floor(x / (W / KINDS.length)));
+    order(KINDS[pick]);
+    return true;
+  }
+  if (y >= TOP) { lane = Math.min(LANES - 1, Math.floor((y - TOP) / LANE_H)); sfx('move'); return true; }
+  return false;
+}
+
+const input = makeInput({ screen: canvas, onAction, onDir, onKey, onPoint, onAny: () => sound.wake() });
+
+const crtBtn = document.querySelector('[data-action="crt"]');
+const muteBtn = document.querySelector('[data-action="mute"]');
+function syncToggles() {
+  crtBtn.textContent = 'CRT ' + (screen.crt ? 'on' : 'off');
+  crtBtn.setAttribute('aria-pressed', String(screen.crt));
+  muteBtn.textContent = 'Sound ' + (sound.muted ? 'off' : 'on');
+  muteBtn.setAttribute('aria-pressed', String(!sound.muted));
+}
+syncToggles();
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && !demo && ['ready', 'playing'].includes(mode)) { pausedFrom = mode; mode = 'paused'; }
+});
+
+// ---------------------------------------------------------------- drawing
+
+const blinkOn = (rate = 32) => reduceMotion || ((clock / rate) | 0) % 2 === 0;
+const prompt = () => (input.touch ? 'TAP START' : 'PRESS SPACE');
+const jitter = u => ((u.id * 5) % 7 - 3) * 3;
+
+function drawLanes(g, top, b, chosen) {
+  for (let i = 0; i < LANES; i++) {
+    const y = top + i * LANE_H;
+    g.fillStyle = '#0a0a16';
+    g.fillRect(HQ_FACE[0], y + 6, HQ_FACE[1] - HQ_FACE[0], LANE_H - 12);
+    const edge = i === chosen ? '#2a5a6a' : '#1c1c30';
+    for (let x = HQ_FACE[0]; x < HQ_FACE[1]; x += 4) {
+      g.fillStyle = edge;
+      g.fillRect(x, y + 6, 2, 1);
+      g.fillRect(x, y + LANE_H - 7, 2, 1);
+    }
+    // the supply pile in the middle
+    const cy = y + LANE_H / 2;
+    g.fillStyle = '#8a5a1e'; g.fillRect(DEPOT_X - 7, cy - 2, 14, 8);
+    g.fillStyle = '#ffd23f'; g.fillRect(DEPOT_X - 6, cy - 1, 5, 3); g.fillRect(DEPOT_X + 1, cy - 1, 5, 3);
+    g.fillStyle = '#c88a2a'; g.fillRect(DEPOT_X - 3, cy - 6, 7, 4);
+    g.fillStyle = '#ffd23f'; g.fillRect(DEPOT_X - 2, cy - 5, 5, 2);
+    for (let side = 0; side < 2; side++) {
+      const hp = b.sides[side].turrets[i];
+      const x = TURRET_X[side];
+      if (hp > 0) {
+        const flashing = flashes.get('t' + side + i) > 0;
+        g.drawImage(flashing ? art[side].turretHit : art[side].turret, side === 0 ? x - 4 : x - 7, cy - 6);
+        g.fillStyle = '#24243a'; g.fillRect(x - 5, cy + 6, 10, 1);
+        g.fillStyle = SIDE_INK[side]; g.fillRect(x - 5, cy + 6, Math.ceil((10 * hp) / TURRET_HP), 1);
+      } else g.drawImage(art[side].rubble, x - 5, cy - 1);
+    }
+  }
+}
+
+function drawHq(g, top, b, side) {
+  const x0 = side === 0 ? 0 : HQ_FACE[1];
+  const hp = b.sides[side].hq;
+  const flashing = flashes.get('hq' + side) > 0;
+  g.fillStyle = flashing ? '#ffffff' : side === 0 ? '#1c4a5a' : '#5a2a10';
+  g.fillRect(x0, top, 24, LANES * LANE_H);
+  g.fillStyle = SIDE_INK[side];
+  g.fillRect(side === 0 ? x0 + 22 : x0, top, 2, LANES * LANE_H);
+  // windows go dark as the HQ is hurt
+  const lit = Math.ceil((hp / HQ_HP) * 12);
+  for (let k = 0; k < 12; k++) {
+    g.fillStyle = k < lit ? (side === 0 ? '#c8faff' : '#ffd8a8') : '#14141f';
+    g.fillRect(x0 + 6 + (k % 2) * 8, top + 10 + Math.floor(k / 2) * 24, 4, 6);
+  }
+}
+
+function drawUnits(g, top, b) {
+  for (const u of b.units) {
+    const y = top + u.lane * LANE_H + LANE_H / 2 + jitter(u);
+    const x = Math.round(u.x);
+    const hurt = flashes.get(u.id) > 0;
+    let img;
+    if (u.kind === 'truck') img = hurt ? art[u.side].flash.truck : u.job === 'home' ? art[u.side].truckHome : art[u.side].truckOut;
+    else img = hurt ? art[u.side].flash[u.kind] : art[u.side][u.kind][((clock + u.id * 7) >> 4) & 1];
+    g.drawImage(img, x - (img.width >> 1), y - img.height + 4);
+  }
+}
+
+function drawEffects(g, top) {
+  for (const e of effects) {
+    const y = top + e.lane * LANE_H + LANE_H / 2 - 1;
+    const x0 = Math.round(e.from), x1 = Math.round(e.to);
+    if (e.kind === 'rocket') {
+      const k = 1 - e.t / 10, x = Math.round(x0 + (x1 - x0) * k);
+      g.fillStyle = INK.red; g.fillRect(x - 1, y - 2, 3, 2);
+      g.fillStyle = INK.yellow; g.fillRect(x - Math.sign(x1 - x0) * 3, y - 2, 2, 2);
+    } else {
+      const lo = Math.min(x0, x1), len = Math.abs(x1 - x0);
+      g.fillStyle = e.kind === 'tank' ? INK.white : e.kind === 'turret' ? SIDE_INK[e.side] : INK.yellow;
+      for (let x = 0; x < len; x += e.kind === 'tank' ? 1 : 3) g.fillRect(lo + x, y - 3, 1, e.kind === 'tank' ? 2 : 1);
+    }
+  }
+  for (const s of sparks) { g.fillStyle = s.life > 0.5 ? INK.white : INK.orange; g.fillRect(Math.round(s.x), Math.round(s.y), 1, 1); }
+}
+
+function drawField(g, top, b, chosen) {
+  drawLanes(g, top, b, chosen);
+  drawHq(g, top, b, 0);
+  drawHq(g, top, b, 1);
+  drawUnits(g, top, b);
+  drawEffects(g, top);
+}
+
+function drawHud() {
+  const b = battle;
+  for (let side = 0; side < 2; side++) {
+    const left = side === 0, x = left ? 4 : W - 4;
+    const label = demo ? (left ? 'LEFT' : 'RIGHT') : left ? 'YOU' : 'CPU';
+    const cashFlash = left && flashes.get('cash') > 0 && !demo;
+    text(ctx, label + ' ' + b.sides[side].credits, x, 2, cashFlash ? INK.white : SIDE_INK[side], { align: left ? 'left' : 'right' });
+    ctx.fillStyle = '#24243a'; ctx.fillRect(left ? 4 : W - 64, 12, 60, 3);
+    ctx.fillStyle = SIDE_INK[side]; const w = Math.ceil((60 * b.sides[side].hq) / HQ_HP);
+    ctx.fillRect(left ? 4 : W - 4 - w, 12, w, 3);
+  }
+  if (demo) { if (blinkOn()) text(ctx, 'DEMO PLAY', W / 2, 2, INK.yellow, { align: 'center' }); }
+  else {
+    text(ctx, 'SCORE ' + score(), W / 2, 2, INK.white, { align: 'center' });
+    text(ctx, 'ROUND ' + round, W / 2, 11, INK.grey, { align: 'center' });
+  }
+}
+
+function drawBar() {
+  const slot = W / KINDS.length;
+  KINDS.forEach((k, i) => {
+    const x = i * slot, on = i === pick && !demo;
+    ctx.fillStyle = on ? '#1c2870' : '#06061a';
+    ctx.fillRect(x + 1, BAR_Y + 2, slot - 2, H - BAR_Y - 3);
+    if (on) { ctx.fillStyle = INK.yellow; ctx.fillRect(x + 1, BAR_Y + 2, slot - 2, 1); ctx.fillRect(x + 1, H - 2, slot - 2, 1); }
+    const img = k === 'truck' ? art[0].truckOut : art[0][k][0];
+    ctx.drawImage(img, x + 5, BAR_Y + 8);
+    const afford = battle.sides[0].credits >= UNITS[k].cost;
+    text(ctx, (input.touch ? '' : i + 1 + ' ') + NAMES[k], x + 20, BAR_Y + 5, on ? INK.yellow : INK.white);
+    text(ctx, String(UNITS[k].cost), x + 20, BAR_Y + 14, afford ? INK.green : INK.red);
+  });
+}
+
+function drawChosenLane() {
+  if (demo) return;
+  const y = laneMid(lane);
+  if (blinkOn(16)) {
+    ctx.fillStyle = INK.yellow;
+    for (let r = 0; r < 4; r++) ctx.fillRect(HQ_FACE[0] + 3 + r, y - 3 + r, 1, 7 - r * 2);
+  }
+}
+
+function banner(lines, y) {
+  const wide = Math.max(...lines.map(([s]) => s.length)) * 6 + 10;
+  ctx.fillStyle = '#000';
+  ctx.fillRect(Math.floor((W - wide) / 2), y - 5, wide, lines.length * 12 + 7);
+  lines.forEach(([s, ink], i) => text(ctx, s, W / 2, y + i * 12, ink, { align: 'center' }));
+}
+
+function logo(g, y, scale = 4) {
+  text(g, 'SUPPLY LINE', W / 2 + 2, y + 2, '#1c2870', { align: 'center', scale });
+  text(g, 'SUPPLY LINE', W / 2, y, LOGO_INK, { align: 'center', scale });
+}
+
+function drawTitle() {
+  logo(ctx, 26);
+  text(ctx, 'BUILD. SUPPLY. HOLD THE LINE.', W / 2, 64, INK.white, { align: 'center' });
+  // a column marching across, left to right
+  const x = (((clock >> 1) + 150) % 400) - 20;
+  [['tank', 0], ['rifle', 18], ['rifle', 28], ['rocket', 40], ['truck', 58]].forEach(([k, dx]) => {
+    const img = k === 'truck' ? art[0].truckOut : art[0][k][(clock >> 4) & 1];
+    ctx.drawImage(img, x - dx, 100 - img.height);
+  });
+  ctx.fillStyle = '#1c1c30'; for (let gx = 0; gx < W; gx += 4) ctx.fillRect(gx, 102, 2, 1);
+  text(ctx, '1 PLAYER VS THE CPU', W / 2, 120, INK.cyan, { align: 'center' });
+  text(ctx, 'SAME RULES, SAME MONEY', W / 2, 132, INK.grey, { align: 'center' });
+  if (blinkOn()) text(ctx, prompt(), W / 2, 156, INK.yellow, { align: 'center' });
+  text(ctx, 'LEON KARSTEN 2026', W / 2, 184, INK.dim, { align: 'center' });
+}
+
+function drawHowTo() {
+  text(ctx, 'HOW TO PLAY', W / 2, 8, INK.cyan, { align: 'center' });
+  const rows = input.touch
+    ? [['UP / DOWN', 'PICK A LANE'], ['LEFT / RIGHT', 'PICK A UNIT'], ['START', 'BUILD IT'], ['OR TAP', 'A LANE, THEN A UNIT']]
+    : [['UP / DOWN', 'PICK A LANE'], ['LEFT / RIGHT', 'PICK A UNIT'], ['SPACE', 'BUILD IT'], ['1 2 3 4', 'BUILD THAT UNIT']];
+  rows.forEach(([k, v], i) => { text(ctx, k, 40, 26 + i * 11, INK.yellow); text(ctx, v, 128, 26 + i * 11, INK.white); });
+  text(ctx, 'TRUCKS FETCH SUPPLY FROM THE MIDDLE.', W / 2, 78, INK.orange, { align: 'center' });
+  text(ctx, 'RIFLES BEAT ROCKETS.', W / 2, 96, INK.white, { align: 'center' });
+  text(ctx, 'ROCKETS BEAT TANKS.', W / 2, 108, INK.white, { align: 'center' });
+  text(ctx, 'TANKS BEAT RIFLES.', W / 2, 120, INK.white, { align: 'center' });
+  text(ctx, 'A TURRET GUARDS EACH LANE. BREAK ONE,', W / 2, 138, INK.grey, { align: 'center' });
+  text(ctx, 'THEN TAKE DOWN THE CPU HQ.', W / 2, 150, INK.grey, { align: 'center' });
+  if (blinkOn()) text(ctx, prompt(), W / 2, 176, INK.yellow, { align: 'center' });
+}
+
+function drawScores() {
+  text(ctx, 'HIGH SCORES', W / 2, 10, INK.yellow, { align: 'center' });
+  text(ctx, 'RANK', 72, 26, INK.grey);
+  text(ctx, 'SCORE', 196, 26, INK.grey, { align: 'right' });
+  text(ctx, 'NAME', 228, 26, INK.grey);
+  scores.table.forEach((r, i) => {
+    if (i === highlight && !blinkOn(16)) return;
+    const y = 40 + i * 13;
+    const ink = i === highlight ? INK.white : ROW_INKS[i];
+    text(ctx, RANKS[i], 72, y, ink);
+    text(ctx, String(r.s), 196, y, ink, { align: 'right' });
+    text(ctx, r.n, 228, y, ink);
+  });
+  if (blinkOn()) text(ctx, prompt(), W / 2, 184, INK.yellow, { align: 'center' });
+}
+
+function drawEntry() {
+  text(ctx, 'YOU MADE THE TOP TEN', W / 2, 22, INK.cyan, { align: 'center' });
+  text(ctx, String(banked), W / 2, 38, INK.yellow, { align: 'center', scale: 2 });
+  text(ctx, 'ENTER YOUR INITIALS', W / 2, 66, INK.white, { align: 'center' });
+  drawInitials(ctx, entry, ENTRY_AT, { blinkOn: blinkOn(16), touch: input.touch, ink: INK });
+  text(ctx, 'UP / DOWN   CHANGE LETTER', W / 2, 144, INK.grey, { align: 'center' });
+  text(ctx, (input.touch ? 'RIGHT OR START' : 'RIGHT OR SPACE') + '   NEXT', W / 2, 156, INK.grey, { align: 'center' });
+  text(ctx, 'TIME ' + Math.ceil(entry.timer / 60), W / 2, 180, INK.orange, { align: 'center' });
+}
+
+function draw() {
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, W, H);
+  if (mode === 'attract') {
+    if (page === 'title') drawTitle(); else if (page === 'howto') drawHowTo(); else drawScores();
+    return;
+  }
+  if (mode === 'entry') { drawEntry(); return; }
+  drawField(ctx, TOP, battle, demo ? -1 : lane);
+  drawChosenLane();
+  drawHud();
+  drawBar();
+  const mid = TOP + 60;
+  if (mode === 'ready') banner([['ROUND ' + round, INK.cyan], ['READY!', INK.yellow]], mid);
+  else if (mode === 'paused') banner([['PAUSED', INK.white]], mid);
+  else if (mode === 'won') {
+    const lines = [['THE CPU HQ HAS FALLEN', INK.yellow], ['ROUND BONUS ' + 1000 * round, INK.white]];
+    if (t >= 60 && blinkOn()) lines.push([prompt() + ' FOR ROUND ' + (round + 1), INK.cyan]);
+    banner(lines, mid);
+  } else if (mode === 'lost') {
+    const lines = [['YOUR HQ HAS FALLEN', INK.orange], ['WELL FOUGHT. SCORE ' + banked, INK.white]];
+    if (t >= 60 && blinkOn()) lines.push([prompt(), INK.cyan]);
+    banner(lines, mid);
+  } else if (mode === 'draw') {
+    const lines = [['BOTH HQS FELL AT ONCE', INK.yellow], ['THE ROUND IS PLAYED AGAIN', INK.white]];
+    if (t >= 60 && blinkOn()) lines.push([prompt(), INK.cyan]);
+    banner(lines, mid);
+  } else if (mode === 'playing' && note) {
+    banner([[note.text, INK.red]], TOP + 4);
+  } else if (mode === 'playing' && t < 240 && !demo) {
+    text(ctx, 'SEND TRUCKS FIRST', W / 2, TOP + 1, INK.grey, { align: 'center' });
+  }
+}
+
+// ---------------------------------------------------------------- card art
+
+function drawCard() {
+  const c = document.createElement('canvas');
+  c.width = 320; c.height = 240;
+  const g = c.getContext('2d');
+  g.fillStyle = '#000'; g.fillRect(0, 0, 320, 240);
+  // A fight laid out by hand: tanks and rifles pushing up the middle into
+  // rockets, trucks at the piles, one turret already down.
+  const b = newBattle();
+  b.sides[1].turrets[0] = 0;
+  b.sides[0].turrets[2] = 180;
+  b.sides[1].hq = 640;
+  const place = (side, kind, lane, x, extra = {}) => b.units.push({ id: b.nextId++, side, kind, lane, x, d: 0, hp: 1, job: 'out', ...extra });
+  place(0, 'tank', 1, 150); place(0, 'rifle', 1, 132); place(0, 'rifle', 1, 124); place(0, 'tank', 1, 110);
+  place(1, 'rocket', 1, 196); place(1, 'rocket', 1, 206); place(1, 'rifle', 1, 214);
+  place(0, 'rifle', 0, 262); place(0, 'rocket', 0, 250); place(0, 'tank', 0, 236);
+  place(0, 'truck', 2, 120, { job: 'home' }); place(1, 'truck', 2, 166, { job: 'out' });
+  place(1, 'tank', 2, 84); place(1, 'rifle', 2, 98);
+  const keep = effects;
+  effects = [
+    { kind: 'tank', side: 0, lane: 1, from: 150, to: 196, t: 5 },
+    { kind: 'rocket', side: 1, lane: 1, from: 196, to: 150, t: 4 },
+    { kind: 'turret', side: 0, lane: 2, from: TURRET_X[0], to: 84, t: 5 },
+    { kind: 'rifle', side: 0, lane: 0, from: 262, to: HQ_FACE[1], t: 5 },
+  ];
+  drawField(g, 66, b, -1);
+  effects = keep;
+  text(g, 'SUPPLY LINE', 162, 18, '#1c2870', { align: 'center', scale: 4 });
+  text(g, 'SUPPLY LINE', 160, 16, LOGO_INK, { align: 'center', scale: 4 });
+  return c;
+}
+
+// ---------------------------------------------------------------- loop
+
+const PAGES = { title: ['howto', 600], howto: ['demo', 600], scores: ['title', 420] };
+function attractTick() {
+  pageT++;
+  const [next, length] = PAGES[page];
+  if (pageT < length) return;
+  if (next === 'demo') { startDemo(); return; }
+  if (next === 'title') highlight = -1;
+  toAttract(next);
+}
+
+function tick() {
+  clock++;
+  for (const s of sparks) { s.x += s.vx; s.y += s.vy; s.vy += 0.04; s.life -= 0.025; }
+  sparks = sparks.filter(s => s.life > 0);
+  for (const e of effects) e.t--;
+  effects = effects.filter(e => e.t > 0);
+  for (const [k, v] of flashes) if (v > 1) flashes.set(k, v - 1); else flashes.delete(k);
+  if (note && --note.t <= 0) note = null;
+  switch (mode) {
+    case 'attract': attractTick(); break;
+    case 'ready': if (--timer <= 0) { mode = 'playing'; t = 0; } break;
+    case 'playing':
+      playTick();
+      if (demo && t > 60 * 45) toAttract('scores');
+      break;
+    case 'over-demo': if (++t > 150) toAttract('scores'); break;
+    case 'won': if (++t >= 60 * 20) { round++; newRound(); } break;
+    case 'draw': if (++t >= 60 * 20) newRound(); break;
+    case 'lost': if (++t >= 60 * 8) afterLost(); break;
+    case 'entry': if (--entry.timer <= 0) saveEntry(); break;
+  }
+}
+
+let acc = 0, lastT = 0;
+function frame(now) {
+  requestAnimationFrame(frame);
+  if (!lastT) lastT = now;
+  acc += Math.min(100, now - lastT);
+  lastT = now;
+  while (acc >= TICK_MS) { tick(); acc -= TICK_MS; }
+  draw();
+}
+requestAnimationFrame(frame);
+
+window.__supplyline = {
+  get mode() { return mode; },
+  get page() { return page; },
+  get demo() { return demo; },
+  get lane() { return lane; },
+  get pick() { return pick; },
+  get round() { return round; },
+  get score() { return score(); },
+  get note() { return note && note.text; },
+  get credits() { return battle.sides[0].credits; },
+  get units() { return battle.units.map(u => ({ side: u.side, kind: u.kind, lane: u.lane })); },
+  attract(p) { toAttract(p); },
+  setCredits(n) { battle.sides[0].credits = n; },
+  // End the round on the next tick: the CPU's HQ (or yours) falls.
+  winNow() { battle.sides[1].hq = 0; },
+  loseNow() { battle.sides[0].hq = 0; },
+};
+window.__arcade = { card: drawCard };
+})();
+</script>
+</body>
+</html>

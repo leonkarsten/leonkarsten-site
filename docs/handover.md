@@ -19,40 +19,16 @@ Nothing personal: interests, facts, instructions, coaching, experiences only.
 - **DNS:** registrar and DNS host is domains.co.za (nameservers `ns*.tld-ns.com/.net`).
   Root → GitHub's four A records; `www` → CNAME `leonkarsten.github.io`. No AAAA, no MX.
   Verified correct from public resolvers.
-- **HTTPS:** working since 2 Nov 2026: Let's Encrypt certificate for leonkarsten.com (valid to
-  31 Jan 2027, GitHub renews it), and http now redirects to https (Enforce HTTPS on).
+- **HTTPS:** GitHub's custom-domain check was still showing a stale failure on the evening of
+  2026-11-01 despite correct DNS, which blocks certificate issuance. Expected to clear on its own.
+  Once Settings → Pages shows the check green, tick **Enforce HTTPS**. Until then Chrome refuses
+  the site on machines that visited the old Wix site (HSTS memory); Edge allows click-through.
 - **Previous occupant:** the domain served Leon's wife's Wix site. Wix is disconnected and
   cancelled; nothing to migrate.
 - **Sankey Studio** is imported at `public/apps/sankey-studio/index.html` (single-file Vite build,
   ~1.5 MB). Source repo: `C:\Users\leon\Documents\sankey-studio`.
-- **Games:** source repo `C:\Users\leon\Documents\leonkarsten-arcade` (local only, no remote
-  yet). Style: real 1980–85 raster arcade inside the screen (black, pixel sprites, bitmap font,
-  attract mode, top-ten initials), synthwave only on the page around it; rules in that repo's
-  `docs/style.md`. Import with `.\scripts\import-arcade.ps1 -Build`. Games, both ported from Leon's
-  Qlaim arcade on 2026-11-01: **Lamplight** (`/play/lamplight/`, maze) and **Launch Window**
-  (`/play/launch-window/`, word guessing, upright screen with on-screen letter keys) and **Dust Off**
-  (`/play/dust-off/`, lunar lander), **Six Cities** (`/play/six-cities/`, missile defence) and **Fence**
-  (`/play/fence/`, territory), **Say Again** (`/play/say-again/`, memory) and **Loading Bay**
-  (`/play/loading-bay/`, crate puzzle) and **House Call** (`/play/house-call/`, action; egg sacs
-  moved to head height because the Qlaim height was unreachable) and **Sorted** (`/play/sorted/`,
-  bead puzzle) and **Two Hills** (`/play/two-hills/`, artillery, CPU opponent added) and **No Crossing**
-  (`/play/no-crossing/`, light-trail duel, CPU opponent added) and **Last Line** (`/play/last-line/`,
-  dots and boxes, CPU opponent added) and **Kings Row** (`/play/kings-row/`, checkers, CPU opponent
-  added) and **Wings Level** (`/play/wings-level/`, tilt maze; real tilt needs a phone to test) and **Soft Focus**
-  (`/play/soft-focus/`, hidden-picture dots), all thirteen
-  built overnight 1-2 Nov while Leon slept. Leon has
-  seen Lamplight live; neither has been played through on his iPhone yet. Card pictures: each game draws its own 4:3 card (`npm run cards` in the arcade repo
-  saves `cards/<slug>.png`); the import copies it to `public/play/<slug>/card.png` and the
-  catalogue entry's optional `image` field shows it on `/games/`.
-- **Fan page:** `/games/command-and-conquer/` (2 Nov), Red Alert 2 and Renegade: Leon's own words
-  on why he plays them, facts checked against sources, where to play them today, linked from the
-  Games page. Pictures are original pixel art drawn as SVG from text grids (`src/lib/pixels.ts`,
-  `src/components/Pixels.astro`, the arcade's 5x7 font plus `&`); never EA logos, box art,
-  screenshots or unit sprites, and the footer says it is unaffiliated. Art pixels stay whole CSS
-  pixels at every width (`--px` per breakpoint), checked at 14 widths from 320 to 1280.
-  Astro drops a space between text and a link that starts a new line: keep such links on one line.
-- **Content:** one draft post and one draft guide, both `draft: true` placeholders. About page
-  has a bracketed contact placeholder.
+- **Content:** one draft post and one draft guide, both `draft: true` placeholders. Games
+  collection is empty. About page has a bracketed contact placeholder.
 
 ## Architecture
 
@@ -96,7 +72,8 @@ the same path collide in Astro.
 
 ## Open tasks, in rough priority
 
-1. ~~HTTPS~~ done 2 Nov (certificate issued, Enforce HTTPS on).
+1. **HTTPS:** check GitHub Pages settings; tick Enforce HTTPS when available. If still failing
+   after 24 h with DNS correct, remove/re-add the domain, then GitHub support.
 2. **Contact method** on `/about/` (replace the bracketed placeholder). Leon to decide:
    email alias, form service, or link.
 3. **First real post and guide.** Edit the placeholders in `src/content/writing/` and
@@ -105,22 +82,8 @@ the same path collide in Astro.
 4. **Sankey Studio retro themes** — brief at `sankey-studio/docs/retro-theme-brief.md` (in the
    Sankey repo, not this one). After that ships, rerun `scripts/import-sankey-studio.ps1 -Build`
    here and push.
-5. **Games.** Fifteen are live (Lamplight, Launch Window, then thirteen built overnight 1-2 Nov).
-   Next, for Leon:
-   - Play them on his iPhone with sound on; decide on the CRT switch. Nobody has heard the sound.
-   - **Wings Level** real tilt and **Soft Focus** (whether eyes fuse the pixel stereogram) can only
-     be checked by a person; the checks cover the d-pad/keys path and that the dots encode the shape.
-   - **House Call** has ONE RULE CHANGED from Qlaim: egg sacs hang at head height, because at the
-     Qlaim height no spray could reach them (proved in the arcade repo's `test-house.mjs`). The
-     Qlaim cabinet still has the bug.
-   - **Not ported, deliberately:** Red Doors (Leon's notes: "plays like Elevator Action"), Rock
-     Field (Asteroids' exact rock scores 20/50/100, saucer, hyperspace, heartbeat, extra life at
-     10,000) and Sky March (Space Invaders' 11x5, 30/20/10, mystery ship, bunkers, four-note
-     march). They are recreations of specific games rather than games in a genre; Leon to decide.
-   - Two Hills, No Crossing, Last Line and Kings Row gained CPU opponents; the Qlaim two-phone
-     mode needs Qlaim's server and was not carried over.
-   - The arcade repo (`Documents/leonkarsten-arcade`) has no GitHub remote yet.
-   The "How these are made" box links to Writing, which has no build notes yet.
+5. **First game.** Build in its own repo, copy the self-contained output to `public/play/<slug>/`,
+   add `src/content/games/<slug>.json`. The Games page currently shows a "being wheeled in" notice.
 6. Optional: raise DNS TTLs from 600 to 3600 once everything is stable; add a privacy-respecting
    page counter (Plausible or GoatCounter), never Google Analytics.
 
