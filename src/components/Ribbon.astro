@@ -4,10 +4,20 @@
  * with a light "worn print" texture (flecks + scratches) applied in SVG,
  * so it stays crisp at any size and costs no image download.
  *
+ * The bands sway slowly, like cloth in a light breeze: each path morphs
+ * between three gentle variants of the same curve (SMIL <animate>, no JS),
+ * and each band is offset a fraction of a second from its neighbour so the
+ * ribbon ripples instead of bobbing as a block. The offsets are small
+ * relative to the band overlap, so no gaps open between bands.
+ *
  * Wear is controlled by the two tableValues lists in the filter:
  * more leading zeros = sparser marks.
  */
-const path = 'M -120 470 C 240 470 400 300 640 330 C 880 360 1000 120 1400 40';
+const rest = 'M -120 470 C 240 470 400 300 640 330 C 880 360 1000 120 1400 40';
+const lift = 'M -120 482 C 240 446 400 332 640 318 C 880 338 1000 142 1400 52';
+const dip = 'M -120 458 C 240 488 400 286 640 346 C 880 378 1000 102 1400 30';
+const sway = [rest, lift, rest, dip, rest].join(';');
+
 const bands = [
   { color: 'var(--red)', dy: -144 },
   { color: 'var(--orange)', dy: -96 },
@@ -17,6 +27,8 @@ const bands = [
   { color: 'var(--teal)', dy: 96 },
   { color: 'var(--navy)', dy: 144 },
 ];
+const period = 16; // seconds for one full sway
+const stagger = 0.35; // seconds between neighbouring bands
 ---
 
 <svg
@@ -41,10 +53,32 @@ const bands = [
       <feComposite in="SourceGraphic" in2="wear" operator="out"></feComposite>
     </filter>
   </defs>
-  <g filter="url(#worn)" fill="none" stroke-width="50" stroke-linecap="butt">
-    {bands.map((b) => <path d={path} stroke={b.color} transform={`translate(0 ${b.dy})`} />)}
+  <g class="bands" filter="url(#worn)" fill="none" stroke-width="50" stroke-linecap="butt">
+    {
+      bands.map((b, i) => (
+        <path d={rest} stroke={b.color} transform={`translate(0 ${b.dy})`}>
+          <animate
+            attributeName="d"
+            values={sway}
+            dur={`${period}s`}
+            begin={`${-i * stagger}s`}
+            repeatCount="indefinite"
+            calcMode="spline"
+            keyTimes="0;0.25;0.5;0.75;1"
+            keySplines="0.45 0 0.55 1;0.45 0 0.55 1;0.45 0 0.55 1;0.45 0 0.55 1"
+          />
+        </path>
+      ))
+    }
   </g>
 </svg>
+
+<script>
+  // SVG animation can't be stopped from CSS; honour "reduce motion" by removing it.
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    document.querySelectorAll('.ribbon animate').forEach((a) => a.remove());
+  }
+</script>
 
 <style>
   .ribbon {
