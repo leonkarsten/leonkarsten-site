@@ -40,6 +40,26 @@ const appSchema = z.object({
   updated: z.coerce.date().optional(),
   /** tags like "2 player", "keyboard" */
   tags: z.array(z.string()).default([]),
+  /** how to use it, in a few short steps, shown on the tool page */
+  steps: z.array(z.string()).optional(),
+  /**
+   * what a multi-chart tool can make, one entry per chart, in plain words.
+   * Sankey Studio's copy comes from its own src/charts.js; change both together.
+   */
+  charts: z
+    .array(
+      z.object({
+        name: z.string(),
+        line: z.string(),
+        analogy: z.string(),
+        useWhen: z.string(),
+        youGet: z.string(),
+        sheet: z.string(),
+      })
+    )
+    .optional(),
+  /** on the way, named so nobody goes looking for them yet */
+  coming: z.array(z.string()).optional(),
 });
 
 const tools = defineCollection({

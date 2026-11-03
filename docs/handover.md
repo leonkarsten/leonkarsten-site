@@ -1,6 +1,6 @@
 # leonkarsten.com — handover
 
-Last updated: 2026-11-01. Keep this file current: it is the shared state between
+Last updated: 2026-11-03. Keep this file current: it is the shared state between
 Claude (chat), Claude Code and Leon.
 
 ## What it is
@@ -24,7 +24,12 @@ Nothing personal: interests, facts, instructions, coaching, experiences only.
 - **Previous occupant:** the domain served Leon's wife's Wix site. Wix is disconnected and
   cancelled; nothing to migrate.
 - **Sankey Studio** is imported at `public/apps/sankey-studio/index.html` (single-file Vite build,
-  ~1.5 MB). Source repo: `C:\Users\leon\Documents\sankey-studio`.
+  ~1.5 MB). Source repo: `C:\Users\leon\Documents\sankey-studio`. Since 3 Nov 2026 it draws
+  Sankey AND chord diagrams (more charts Excel can't draw are on its `docs/chart-roadmap.md`);
+  Leon kept the name. The tool page shows "What you can make" (one card per chart: line,
+  analogy, use it when, you get, your sheet), "How to use it" steps and "Coming next", from the
+  optional `charts`, `steps` and `coming` fields in `src/content/tools/sankey-studio.json`. That
+  chart text is copied from the app's `src/charts.js`: change both together.
 - **Games:** source repo `C:\Users\leon\Documents\leonkarsten-arcade` (local only, no remote
   yet). Style: real 1980–85 raster arcade inside the screen (black, pixel sprites, bitmap font,
   attract mode, top-ten initials), synthwave only on the page around it; rules in that repo's

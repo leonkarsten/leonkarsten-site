@@ -1,7 +1,32 @@
 {
   "name": "Sankey Studio",
   "slug": "sankey-studio",
-  "summary": "Turn a spreadsheet of flows into a clean Sankey diagram. Import from Excel, tune layout and palette, export a crisp image. Everything runs in your browser.",
+  "summary": "Turn a spreadsheet into charts Excel can't draw: Sankey diagrams for things moving through stages, and chord diagrams for exchanges that go both ways. Import from Excel, export a crisp image. Everything runs in your browser.",
   "app": "/apps/sankey-studio/",
-  "tags": ["data", "excel", "visualisation"]
+  "tags": ["data", "excel", "visualisation"],
+  "steps": [
+    "Open the tool and drop in an Excel file, or try one of the samples first.",
+    "Pick the chart in the side panel. The app works out which columns to use, and you can change them.",
+    "Leave rows out with the filters, set colours and number format, and save the view back into your workbook.",
+    "Copy the image straight into a slide, or download it as SVG or PNG."
+  ],
+  "charts": [
+    {
+      "name": "Sankey",
+      "line": "Where things go, step by step.",
+      "analogy": "Like a river splitting into streams: the wider a stream, the more went that way.",
+      "useWhen": "You want to see how orders, money or people move through stages, and where they drop out.",
+      "youGet": "Every path from start to finish in one picture, with the total at each step.",
+      "sheet": "One row per item with a column per stage (Channel, Status, Outcome), or From, To and Value columns."
+    },
+    {
+      "name": "Chord",
+      "line": "Who exchanges with whom, both ways.",
+      "analogy": "Like a map of trade between countries: each country is a slice of the ring, and the bands are what goes back and forth.",
+      "useWhen": "Things flow both ways between the same parties, such as charges between departments or staff moving between teams. A Sankey can't draw that.",
+      "youGet": "Who gives, who takes, which pairs trade most, and whether each exchange balances. Or, for items in the same order, which ones go together.",
+      "sheet": "From and To columns with an amount, or an order number and an item on each row."
+    }
+  ],
+  "coming": ["survey results (Likert)", "control charts", "Marimekko"]
 }

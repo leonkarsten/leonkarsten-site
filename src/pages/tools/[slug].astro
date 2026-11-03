@@ -21,7 +21,41 @@ const guides = (await getCollection('guides', ({ data }) => !data.draft && data.
       {tool.data.repo && <a class="btn btn--ghost" href={tool.data.repo}>Source code</a>}
     </div>
 
+    {
+      tool.data.charts && (
+        <div class="charts">
+          <h2 class="charts-head">What you can make</h2>
+          <div class="chart-grid">
+            {tool.data.charts.map((c) => (
+              <article class="card chart">
+                <h3>{c.name}</h3>
+                <p class="line">{c.line}</p>
+                <p class="analogy">{c.analogy}</p>
+                <dl>
+                  <dt>Use it when</dt><dd>{c.useWhen}</dd>
+                  <dt>You get</dt><dd>{c.youGet}</dd>
+                  <dt>Your sheet</dt><dd>{c.sheet}</dd>
+                </dl>
+              </article>
+            ))}
+          </div>
+          {tool.data.coming && <p class="coming">Coming next: {tool.data.coming.join(', ')}.</p>}
+        </div>
+      )
+    }
+
     <div class="prose">
+      {
+        tool.data.steps && (
+          <>
+            <h2>How to use it</h2>
+            <ol>
+              {tool.data.steps.map((s) => <li>{s}</li>)}
+            </ol>
+          </>
+        )
+      }
+
       <h2>Privacy</h2>
       <p>
         {tool.data.name} runs entirely in your browser. Files you open are read by your own machine
@@ -52,4 +86,31 @@ const guides = (await getCollection('guides', ({ data }) => !data.draft && data.
     gap: 36px;
   }
   .actions { display: flex; gap: 12px; flex-wrap: wrap; }
+
+  .charts-head { font-size: 28px; margin: 0 0 16px; }
+  .chart-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 20px;
+  }
+  @media (max-width: 760px) { .chart-grid { grid-template-columns: 1fr; } }
+  .chart { padding: 20px 24px 22px; gap: 8px; border-top: 6px solid var(--c-tools); }
+  .chart:hover { transform: none; }
+  .chart h3 { font-size: 24px; margin: 0; }
+  .line { margin: 0; font-weight: 600; color: var(--ink); }
+  .analogy { margin: 0 0 6px; color: var(--ink-soft); font-style: italic; }
+  dl {
+    margin: 0;
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 6px 14px;
+    font-size: 15px;
+  }
+  dt { font-weight: 600; color: var(--ink); }
+  dd { margin: 0; color: var(--ink-soft); }
+  @media (max-width: 480px) {
+    dl { grid-template-columns: 1fr; gap: 2px; }
+    dd { margin-bottom: 8px; }
+  }
+  .coming { margin: 14px 0 0; color: var(--ink-muted); }
 </style>
