@@ -67,7 +67,7 @@ Now that EA is privately owned, it no longer files annual reports. If the next s
 
 ## References
 
-CNNfn. (1998, August 17). *EA buys Westwood*. CNN Money. https://money.cnn.com/1998/08/17/life/q_ea/
+CNNfn. (1998, August 17). *EA buys Westwood*. CNN Money. https://web.archive.org/web/20011208170050/http://money.cnn.com/1998/08/17/life/q_ea/
 
 Eldon, E. (2007, October 11). EA buys Pandemic Studios/BioWare for $860 million. *VentureBeat*. https://venturebeat.com/business/ea-buys-pandemic-studiosbioware-for-860-million
 
