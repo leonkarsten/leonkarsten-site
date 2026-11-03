@@ -3,7 +3,11 @@
   "slug": "sankey-studio",
   "summary": "Turn a spreadsheet into charts Excel can't draw: Sankey diagrams for things moving through stages, and chord diagrams for exchanges that go both ways. Import from Excel, export a crisp image. Everything runs in your browser.",
   "app": "/apps/sankey-studio/",
-  "tags": ["data", "excel", "visualisation"],
+  "tags": [
+    "data",
+    "excel",
+    "visualisation"
+  ],
   "steps": [
     "Open the tool and drop in an Excel file, or try one of the samples first.",
     "Pick the chart in the side panel. The app works out which columns to use, and you can change them.",
@@ -13,6 +17,7 @@
   "charts": [
     {
       "name": "Sankey",
+      "art": "<svg viewBox=\"0 0 400 240\" aria-hidden=\"true\"><g fill=\"none\" stroke-linecap=\"butt\" opacity=\".95\"><path d=\"M40 50 C 160 50 180 60 320 60\" stroke=\"#3c8d9e\" stroke-width=\"30\"/><path d=\"M40 110 C 160 110 180 100 320 100\" stroke=\"#f2994a\" stroke-width=\"20\"/><path d=\"M40 110 C 160 110 180 170 320 170\" stroke=\"#e8542f\" stroke-width=\"18\"/><path d=\"M40 170 C 160 170 180 210 320 210\" stroke=\"#f2c35b\" stroke-width=\"24\"/></g><g fill=\"#1b3a5c\"><rect x=\"26\" y=\"30\" width=\"14\" height=\"160\" rx=\"2\"/><rect x=\"320\" y=\"42\" width=\"14\" height=\"36\" rx=\"2\"/><rect x=\"320\" y=\"88\" width=\"14\" height=\"24\" rx=\"2\"/><rect x=\"320\" y=\"158\" width=\"14\" height=\"22\" rx=\"2\"/><rect x=\"320\" y=\"196\" width=\"14\" height=\"28\" rx=\"2\"/></g></svg>",
       "line": "Where things go, step by step.",
       "analogy": "Like a river splitting into streams: the wider a stream, the more went that way.",
       "useWhen": "You want to see how orders, money or people move through stages, and where they drop out.",
@@ -21,6 +26,7 @@
     },
     {
       "name": "Chord",
+      "art": "<svg viewBox=\"0 0 400 240\" aria-hidden=\"true\"><g opacity=\".95\"><path d=\"M226.3 35.0 A89 89 0 0 1 260.0 54.3 Q200 120 133.8 179.5 A89 89 0 0 1 118.5 155.7 Q200 120 226.3 35.0 Z\" fill=\"#3c8d9e\"/><path d=\"M283.0 87.8 A89 89 0 0 1 289.0 119.0 Q200 120 270.9 173.8 A89 89 0 0 1 253.3 191.3 Q200 120 283.0 87.8 Z\" fill=\"#f2994a\"/><path d=\"M241.2 198.9 A89 89 0 0 1 219.6 206.8 Q200 120 112.9 101.7 A89 89 0 0 1 122.2 76.7 Q200 120 241.2 198.9 Z\" fill=\"#e8542f\"/><path d=\"M179.0 206.5 A89 89 0 0 1 154.4 196.4 Q200 120 142.4 52.1 A89 89 0 0 1 171.7 35.6 Q200 120 179.0 206.5 Z\" fill=\"#f2c35b\"/></g><g fill=\"#1b3a5c\"><path d=\"M208.5 14.3 A106 106 0 0 1 299.6 156.3 L286.4 151.5 A92 92 0 0 0 207.4 28.3 Z\"/><path d=\"M293.6 169.8 A106 106 0 0 1 206.5 225.8 L205.7 211.8 A92 92 0 0 0 281.2 163.2 Z\"/><path d=\"M191.7 225.7 A106 106 0 0 1 95.2 136.1 L109.1 134.0 A92 92 0 0 0 192.8 211.7 Z\"/><path d=\"M94.0 121.3 A106 106 0 0 1 191.2 14.4 L192.4 28.3 A92 92 0 0 0 108.0 121.1 Z\"/></g></svg>",
       "line": "Who exchanges with whom, both ways.",
       "analogy": "Like a map of trade between countries: each country is a slice of the ring, and the bands are what goes back and forth.",
       "useWhen": "Things flow both ways between the same parties, such as charges between departments or staff moving between teams. A Sankey can't draw that.",
@@ -28,5 +34,9 @@
       "sheet": "From and To columns with an amount, or an order number and an item on each row."
     }
   ],
-  "coming": ["survey results (Likert)", "control charts", "Marimekko"]
+  "coming": [
+    "survey results (Likert)",
+    "control charts",
+    "Marimekko"
+  ]
 }

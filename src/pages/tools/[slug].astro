@@ -28,6 +28,7 @@ const guides = (await getCollection('guides', ({ data }) => !data.draft && data.
           <div class="chart-grid">
             {tool.data.charts.map((c) => (
               <article class="card chart">
+                {c.art && <div class="art" set:html={c.art} />}
                 <h3>{c.name}</h3>
                 <p class="line">{c.line}</p>
                 <p class="analogy">{c.analogy}</p>
@@ -96,6 +97,19 @@ const guides = (await getCollection('guides', ({ data }) => !data.draft && data.
   @media (max-width: 760px) { .chart-grid { grid-template-columns: 1fr; } }
   .chart { padding: 20px 24px 22px; gap: 8px; border-top: 6px solid var(--c-tools); }
   .chart:hover { transform: none; }
+  /* Framed like the home page's featured picture, smaller. */
+  .art {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    aspect-ratio: 16 / 9;
+    max-width: 360px;
+    margin-bottom: 8px;
+    background: var(--paper);
+    border: 4px solid var(--navy-deep);
+    border-radius: var(--radius-sm);
+  }
+  .art :global(svg) { width: 82%; height: auto; display: block; }
   .chart h3 { font-size: 24px; margin: 0; }
   .line { margin: 0; font-weight: 600; color: var(--ink); }
   .analogy { margin: 0 0 6px; color: var(--ink-soft); font-style: italic; }

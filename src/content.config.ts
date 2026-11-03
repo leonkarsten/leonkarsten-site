@@ -50,6 +50,8 @@ const appSchema = z.object({
     .array(
       z.object({
         name: z.string(),
+        /** small inline SVG of the chart, our own markup (from the app's charts.js) */
+        art: z.string().optional(),
         line: z.string(),
         analogy: z.string(),
         useWhen: z.string(),
