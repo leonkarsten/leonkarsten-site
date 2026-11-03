@@ -3,12 +3,12 @@ title: "What happened to Westwood? I went looking, with a spreadsheet"
 summary: "Why Command & Conquer faded after EA bought its studio, the same pattern across EA's other purchases, and what I worked out EA was worth six months before someone paid $55 billion for it."
 date: 2026-11-03
 tags: ["games", "business"]
-draft: true
+draft: false
 ---
 
 In 2000 I bought Red Alert 2, and I still play it (there is a [whole page about that](/games/command-and-conquer/)). What I never understood was why Command & Conquer went quiet in the years after Electronic Arts bought Westwood, the studio that made it.
 
-In 2025 an MBA assignment on decision-making gave me a reason to find out properly: pick a company, study the decisions behind its results, and value it. I picked EA. This is that work, rewritten for people who play games rather than mark assignments, with a few things I got wrong at the time put right.
+In 2025 I finally went looking properly: the decisions behind EA's results, the numbers in its annual reports, and what the company was worth. This is what I found, with a few things I got wrong at the time put right.
 
 ## The pattern: buy, leave alone, absorb, close
 
@@ -29,7 +29,7 @@ It's also not the whole story. Some purchases failed because the market moved, n
 
 The other thing players complain about is how EA makes money after the sale. Ultimate Team, the card-collecting mode that became the centre of EA's football games, started in March 2009 as a download for FIFA 09 (Electronic Arts, 2009). Its packs of cards, which you open without knowing what is inside, are what most people mean by loot boxes. EA doesn't use that word. In 2019 its vice president of legal and government affairs told a committee of the UK Parliament: "We look at them as surprise mechanics" (Gault, 2019).
 
-In my assignment I wrote that EA's microtransactions began with Mass Effect 3 in 2012. Ultimate Team was three years earlier.
+When I first wrote this up, I had EA's microtransactions beginning with Mass Effect 3 in 2012. Ultimate Team was three years earlier.
 
 ## What the numbers say
 
@@ -37,11 +37,11 @@ For the money side, I compared EA with Activision Blizzard over 2015 to 2022, th
 
 EA got more out of what it owns. In most years it turned each dollar of assets into roughly 50 to 70 cents of revenue, against Activision's 30 to 40, and it earned a higher return for its shareholders. But EA kept less of each sale as profit. In 2022 EA kept 11 cents of every revenue dollar as profit and Activision kept 20. That gap usually points to costs: development, running live games, or titles that don't sell.
 
-One year looked spectacular: in 2020 EA's profit was 55% of its revenue. In the assignment I put that down to COVID. It wasn't. EA's financial year ends on 31 March, so its 2020 year closed just as lockdowns began. The real reason is in EA's annual report: EA moved some of its intellectual property to its Swiss subsidiary, and that one-off move brought a tax benefit of about $1.5 billion. Net income for the year was $3,039 million on revenue of $5,537 million (Electronic Arts, 2020). Take the one-off out and 2020 looks like the years around it.
+One year looked spectacular: in 2020 EA's profit was 55% of its revenue. At first I put that down to COVID. It wasn't. EA's financial year ends on 31 March, so its 2020 year closed just as lockdowns began. The real reason is in EA's annual report: EA moved some of its intellectual property to its Swiss subsidiary, and that one-off move brought a tax benefit of about $1.5 billion. Net income for the year was $3,039 million on revenue of $5,537 million (Electronic Arts, 2020). Take the one-off out and 2020 looks like the years around it.
 
 ## What I thought EA was worth
 
-The last part of the assignment was a valuation. I started from EA's free cash flow for the year to March 2024, $1,369 million. That year EA reported $7,562 million in revenue and $1,273 million in net income (Electronic Arts, 2024). I grew that cash flow at 8% a year for five years, 6% for the next five and 4% for the five after that, then discounted it back at 7.16%.
+The last part was a valuation. I started from EA's free cash flow for the year to March 2024, $1,369 million. That year EA reported $7,562 million in revenue and $1,273 million in net income (Electronic Arts, 2024). I grew that cash flow at 8% a year for five years, 6% for the next five and 4% for the five after that, then discounted it back at 7.16%.
 
 That rate is EA's cost of capital, worked out from a US Treasury yield of 4.06%, EA's beta of 0.79 (how much its shares move with the market) and an equity risk premium of 5%, the figure Kroll recommended at the time (Kroll, 2024). Kroll pairs that premium with the 20-year Treasury yield; I used the 10-year, which makes the rate a little lower and the value a little higher.
 
@@ -49,7 +49,7 @@ The answer was about **$52.4 billion** for the whole business, debt included. A 
 
 Six months later, on 29 September 2025, EA agreed to be bought by a consortium of Saudi Arabia's Public Investment Fund, Silver Lake and Affinity Partners. The deal valued the company at about **$55 billion**: $210 a share in cash, 25% above where the shares had been trading (Electronic Arts, 2025a). It completed on 4 August 2026, and EA's shares stopped trading (Electronic Arts, 2026).
 
-So a student spreadsheet came within 5% of what someone actually paid. I'd like to say that was skill. Some of it was luck, and a buyer who takes a whole company pays extra for control, so the two numbers measure slightly different things. What it does suggest is that EA's share price had been sitting below what the business was worth to someone willing to buy all of it.
+So a spreadsheet on my own computer came within 5% of what someone actually paid. I'd like to say that was skill. Some of it was luck, and a buyer who takes a whole company pays extra for control, so the two numbers measure slightly different things. What it does suggest is that EA's share price had been sitting below what the business was worth to someone willing to buy all of it.
 
 ## Two decisions from the same years
 

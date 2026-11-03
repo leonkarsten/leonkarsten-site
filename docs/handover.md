@@ -61,14 +61,15 @@ Nothing personal: interests, facts, instructions, coaching, experiences only.
   Astro drops a space between text and a link that starts a new line: keep such links on one line.
 - **Content:** one draft post and one draft guide, both `draft: true` placeholders. About page
   has a bracketed contact placeholder.
-- **Draft post (3 Nov 2026):** `writing/what-happened-to-westwood.md`, Leon's 2025 MBA
-  decision-making assignment on EA rewritten for gamers. Every fact was checked against a source,
+- **Post LIVE 3 Nov 2026:** `writing/what-happened-to-westwood.md`, linked from the fan page's
+  "Play them today" list. Leon: the post must NOT mention the MBA or that it was an assignment
+  (it is his own work, his to publish). It began as his 2025 assignment on EA, rewritten for gamers. Every fact was checked against a source,
   with APA 7 in-text citations and a `## References` list (global.css gives it a hanging indent;
   `.prose a` now wraps long URLs, which had pushed phone pages sideways). It corrects three things
   in the original assignment: the 2020 margin was a Swiss tax benefit, not COVID; Ultimate Team
   (2009) came before Mass Effect 3; and Activision was bought, not shut down. No EA images, and no
-  cover page or student number. It stays `draft: true` until Leon says it is ready; link it from
-  the fan page when it goes live.
+  cover page or student number. Published on Leon's go; linked from
+  the fan page (done).
 
 ## Architecture
 
