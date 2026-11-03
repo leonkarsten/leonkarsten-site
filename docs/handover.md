@@ -29,7 +29,9 @@ Nothing personal: interests, facts, instructions, coaching, experiences only.
   Leon kept the name. The tool page shows "What you can make" (one card per chart: line,
   analogy, use it when, you get, your sheet), "How to use it" steps and "Coming next", from the
   optional `charts`, `steps` and `coming` fields in `src/content/tools/sankey-studio.json`. That
-  chart text is copied from the app's `src/charts.js`: change both together.
+  chart text is copied from the app's `src/charts.js`: change both together. Since 3 Nov a third chart,
+  In & out (daily or weekly snapshots of a list), and the app's Content Security Policy refuses every
+  network request (proven 0 of 6 attempts get out with it, 6 of 6 without).
 - **Games:** source repo `C:\Users\leon\Documents\leonkarsten-arcade` (local only, no remote
   yet). Style: real 1980–85 raster arcade inside the screen (black, pixel sprites, bitmap font,
   attract mode, top-ten initials), synthwave only on the page around it; rules in that repo's
