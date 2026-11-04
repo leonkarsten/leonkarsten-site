@@ -586,8 +586,10 @@ function makeScores(key, defaults) {
 //
 // How a vehicle handles is a row in VEHICLES. Each asks for a different skill:
 // the bike weaves, the bus plans ahead and can take a hit, the board jumps what
-// lies across the road, and the helicopter has height, so it goes over walls
-// and under bridges. Height is measured in cells too: a piece fills from `lo`
+// lies across the road, the helicopter has height, so it goes over walls and
+// under bridges, the kart is thrown wide by bends, the skates keep sliding, the
+// ship spends energy to pass through things, and the airplane does everything
+// in slow sweeps. Height is measured in cells too: a piece fills from `lo`
 // to its top, and a vehicle from `alt` to `alt + tall`.
 const HALF = 4;             // half the width of the road
 const VIEW = 60;            // cells ahead that rows exist and can be seen
@@ -604,16 +606,25 @@ const DRIFT = 6;            // how hard a bend pushes you outward
 const CLEAR_AHEAD = 30;     // cells emptied in front of you after a crash
 const JUMP_TICKS = 34;       // a skateboard jump, take-off to landing
 const JUMP_H = 1.2;
-const ALT_MAX = 2.6;        // the helicopter's ceiling
+const ALT_MAX = 2.6;        // the ceiling for anything that flies
+const PHASE_DRAIN = 1 / 90; // a full tank lasts 1.5 s
+const PHASE_FILL = 1 / 300; // and takes 5 s to fill
+const PHASE_MIN = 0.1;      // the least it takes to start
 const JUMP_BUFFER = 6;             // a press this close to landing still counts
 const FLY_START = 1;
 const LINE_MAX = HALF - 0.7;
 
+// `pace` scales the speed, `pays` the points, `drift` the push of a bend, and
+// `rows` the time between rows, for the ones that need longer to answer.
 const VEHICLES = {
-  bike: { name: 'MOTORBIKE', half: 0.25, tall: 0.7, steer: 0.115, grip: 0.25, pace: 1, pays: 1, drift: 1, armour: 0, action: null },
-  bus: { name: 'BUS', half: 0.6, tall: 1.2, steer: 0.075, grip: 0.08, pace: 0.85, pays: 0.5, drift: 0.6, armour: 2, action: null },
-  board: { name: 'SKATEBOARD', half: 0.2, tall: 0.7, steer: 0.095, grip: 0.14, pace: 0.9, pays: 1, drift: 1, armour: 0, action: 'jump' },
-  heli: { name: 'HELICOPTER', half: 0.45, tall: 0.4, steer: 0.1, grip: 0.07, pace: 1, pays: 1, drift: 0.8, armour: 0, action: 'fly', lift: 0.006, climb: 0.05 },
+  bike: { name: 'MOTORBIKE', half: 0.25, tall: 0.7, steer: 0.115, grip: 0.25, pace: 1, pays: 1, drift: 1, rows: 1, armour: 0, action: null },
+  bus: { name: 'BUS', half: 0.6, tall: 1.2, steer: 0.075, grip: 0.08, pace: 0.85, pays: 0.5, drift: 0.6, rows: 1, armour: 2, action: null },
+  board: { name: 'SKATEBOARD', half: 0.2, tall: 0.7, steer: 0.095, grip: 0.14, pace: 0.9, pays: 1, drift: 1, rows: 1, armour: 0, action: 'jump' },
+  heli: { name: 'HELICOPTER', half: 0.45, tall: 0.4, steer: 0.1, grip: 0.07, pace: 1, pays: 1, drift: 0.8, rows: 1, armour: 0, action: 'fly', lift: 0.006, climb: 0.05 },
+  kart: { name: 'GO-KART', half: 0.32, tall: 0.5, steer: 0.13, grip: 0.09, pace: 1, pays: 1, drift: 1.8, rows: 1, armour: 0, action: null },
+  skates: { name: 'SKATES', half: 0.18, tall: 0.8, steer: 0.13, grip: 0.04, pace: 0.8, pays: 0.5, drift: 0.7, rows: 1.5, armour: 0, action: null },
+  ship: { name: 'SPACESHIP', half: 0.35, tall: 0.5, steer: 0.105, grip: 0.16, pace: 1, pays: 1, drift: 0.9, rows: 1, armour: 0, action: 'phase' },
+  plane: { name: 'AIRPLANE', half: 0.7, tall: 0.3, steer: 0.09, grip: 0.05, pace: 1.05, pays: 0.5, drift: 0.6, rows: 1.5, armour: 0, action: 'fly', lift: 0.0025, climb: 0.035 },
 };
 const VEHICLE_IDS = Object.keys(VEHICLES);
 // A heavy vehicle is slow to answer: this much of the time between rows is spent
@@ -621,12 +632,12 @@ const VEHICLE_IDS = Object.keys(VEHICLES);
 const steerTicks = (ticks, v) => Math.max(0, ticks - 1.5 / v.grip);
 const maxDrift = v => MAX_CURVE * TOP_SPEED * v.pace * DRIFT * v.drift;
 
-// All four share one score table, and the bus lasts far longer than the rest,
-// so it pays half: `pays` scales every point.
+// All of them share one score table, and the bus, skates and airplane last far
+// longer than the rest, so they pay half: `pays` scales every point.
 
 // How tall each thing is. A jump clears all but the barrier; a tower is too
 // tall to fly over, and a bridge can only be flown under.
-const TOPS = { rail: 0.35, slider: 0.5, cone: 0.7, crate: 0.9, barrier: 1.25, wall: 1.4, tower: 9, bridge: 9 };
+const TOPS = { rail: 0.35, slider: 0.5, cone: 0.7, crate: 0.9, barrier: 1.25, wall: 1.4, tower: 9, bridge: 9, field: 9 };
 const BRIDGE_LO = 1.2;
 const pieceLo = p => (p.type === 'bridge' ? BRIDGE_LO : 0);
 
@@ -653,6 +664,7 @@ function newRun(rand, { vehicle = 'bike', reach = 0.6, gap = null, firstRow = 50
     dist: 0, x: 0, vx: 0, rec: 1, combo: 0, sector: 1,
     rows: [], nextD: firstRow, line: 0,
     alt: 0, vy: 0, air: 0, buffer: 0, wasAction: false, armour: VEHICLES[vehicle].armour, breather: false,
+    energy: 1, phasing: false,
   };
   if (run.vehicle.action === 'fly') run.alt = FLY_START;
   fillRows(run);
@@ -666,7 +678,7 @@ function fillRows(run) {
 }
 
 function addRow(run) {
-  const { rand, vehicle: v } = run, d = run.nextD, sector = sectorOf(d), ticks = spacingTicks(sector);
+  const { rand, vehicle: v } = run, d = run.nextD, sector = sectorOf(d), ticks = spacingTicks(sector) * v.rows;
   run.nextD = d + speedAt(d) * v.pace * ticks;
   const across = acrossRow(run, d, sector);
   if (across) { run.rows.push(across); return; }
@@ -698,6 +710,7 @@ function acrossRow(run, d, sector) {
   run.breather = true;
   const whole = type => [{ type, x: 0, w: HALF * 2 }];
   if (v.action === 'jump') return { d, line: run.line, pieces: whole('rail'), need: 'jump', passed: false };
+  if (v.action === 'phase') return { d, line: run.line, pieces: whole('field'), need: 'phase', passed: false };
   return rand() < 0.5
     ? { d, line: run.line, pieces: whole('wall'), alt: TOPS.wall + 0.5, passed: false }
     : { d, line: run.line, pieces: whole('bridge'), alt: 0.3, passed: false };
@@ -735,6 +748,7 @@ function stepRun(run, { left = false, right = false, action = false } = {}) {
   run.x += run.vx - curveAt(run.dist) * speed * DRIFT * v.drift;
   if (v.action === 'jump') stepJump(run, action, out);
   else if (v.action === 'fly') stepFlight(run, action);
+  else if (v.action === 'phase') stepPhase(run, action);
   const limit = HALF - v.half;
   if (Math.abs(run.x) > limit) {
     const side = Math.sign(run.x);
@@ -751,6 +765,7 @@ function stepRun(run, { left = false, right = false, action = false } = {}) {
   for (const row of run.rows) {
     if (row.passed || row.d > run.dist || row.d < from) continue;
     row.passed = true;
+    if (run.phasing) continue; // straight through, and nothing was shaved
     let closest = Infinity, dented = false;
     for (const p of row.pieces) {
       const edge = clearance(run, p, row.d);
@@ -814,11 +829,16 @@ function stepFlight(run, action) {
   }
 }
 
+function stepPhase(run, action) {
+  run.phasing = action && run.energy > (run.phasing ? 0 : PHASE_MIN);
+  run.energy = Math.max(0, Math.min(1, run.energy + (run.phasing ? -PHASE_DRAIN : PHASE_FILL)));
+}
+
 // After a crash: back up to speed from a clear stretch, with time to reach
 // whatever comes next from wherever you are.
 function respawn(run) {
   const v = run.vehicle;
-  Object.assign(run, { rec: 0.6, vx: 0, vy: 0, combo: 0, air: 0, buffer: 0, armour: v.armour, alt: v.action === 'fly' ? FLY_START : 0 });
+  Object.assign(run, { rec: 0.6, vx: 0, vy: 0, combo: 0, air: 0, buffer: 0, armour: v.armour, alt: v.action === 'fly' ? FLY_START : 0, energy: 1, phasing: false });
   run.rows = run.rows.filter(r => r.d > run.dist + CLEAR_AHEAD);
   run.nextD = Math.max(run.nextD, run.dist + CLEAR_AHEAD);
   fillRows(run);
@@ -830,13 +850,15 @@ function rider(run) {
   const v = run.vehicle, ahead = run.rows.filter(r => !r.passed);
   const next = ahead[0];
   if (!next) return {};
-  const off = next.line - (run.x + run.vx / (2 * v.grip)); // where it is heading, allowing for the bend
+  const moving = run.vx - curveAt(run.dist) * speedOf(run) * DRIFT * v.drift; // what the bend leaves of the steering
+  const off = next.line - (run.x + moving / (2 * v.grip));
   const out = { left: off < -0.1, right: off > 0.1, action: false };
   if (v.action === 'jump') out.action = next.need === 'jump' && next.d - run.dist <= (speedOf(run) * JUMP_TICKS) / 2;
   if (v.action === 'fly') {
     const need = ahead.slice(0, 2).find(r => r.alt !== undefined);
-    out.action = run.alt + run.vy * 8 < (need ? need.alt : FLY_START);
+    out.action = run.alt + (run.vy * Math.abs(run.vy)) / (2 * v.lift) < (need ? need.alt : FLY_START);
   }
+  if (v.action === 'phase') out.action = next.need === 'phase' && next.d - run.dist <= speedOf(run) * 6;
   return out;
 }
 
@@ -1015,7 +1037,60 @@ const MINIS = {
   bus: ['.YYYYYY.', '.YGGGGY.', '.YGGGGY.', '.YYYYYY.', '.RYYYYR.', '.YYYYYY.', '.T....T.', '........'],
   board: ['...CC...', '...CC...', '..SSSS..', '...SS...', '...LL...', '..L..L..', '.BBBBBB.', '..T..T..'],
   heli: ['RRRRRRRR', '...MM...', '..CCCC..', '.CGGGGC.', '.CCCCCC.', '..CCCC..', '.K....K.', 'KKKKKKKK'],
+  kart: ['...HH...', '..JJJJ..', 'GGGGGGGG', 'TT.KK.TT', 'TT.KK.TT', 'TT.RR.TT', '........', '........'],
+  skates: ['...CC...', '...CC...', '..SSSS..', '...SS...', '...LL...', '..L..L..', '.G....G.', '.T....T.'],
+  ship: ['...WW...', '...WW...', '..WGGW..', '.WWWWWW.', 'AWWWWWWA', 'A.KEEK.A', '...EE...', '........'],
+  plane: ['...RR...', '...RR...', '..TRRT..', 'WWWBBWWW', 'WWWBBWWW', '...BB...', '........', '........'],
 };
+
+const KART = [
+  '...........HHHHHH...........',
+  '..........HHHHHHHH..........',
+  '..........HHHHHHhh..........',
+  '...........hhhhhh...........',
+  '.........JJJJJJJJJJ.........',
+  '........JJJJJJJJJjjj........',
+  '...GGGGGGGGGGGGGGGGGGGGGG...',
+  '...TTTT..KKKKKKKKKK..TTTT...',
+  '..TTTTTT.KKKKKKKKKK.TTTTTT..',
+  '..TtTTTTKKKRRRRRRKKKTTTTtT..',
+  '..TTTTTTKKKKKKKKKKKKTTTTTT..',
+  '..TTtTTT.KK..EE..KK.TTtTTT..',
+  '..TTTTTT............TTTTTT..',
+  '...TTTT..............TTTT...',
+];
+const KART_INK = { H: '#ffd23f', h: '#b8862a', J: '#2b4cff', j: '#14206e', G: '#c8c8d8', K: '#34344a', R: '#ff5f5f', E: '#ff8a1e', T: '#16161f', t: '#5a5a70' };
+const KART_DIM = { ...KART_INK, R: '#a81e3a' };
+
+const SKATES = [...SKATER.slice(0, 16), '....GGG......GGG....', '....T.T......T.T....'];
+const SKATES_INK = { ...SKATER_INK, C: '#ff5fb8', c: '#a83c80', S: '#8f7bff', s: '#5a4ab0', L: '#ffd23f', l: '#b8862a', G: '#c8c8d8', T: '#ff3b3b' };
+
+const SHIP = [
+  '...............WW...............',
+  '...............WW...............',
+  '..............WWWW..............',
+  '.............WWGGWW.............',
+  '............WWWGGWWw............',
+  '...........WWWWWWWWww...........',
+  '.....A....WWWWWWWWWWww....A.....',
+  '.....A...WWWWWWWWWWWWww...A.....',
+  '....AAAAWWWWWWWWWWWWWWwwAAAA....',
+  '...AAAAAAWWWWWWWWWWWWwwAAAAAA...',
+  '..AAAAAAAAWWKKKKKKKKwwAAAAAAAA..',
+  '............KEEKKEEK............',
+  '............EFFEEFFE............',
+];
+const SHIP_INK = { W: '#d8d8e8', w: '#8f8fb0', G: '#5eeaf5', A: '#ff5fb8', K: '#34344a', E: '#ff8a1e', F: '#ffd23f' };
+const SHIP_HOT = { ...SHIP_INK, E: '#ffd23f', F: '#ffffff' };
+
+const centred = (s, w) => '.'.repeat(Math.floor((w - s.length) / 2)) + s + '.'.repeat(Math.ceil((w - s.length) / 2));
+const PLANE = [
+  'RR', 'RR', 'RR', 'RR', 'TTTTTTTTRRTTTTTTTT', 'BBBBBBBBBB', 'BBBGGGGBBB', 'BBBGGGGBBB',
+  'L' + 'W'.repeat(50) + 'L', 'W'.repeat(52), 'w'.repeat(20) + 'BBBBBBBBBBBB' + 'w'.repeat(20),
+  'KKKK....BBBBBBBB....KKKK', 'KK..........BBBB..........KK',
+].map(r => centred(r, 52));
+const PLANE_INK = { R: '#ff3b3b', T: '#c8c8d8', B: '#d8d8e8', G: '#14206e', W: '#ffffff', w: '#8f8fb0', K: '#34344a', L: '#3fd46b' };
+const PLANE_DIM = { ...PLANE_INK, L: '#14502e' };
 
 const SPREAD = 8; // room for the lean, either side
 
@@ -1046,6 +1121,10 @@ function makeArt() {
     bus: vehicle([bus, bus], [BUS_INK, BUS_DIM], 0.05, MINIS.bus, BUS_INK),
     board: vehicle([SKATER, SKATER], [SKATER_INK, SKATER_INK], 0.15, MINIS.board, SKATER_INK),
     heli: vehicle(ROTOR.map(r => [r, ...CHOPPER]), [CHOPPER_INK, CHOPPER_INK], 0.08, MINIS.heli, CHOPPER_INK),
+    kart: vehicle([KART, KART], [KART_INK, KART_DIM], 0.15, MINIS.kart, KART_INK),
+    skates: vehicle([SKATES, SKATES], [SKATES_INK, SKATES_INK], 0.15, MINIS.skates, SKATES_INK),
+    ship: vehicle([SHIP, SHIP], [SHIP_INK, SHIP_HOT], 0.1, MINIS.ship, SHIP_INK),
+    plane: vehicle([PLANE, PLANE], [PLANE_INK, PLANE_DIM], 0.2, MINIS.plane, PLANE_INK),
     cone: sprite(CONE, CONE_INK),
   };
 }
@@ -1101,6 +1180,10 @@ const SKILLS = {
   bus: () => ['WIDE AND SLOW TO TURN.', 'EACH BUS TAKES 2 HITS, BUT SCORES HALF.'],
   board: () => ['TAP ' + actionKey() + ' TO JUMP.', 'RAILS RUN RIGHT ACROSS THE ROAD.'],
   heli: () => ['HOLD ' + actionKey() + ' TO CLIMB, LET GO TO SINK.', 'OVER WALLS, UNDER BRIDGES.'],
+  kart: () => ['LOW AND QUICK, BUT BENDS THROW IT WIDE.', 'STEER EARLY.'],
+  skates: () => ['NO BRAKES. YOU KEEP SLIDING AFTER YOU LET GO.', 'STEER THE OTHER WAY TO STOP. HALF POINTS.'],
+  ship: () => ['HOLD ' + actionKey() + ' TO PHASE THROUGH ANYTHING.', 'THE ENERGY RUNS OUT. FORCE FIELDS NEED IT.'],
+  plane: () => ['HOLD ' + actionKey() + ' TO CLIMB, LET GO TO DIVE.', 'WIDE WINGS, SLOW SWEEPS. HALF POINTS.'],
 };
 let chosen = 'bike';
 try { const saved = localStorage.getItem('lk.nearmiss.vehicle'); if (VEHICLES[saved]) chosen = saved; } catch {}
@@ -1288,8 +1371,7 @@ function pick(step) {
 
 function onDir(dir) {
   if (mode === 'choose') {
-    if (dir === 'left') pick(-1);
-    else if (dir === 'right') pick(1);
+    pick({ left: -1, right: 1, up: -4, down: 4 }[dir]);
     return;
   }
   if (mode !== 'entry') return;
@@ -1301,11 +1383,11 @@ function onDir(dir) {
 }
 
 // On the choosing screen a tap picks a vehicle; a second tap on it rides it.
-const PANEL_X = 12, PANEL_Y = 54, PANEL_W = 74, PANEL_H = 96;
+const PANEL_X = 12, PANEL_Y = 46, PANEL_W = 74, PANEL_H = 58, PANEL_ROW = 60;
 function onPoint(x, y) {
-  if (mode !== 'choose' || y < PANEL_Y || y > PANEL_Y + PANEL_H) return false;
-  const id = VEHICLE_IDS[Math.floor((x - PANEL_X) / PANEL_W)];
-  if (!id) return false;
+  const col = Math.floor((x - PANEL_X) / PANEL_W), row = Math.floor((y - PANEL_Y) / PANEL_ROW);
+  if (mode !== 'choose' || col < 0 || col > 3 || row < 0 || row > 1) return false;
+  const id = VEHICLE_IDS[row * 4 + col];
   if (id === chosen) { if (chooseT >= CHOOSE_HOLD) newGame(); }
   else { chosen = id; timer = CHOOSE_TICKS; play('blip'); }
   return true;
@@ -1486,6 +1568,15 @@ function drawBridge(g, x, y, w, s) {
   g.fillStyle = '#6a35a0'; g.fillRect(x - post, y - low - 1, w + post * 2, 1);
 }
 
+// A force field: a checker of light you can see through, with no alpha.
+function drawField(g, x, y, w, h) {
+  const cell = Math.max(2, Math.round(h / 12));
+  g.fillStyle = (clock >> 2) & 1 ? INK.cyan : '#2f8fb0';
+  for (let j = 0, r = 0; j < h; j += cell, r++) for (let i = (r % 2) * cell; i < w; i += cell * 2) g.fillRect(x + i, y + j, Math.min(cell, w - i), Math.min(cell, h - j));
+  g.fillStyle = '#ffffff';
+  g.fillRect(x, y, w, 1);
+}
+
 function drawPiece(g, piece, rowD, dist, cam) {
   if (piece.gone) return;
   const z = rowD - dist + BIKE_Z, s = FOCAL / z;
@@ -1501,6 +1592,7 @@ function drawPiece(g, piece, rowD, dist, cam) {
   else if (piece.type === 'wall') drawWall(g, x, y - h, w, h);
   else if (piece.type === 'tower') drawTower(g, x, y - h, w, h);
   else if (piece.type === 'bridge') drawBridge(g, x, y, w, s);
+  else if (piece.type === 'field') drawField(g, x, y - h, w, h);
   else drawBarrier(g, x, y - h, w, h);
 }
 
@@ -1508,7 +1600,7 @@ function drawVehicle(g, id, x, y, vx, steer, ground = y) {
   const v = art[id];
   const step = Math.max(-LEAN_STEPS, Math.min(LEAN_STEPS, Math.round((vx / steer) * LEAN_STEPS)));
   const frame = v.frames[(clock >> 2) & 1][step];
-  const shadow = id === 'bus' ? 22 : 8;
+  const shadow = { bus: 22, plane: 24, kart: 12, ship: 12 }[id] || 8;
   g.fillStyle = '#000';
   g.fillRect(x - shadow, ground - 1, shadow * 2, 2); // off the ground, this is how you read your height
   g.drawImage(frame, x - (v.w >> 1), y - v.h);
@@ -1526,7 +1618,7 @@ function drawWorld() {
     if (r.d < run.dist) continue;
     for (const piece of r.pieces) drawPiece(ctx, piece, r.d, run.dist, cam);
   }
-  if (!wreck) drawVehicle(ctx, ridden, bikeX(), vehicleY(), run.vx, run.vehicle.steer, BIKE_Y);
+  if (!wreck && !(run.phasing && !reduceMotion && clock % 4 < 2)) drawVehicle(ctx, ridden, bikeX(), vehicleY(), run.vx, run.vehicle.steer, BIKE_Y);
   for (const r of run.rows) {
     if (r.d >= run.dist) continue;
     for (const piece of r.pieces) drawPiece(ctx, piece, r.d, run.dist, cam);
@@ -1559,6 +1651,11 @@ function drawHud() {
   for (let i = 0; i < bikes; i++) ctx.drawImage(art[ridden].mini, 60 + i * 10, 11);
   ctx.fillStyle = INK.green;
   for (let i = 0; i < run.armour; i++) ctx.fillRect(94 + i * 5, 12, 3, 7); // hits the bus can still take
+  if (run.vehicle.action === 'phase') {
+    ctx.fillStyle = '#1a1a2a'; ctx.fillRect(94, 13, 30, 5);
+    ctx.fillStyle = run.energy > PHASE_MIN ? INK.cyan : INK.orange;
+    ctx.fillRect(94, 13, Math.round(30 * run.energy), 5);
+  }
   text(ctx, 'SECTOR ' + run.sector, W - 8, 3, INK.red, { align: 'right' });
   text(ctx, Math.round(speedOf(run) * 600) + ' KM/H', W - 8, 12, INK.white, { align: 'right' });
 }
@@ -1587,7 +1684,7 @@ function drawTitle() {
 function drawHowTo() {
   text(ctx, 'HOW TO PLAY', W / 2, 30, INK.cyan, { align: 'center' });
   text(ctx, 'LEFT AND RIGHT. THE SPEED IS NOT UP TO YOU.', W / 2, 48, INK.white, { align: 'center' });
-  text(ctx, 'THERE IS ALWAYS A WAY THROUGH. FOUR VEHICLES,', W / 2, 60, INK.white, { align: 'center' });
+  text(ctx, 'THERE IS ALWAYS A WAY THROUGH. EIGHT VEHICLES,', W / 2, 60, INK.white, { align: 'center' });
   text(ctx, 'EACH A DIFFERENT SKILL. YOU GET ' + BIKES + ' OF YOURS.', W / 2, 70, INK.white, { align: 'center' });
   ctx.drawImage(art.cone, 92, 80);
   drawCrate(ctx, 118, 80, 18, 16);
@@ -1608,19 +1705,19 @@ function drawHowTo() {
 }
 
 function drawChoose() {
-  text(ctx, 'CHOOSE YOUR RIDE', W / 2, 32, INK.cyan, { align: 'center' });
+  text(ctx, 'CHOOSE YOUR RIDE', W / 2, 30, INK.cyan, { align: 'center' });
   VEHICLE_IDS.forEach((id, i) => {
-    const x = PANEL_X + i * PANEL_W, on = id === chosen;
+    const x = PANEL_X + (i % 4) * PANEL_W, y = PANEL_Y + Math.floor(i / 4) * PANEL_ROW, on = id === chosen;
     ctx.fillStyle = on ? PALETTES[0].road : '#000';
-    ctx.fillRect(x + 1, PANEL_Y, PANEL_W - 2, PANEL_H);
+    ctx.fillRect(x + 1, y, PANEL_W - 2, PANEL_H);
     ctx.fillStyle = on ? INK.yellow : INK.dim;
-    for (const [rx, ry, rw, rh] of [[x + 1, PANEL_Y, PANEL_W - 2, 1], [x + 1, PANEL_Y + PANEL_H - 1, PANEL_W - 2, 1], [x + 1, PANEL_Y, 1, PANEL_H], [x + PANEL_W - 2, PANEL_Y, 1, PANEL_H]]) ctx.fillRect(rx, ry, rw, rh);
-    drawVehicle(ctx, id, x + (PANEL_W >> 1), PANEL_Y + 66, 0, 1);
-    text(ctx, VEHICLES[id].name, x + (PANEL_W >> 1), PANEL_Y + 80, on ? INK.white : INK.grey, { align: 'center' });
+    for (const [rx, ry, rw, rh] of [[x + 1, y, PANEL_W - 2, 1], [x + 1, y + PANEL_H - 1, PANEL_W - 2, 1], [x + 1, y, 1, PANEL_H], [x + PANEL_W - 2, y, 1, PANEL_H]]) ctx.fillRect(rx, ry, rw, rh);
+    drawVehicle(ctx, id, x + (PANEL_W >> 1), y + 44, 0, 1);
+    text(ctx, VEHICLES[id].name, x + (PANEL_W >> 1), y + 48, on ? INK.white : INK.grey, { align: 'center' });
   });
-  SKILLS[chosen]().forEach((s, i) => text(ctx, s, W / 2, 162 + i * 12, i ? INK.grey : INK.white, { align: 'center' }));
-  if (blinkOn()) text(ctx, input.touch ? 'TAP IT AGAIN OR TAP START' : 'LEFT AND RIGHT, THEN SPACE', W / 2, 196, INK.yellow, { align: 'center' });
-  text(ctx, 'TIME ' + Math.ceil(timer / 60), W / 2, 216, INK.orange, { align: 'center' });
+  SKILLS[chosen]().forEach((s, i) => text(ctx, s, W / 2, 172 + i * 11, i ? INK.grey : INK.white, { align: 'center' }));
+  if (blinkOn()) text(ctx, input.touch ? 'TAP IT AGAIN OR TAP START' : 'ARROWS, THEN SPACE', W / 2, 200, INK.yellow, { align: 'center' });
+  text(ctx, 'TIME ' + Math.ceil(timer / 60), W / 2, 218, INK.orange, { align: 'center' });
 }
 
 function drawScores() {
@@ -1758,7 +1855,7 @@ window.__nearmiss = {
   get demo() { return demo; },
   get score() { return score; },
   get bikes() { return bikes; },
-  get run() { return { x: run.x, alt: run.alt, armour: run.armour, dist: run.dist, speed: speedOf(run), sector: run.sector, combo: run.combo }; },
+  get run() { return { x: run.x, alt: run.alt, armour: run.armour, energy: run.energy, dist: run.dist, speed: speedOf(run), sector: run.sector, combo: run.combo }; },
   get ridden() { return ridden; },
   get chosen() { return chosen; },
   attract(p) { toAttract(p); },
