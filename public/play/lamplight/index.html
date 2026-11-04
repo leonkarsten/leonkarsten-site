@@ -576,7 +576,8 @@ function makeScores(key, defaults) {
 
 // ---- games/lamplight/maze.js
 // Lamplight's maze rules, with no drawing and no DOM, so the tests can run
-// them directly. Carried over from the Qlaim cabinet unchanged in behaviour.
+// them directly. Carried over from the Qlaim cabinet unchanged in behaviour;
+// the walker's own rules are in walker.js.
 const MW = 21, MH = 15;
 const WALL = 1, FLOOR = 0;
 const LANTERNS = 3;
@@ -588,7 +589,8 @@ function isFloor(maze, x, y) {
 
 // Recursive backtracker: carves a perfect maze — exactly one route between any
 // two points. That matters here, because a maze with loops lets you escape the
-// walker by running in circles, and the whole game is that you cannot.
+// walker by running in circles forever. A dead end is a real risk, and a flare
+// is the way out of one.
 function carve(rand = Math.random) {
   const maze = new Uint8Array(MW * MH).fill(WALL);
   const stack = [[1, 1]];
@@ -633,8 +635,7 @@ function distancesFrom(maze, sx, sy) {
   return dist;
 }
 
-// The walker sees along a straight, unbroken corridor only. A corner is the
-// one thing that hides you.
+// The walker sees along a straight, unbroken corridor only. A corner hides you.
 function lineOfSight(maze, ax, ay, bx, by) {
   if (ax === bx) {
     const [lo, hi] = ay < by ? [ay, by] : [by, ay];
@@ -675,6 +676,111 @@ function respawnSpot(maze, rand = Math.random) {
   const dist = distancesFrom(maze, 1, 1);
   const open = floorCells(maze).filter(([x, y]) => dist[y * MW + x] > 6);
   return open[Math.floor(rand() * open.length)] || [MW - 2, MH - 2];
+}
+
+// ---- games/lamplight/walker.js
+// The walker's rules, with no drawing and no DOM, so the tests can run them.
+// It hunts what it can see, and only that: out of sight it knows where you
+// were, not where you are. It walks there, searches a while, then forgets.
+
+const PLAYER_SPEED = 0.075;  // cells per tick, 60 ticks a second
+const SIGHT = 9;             // cells along a straight corridor
+const MAX_FLARES = 3;
+const BANISH_PTS = 500;
+const NEIGHBOURS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+
+// Hunting stays just under the player's pace at every level, so running
+// always works. Later mazes get harder by searching longer, not by speed.
+function walkerSpeeds(level) {
+  const roam = Math.min(0.045 + level * 0.006, 0.066);
+  return { roam, hunt: Math.min(roam * 1.35, PLAYER_SPEED * 0.95), flee: 0.045 };
+}
+const searchTicks = level => Math.min(360, 150 + level * 30);
+const flareTicks = level => Math.max(180, 360 - (level - 1) * 30);
+
+function newWalker(x, y, level) {
+  return { x, y, dir: null, last: null, state: 'roam', seen: null, search: 0, stun: 0, speeds: walkerSpeeds(level), searchFor: searchTicks(level) };
+}
+
+// Grid-locked movement: an actor only ever travels between cell centres, so
+// it can never end up half inside a wall.
+function stepActor(a, speed) {
+  if (!a.dir) return;
+  const tx = a.tx, ty = a.ty;
+  a.x += Math.sign(tx - a.x) * Math.min(speed, Math.abs(tx - a.x));
+  a.y += Math.sign(ty - a.y) * Math.min(speed, Math.abs(ty - a.y));
+  if (Math.abs(a.x - tx) < 1e-6 && Math.abs(a.y - ty) < 1e-6) { a.x = tx; a.y = ty; a.dir = null; }
+}
+
+function openNeighbours(maze, x, y) {
+  return NEIGHBOURS.filter(([dx, dy]) => isFloor(maze, x + dx, y + dy)).map(([dx, dy]) => [dx, dy, x + dx, y + dy]);
+}
+
+// The real shortest path rather than a greedy step, which in a perfect maze
+// would walk it straight into a dead end.
+function stepToward(maze, wx, wy, goal) {
+  const dist = distancesFrom(maze, goal.x, goal.y);
+  let best = dist[wy * MW + wx], choice = null;
+  for (const n of openNeighbours(maze, wx, wy)) {
+    const d = dist[n[3] * MW + n[2]];
+    if (d !== -1 && d < best) { best = d; choice = n; }
+  }
+  return choice;
+}
+
+function stepAway(maze, wx, wy, px, py) {
+  const dist = distancesFrom(maze, px, py);
+  let best = dist[wy * MW + wx], choice = null;
+  for (const n of openNeighbours(maze, wx, wy)) {
+    const d = dist[n[3] * MW + n[2]];
+    if (d > best) { best = d; choice = n; }
+  }
+  return choice;
+}
+
+function wander(maze, w, wx, wy, rand) {
+  const options = openNeighbours(maze, wx, wy).filter(n => !(w.last && n[2] === w.last[0] && n[3] === w.last[1]));
+  const pool = options.length ? options : (w.last ? [[w.last[0] - wx, w.last[1] - wy, w.last[0], w.last[1]]] : []);
+  return pool[Math.floor(rand() * pool.length)];
+}
+
+// One tick. Returns true on the tick it first spots the player.
+function walkerStep(w, maze, px, py, rand = Math.random) {
+  if (w.stun > 0) { w.stun--; return false; }
+  const wx = Math.round(w.x), wy = Math.round(w.y);
+  let spotted = false;
+
+  if (w.state !== 'flee' && lineOfSight(maze, wx, wy, px, py) && Math.hypot(wx - px, wy - py) <= SIGHT) {
+    spotted = w.state !== 'hunt';
+    w.state = 'hunt';
+    w.seen = { x: px, y: py };
+  } else if (w.state === 'search' && --w.search <= 0) w.state = 'roam';
+
+  if (!w.dir) {
+    if (w.state === 'hunt' && wx === w.seen.x && wy === w.seen.y) { w.state = 'search'; w.search = w.searchFor; }
+    let choice = null;
+    if (w.state === 'hunt') choice = stepToward(maze, wx, wy, w.seen);
+    else if (w.state === 'flee') choice = stepAway(maze, wx, wy, px, py);
+    else choice = wander(maze, w, wx, wy, rand);
+    if (choice) {
+      w.dir = [choice[0], choice[1]];
+      w.tx = choice[2]; w.ty = choice[3];
+      w.last = [wx, wy];
+    }
+  }
+  stepActor(w, w.state === 'hunt' ? w.speeds.hunt : w.state === 'flee' ? w.speeds.flee : w.speeds.roam);
+  return spotted;
+}
+
+// Banished: back to the far side of the maze from the player, and still for
+// two seconds, having forgotten everything.
+function banish(w, maze, px, py, rand = Math.random) {
+  const dist = distancesFrom(maze, px, py);
+  const far = Math.max(...dist);
+  const spots = [];
+  for (let i = 0; i < dist.length; i++) if (dist[i] >= far * 0.7) spots.push(i);
+  const i = spots[Math.floor(rand() * spots.length)];
+  Object.assign(w, { x: i % MW, y: Math.floor(i / MW), dir: null, last: null, state: 'roam', seen: null, search: 0, stun: 120 });
 }
 
 // ---- engine/sprites.js
@@ -784,6 +890,7 @@ const WALKER_A = [
 const WALKER_B = WALKER_A.slice(0, 15).concat(['...MM.MMM.MM.M..']);
 const WALKER_CALM = { M: '#5b2a86', m: '#3a1858', K: '#0a0410', E: '#c8c8e0', N: '#8f8fb0' };
 const WALKER_ALERT = { M: '#a3203f', m: '#5a0f22', K: '#0a0410', E: '#ffe14a', N: '#d9a066' };
+const WALKER_FLEE = { M: '#8fd8ff', m: '#3a7ab8', K: '#0a0410', E: '#ffffff', N: '#c8f0ff' };
 
 const LANTERN = [
   '................',
@@ -862,6 +969,7 @@ function makeArt() {
     },
     walker: [sprite(WALKER_A, WALKER_CALM), sprite(WALKER_B, WALKER_CALM)],
     walkerAlert: [sprite(WALKER_A, WALKER_ALERT), sprite(WALKER_B, WALKER_ALERT)],
+    walkerFlee: [sprite(WALKER_A, WALKER_FLEE), sprite(WALKER_B, WALKER_FLEE)],
     lantern: [sprite(LANTERN, LANTERN_LIT), sprite(LANTERN, LANTERN_FLICKER)],
     lanternMemory: sprite(LANTERN, LANTERN_MEMORY),
     lanternEmpty: sprite(LANTERN, LANTERN_EMPTY),
@@ -875,7 +983,7 @@ function makeArt() {
 const CELL = 16, TOP = 20;
 const W = MW * CELL, H = TOP + MH * CELL + 20; // 336 x 280
 const LAMP_RADIUS = 3.1;        // in cells
-const PLAYER_SPEED = 0.075;     // cells per tick, 60 ticks a second
+const FLARE_RADIUS = 5.1;       // the lamp while a flare burns
 const TICK_MS = 1000 / 60;
 const DEMO_TICKS = 60 * 30;
 
@@ -905,7 +1013,7 @@ const art = makeArt();
 let maze = carve();
 let seen = new Uint8Array(MW * MH);
 const player = { x: 1, y: 1, dir: null, queued: null, face: 1, moving: false };
-let walker = null, lanterns = [], door = null, carried = 0;
+let walker = null, lanterns = [], door = null, carried = 0, flares = 1, flare = 0, lamp = LAMP_RADIUS;
 let mode = 'attract', page = 'title', pageT = 0;
 let level = 1, lives = 3, score = 0, ticks = 0, timer = 0, flash = 0, sparks = [];
 let demo = false, demoT = 0, pausedFrom = null, tally = null, entry = null, highlight = -1;
@@ -923,6 +1031,9 @@ const SFX = {
   alert: () => sound.note(330, 0.45, { to: 110, vol: 0.05 }),
   caught: () => { sound.note(440, 0.9, { to: 55, vol: 0.055 }); sound.noise(0.5, { vol: 0.25, cutoff: 500 }); },
   clear: () => sound.tune([[784, 0.1], [988, 0.1], [1175, 0.1], [1568, 0.1], [0, 0.06], [1175, 0.1], [1568, 0.4]], { vol: 0.045 }),
+  flare: () => { sound.noise(0.25, { vol: 0.14, cutoff: 3500 }); sound.note(600, 0.4, { to: 1800, vol: 0.04 }); },
+  noFlare: () => sound.note(140, 0.12, { vol: 0.05 }),
+  banish: () => sound.tune([[1568, 0.06], [1175, 0.06], [880, 0.06], [587, 0.2]], { vol: 0.045 }),
   tick: () => sound.note(1760, 0.03, { vol: 0.025 }),
   blip: () => sound.note(988, 0.05, { vol: 0.04 }),
   over: () => sound.tune([[392, 0.22], [370, 0.22], [349, 0.22], [330, 0.7]], { type: 'triangle', vol: 0.12 }),
@@ -933,7 +1044,8 @@ function play(name) { if (!demo) SFX[name](); }
 // ---------------------------------------------------------------- the game
 
 function build(full) {
-  if (full) { level = 1; lives = 3; score = 0; }
+  if (full) { level = 1; lives = 3; score = 0; flares = 0; }
+  flares = Math.max(flares, 1); flare = 0; lamp = LAMP_RADIUS;
   maze = carve();
   seen = new Uint8Array(MW * MH);
   resetPlayer();
@@ -941,7 +1053,7 @@ function build(full) {
   const placed = placeThings(maze);
   door = placed.door;
   lanterns = placed.lanterns;
-  walker = { x: placed.walkerStart.x, y: placed.walkerStart.y, dir: null, alert: 0, last: null, speed: 0.045 + level * 0.006 };
+  walker = newWalker(placed.walkerStart.x, placed.walkerStart.y, level);
 }
 
 function resetPlayer() {
@@ -950,21 +1062,11 @@ function resetPlayer() {
 
 function markSeen() {
   const px = Math.round(player.x), py = Math.round(player.y);
-  const r = Math.ceil(LAMP_RADIUS);
+  const r = Math.ceil(lamp);
   for (let y = py - r; y <= py + r; y++) for (let x = px - r; x <= px + r; x++) {
     if (x < 0 || y < 0 || x >= MW || y >= MH) continue;
-    if (Math.hypot(x - px, y - py) <= LAMP_RADIUS) seen[y * MW + x] = 1;
+    if (Math.hypot(x - px, y - py) <= lamp) seen[y * MW + x] = 1;
   }
-}
-
-// Grid-locked movement: an actor only ever travels between cell centres, so
-// it can never end up half inside a wall.
-function stepActor(a, speed) {
-  if (!a.dir) return;
-  const tx = a.tx, ty = a.ty;
-  a.x += Math.sign(tx - a.x) * Math.min(speed, Math.abs(tx - a.x));
-  a.y += Math.sign(ty - a.y) * Math.min(speed, Math.abs(ty - a.y));
-  if (Math.abs(a.x - tx) < 1e-6 && Math.abs(a.y - ty) < 1e-6) { a.x = tx; a.y = ty; a.dir = null; }
 }
 
 function heldDir() {
@@ -1010,47 +1112,20 @@ function playerStep() {
   stepActor(player, PLAYER_SPEED);
 }
 
-function walkerStep() {
-  const wx = Math.round(walker.x), wy = Math.round(walker.y);
-  const px = Math.round(player.x), py = Math.round(player.y);
+// A flare turns the hunt round: for a few seconds the walker runs, and
+// touching it banishes it.
+function useFlare() {
+  if (flare > 0) return;
+  if (flares <= 0) { play('noFlare'); return; }
+  flares--;
+  flare = flareTicks(level);
+  walker.state = 'flee'; walker.stun = 0;
+  play('flare');
+}
 
-  if (lineOfSight(maze, wx, wy, px, py) && Math.hypot(wx - px, wy - py) <= 9) {
-    if (!walker.alert) play('alert');
-    walker.alert = 240;
-  } else if (walker.alert > 0) walker.alert--;
-
-  if (!walker.dir) {
-    let choice = null;
-    if (walker.alert > 0) {
-      // Chase along the real shortest path rather than a greedy step, which
-      // in a perfect maze would walk it straight into a dead end.
-      const dist = distancesFrom(maze, px, py);
-      let bestD = dist[wy * MW + wx];
-      for (const [dx, dy] of Object.values(DIRS)) {
-        const nx = wx + dx, ny = wy + dy;
-        if (!isFloor(maze, nx, ny)) continue;
-        const d = dist[ny * MW + nx];
-        if (d !== -1 && d < bestD) { bestD = d; choice = [dx, dy, nx, ny]; }
-      }
-    }
-    if (!choice) {
-      const options = [];
-      for (const [dx, dy] of Object.values(DIRS)) {
-        const nx = wx + dx, ny = wy + dy;
-        if (!isFloor(maze, nx, ny)) continue;
-        if (walker.last && nx === walker.last[0] && ny === walker.last[1]) continue;
-        options.push([dx, dy, nx, ny]);
-      }
-      const pool = options.length ? options : (walker.last ? [[walker.last[0] - wx, walker.last[1] - wy, walker.last[0], walker.last[1]]] : []);
-      choice = pool[Math.floor(Math.random() * pool.length)];
-    }
-    if (choice) {
-      walker.dir = [choice[0], choice[1]];
-      walker.tx = choice[2]; walker.ty = choice[3];
-      walker.last = [wx, wy];
-    }
-  }
-  stepActor(walker, walker.speed * (walker.alert > 0 ? 1.35 : 1));
+function flareTick() {
+  if (flare <= 0 || --flare > 0) return;
+  if (walker.state === 'flee') walker.state = 'roam';
 }
 
 function caught() {
@@ -1062,6 +1137,7 @@ function caught() {
     const a = Math.random() * Math.PI * 2, s = 0.3 + Math.random() * 1.6;
     sparks.push({ x: cx, y: cy, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 1 });
   }
+  flare = 0; lamp = LAMP_RADIUS;
   mode = 'dying'; timer = 100;
 }
 
@@ -1070,21 +1146,25 @@ function afterDying() {
   if (lives <= 0) { mode = 'over'; timer = 200; play('over'); return; }
   resetPlayer();
   const spot = respawnSpot(maze);
-  Object.assign(walker, { x: spot[0], y: spot[1], dir: null, alert: 0, last: null });
+  walker = newWalker(spot[0], spot[1], level);
   mode = 'ready'; timer = 80;
 }
 
 function playTick() {
   ticks++;
   if (demo && ++demoT > DEMO_TICKS) { endDemo(); return; }
+  if (demo && flares > 0 && walker.state === 'hunt' && Math.hypot(player.x - walker.x, player.y - walker.y) < 5) useFlare();
   playerStep();
-  walkerStep();
+  if (walkerStep(walker, maze, Math.round(player.x), Math.round(player.y))) play('alert');
+  flareTick();
+  lamp = flare > 0 ? FLARE_RADIUS : LAMP_RADIUS;
   markSeen();
 
   const px = Math.round(player.x), py = Math.round(player.y);
   for (const l of lanterns) {
     if (!l.taken && l.x === px && l.y === py && Math.abs(player.x - px) < 0.3 && Math.abs(player.y - py) < 0.3) {
       l.taken = true; carried++;
+      flares = Math.min(MAX_FLARES, flares + 1);
       score += 250;
       play(carried === LANTERNS ? 'doorOpen' : 'lantern');
     }
@@ -1101,7 +1181,13 @@ function playTick() {
     return;
   }
 
-  if (Math.hypot(player.x - walker.x, player.y - walker.y) < 0.6) caught();
+  if (Math.hypot(player.x - walker.x, player.y - walker.y) < 0.6) {
+    if (walker.state !== 'flee') { caught(); return; }
+    banish(walker, maze, px, py);
+    flare = 0;
+    score += BANISH_PTS;
+    play('banish');
+  }
 }
 
 // Lines appear one by one, then the door and the time bonus count into the score.
@@ -1184,6 +1270,7 @@ function onAction(action) {
   // start
   if (mode === 'attract' || demo) { newGame(); return; }
   if (mode === 'paused') { mode = pausedFrom; return; }
+  if (mode === 'playing') { useFlare(); return; }
   if (mode === 'tally' && tally.t >= 60) { tally.shown = tally.total; nextLevel(); return; }
   if (mode === 'over') { timer = 0; return; }
   if (mode === 'entry') confirmLetter();
@@ -1225,7 +1312,7 @@ document.addEventListener('visibilitychange', () => {
 
 const blinkOn = (rate = 32) => reduceMotion || ((clock / rate) | 0) % 2 === 0;
 const prompt = () => (input.touch ? 'TAP START' : 'PRESS SPACE');
-const band = d => (d <= LAMP_RADIUS - 1.1 ? 2 : d <= LAMP_RADIUS + 0.6 ? 1 : 0);
+const band = (d, r = LAMP_RADIUS) => (d <= r - 1.1 ? 2 : d <= r + 0.6 ? 1 : 0);
 
 function banner(lines, y) {
   const wide = Math.max(...lines.map(([s]) => s.length)) * 6 + 10;
@@ -1251,14 +1338,14 @@ function drawMaze() {
   const px = player.x, py = player.y;
   for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) {
     if (!seen[y * MW + x]) continue;
-    const b = band(Math.hypot(x - px, y - py));
+    const b = band(Math.hypot(x - px, y - py), lamp);
     const img = maze[y * MW + x] === WALL ? art.wall[b] : art.floor[b];
     ctx.drawImage(img, x * CELL, TOP + y * CELL);
   }
 
   // the door only reads as a door once you can actually use it
   if (seen[door.y * MW + door.x]) {
-    const lit = band(Math.hypot(door.x - px, door.y - py)) > 0;
+    const lit = band(Math.hypot(door.x - px, door.y - py), lamp) > 0;
     const img = carried === LANTERNS ? art.doorOpen[(clock >> 3) & 1] : lit ? art.door : art.doorMemory;
     ctx.drawImage(img, door.x * CELL, TOP + door.y * CELL);
   }
@@ -1267,15 +1354,18 @@ function drawMaze() {
   for (const l of lanterns) {
     if (l.taken) continue;
     const d = Math.hypot(l.x - px, l.y - py);
-    if (!seen[l.y * MW + l.x] && d > LAMP_RADIUS) continue;
-    ctx.drawImage(d <= LAMP_RADIUS + 1 ? art.lantern[flick] : art.lanternMemory, l.x * CELL, TOP + l.y * CELL);
+    if (!seen[l.y * MW + l.x] && d > lamp) continue;
+    ctx.drawImage(d <= lamp + 1 ? art.lantern[flick] : art.lanternMemory, l.x * CELL, TOP + l.y * CELL);
   }
 
   // The walker is drawn only when the lamp reaches it. Everywhere else it is
-  // a sound and a memory, which is the whole tension of the cabinet.
-  if (Math.hypot(walker.x - px, walker.y - py) <= LAMP_RADIUS + 0.8) {
+  // a sound and a memory, which is the whole tension of the cabinet. A flare
+  // shows it wherever it runs, so it can be chased; it blinks as the flare dies.
+  const fleeing = walker.state === 'flee';
+  if (fleeing || Math.hypot(walker.x - px, walker.y - py) <= lamp + 0.8) {
     const f = walker.dir ? (clock >> 3) & 1 : 0;
-    const img = walker.alert > 0 ? art.walkerAlert[f] : art.walker[f];
+    const set = fleeing && (flare > 60 || blinkOn(8)) ? art.walkerFlee : walker.state === 'hunt' || fleeing ? art.walkerAlert : art.walker;
+    const img = set[f];
     ctx.drawImage(img, Math.round(walker.x * CELL), Math.round(TOP + walker.y * CELL));
   }
 
@@ -1297,10 +1387,15 @@ function drawBottom() {
   for (let i = 0; i < LANTERNS; i++) {
     ctx.drawImage(i < carried ? art.lantern[0] : art.lanternEmpty, W - 4 - (LANTERNS - i) * 14, y);
   }
+  text(ctx, 'FLARES ' + flares, 46, y + 5, flares ? INK.yellow : INK.dim);
   if (demo) {
     if (blinkOn()) text(ctx, 'DEMO PLAY', W / 2, y + 5, INK.cyan, { align: 'center' });
-  } else if (mode === 'playing' && walker.alert > 0 && blinkOn(12)) {
-    text(ctx, 'IT HAS SEEN YOU', W / 2, y + 5, INK.orange, { align: 'center' });
+  } else if (mode === 'playing' && flare > 0) {
+    text(ctx, 'CHASE IT', W / 2, y + 5, INK.cyan, { align: 'center' });
+  } else if (mode === 'playing' && walker.state === 'hunt' && blinkOn(12)) {
+    text(ctx, flares ? (input.touch ? 'SEEN! START FOR A FLARE' : 'SEEN! SPACE FOR A FLARE') : 'IT HAS SEEN YOU', W / 2, y + 5, INK.orange, { align: 'center' });
+  } else if (mode === 'playing' && walker.state === 'search') {
+    text(ctx, 'IT IS SEARCHING', W / 2, y + 5, INK.grey, { align: 'center' });
   }
 }
 
@@ -1353,13 +1448,14 @@ function drawHowTo() {
   text(ctx, 'HOW TO PLAY', W / 2, 30, INK.cyan, { align: 'center' });
   text(ctx, 'FIND 3 LANTERNS, THEN THE DOOR.', W / 2, 48, INK.white, { align: 'center' });
   const rows = [
-    [art.lantern[0], 'LANTERN', '250 PTS', INK.yellow],
+    [art.lantern[0], 'LANTERN: ONE MORE FLARE', '250 PTS', INK.yellow],
     [art.doorOpen[0], 'OPEN DOOR', '500 X MAZE', INK.yellow],
-    [art.walker[0], 'IT CANNOT BE FOUGHT.', '', INK.pink],
+    [art.walker[0], 'OUT OF SIGHT, IT FORGETS.', '', INK.pink],
     [art.walkerAlert[0], 'CORNERS BREAK ITS SIGHT.', '', INK.orange],
+    [art.walkerFlee[0], (input.touch ? 'START' : 'SPACE') + ': A FLARE. CHASE IT.', BANISH_PTS + ' PTS', INK.cyan],
   ];
   rows.forEach(([img, label, value, ink], i) => {
-    const y = 66 + i * 24;
+    const y = 64 + i * 22;
     ctx.drawImage(img, 48, y);
     text(ctx, label, 74, y + 5, ink);
     if (value) text(ctx, value, 288, y + 5, INK.white, { align: 'right' });
@@ -1507,6 +1603,11 @@ window.__lamplight = {
   get demo() { return demo; },
   get score() { return score; },
   get player() { return { x: player.x, y: player.y }; },
+  get flares() { return flares; },
+  get flare() { return flare; },
+  get walker() { return { x: walker.x, y: walker.y, state: walker.state }; },
+  // Put the walker on the player, to check a flare and a banish.
+  walkerOnPlayer() { Object.assign(walker, { x: player.x, y: player.y, dir: null }); },
   attract(p) { toAttract(p); },
   endGame(s) { demo = false; score = s; lives = 0; mode = 'over'; timer = 1; },
 };
