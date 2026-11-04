@@ -1060,6 +1060,7 @@ const POST_EVERY = 8;
 const TICK_MS = 1000 / 60;
 const DEMO_TICKS = 60 * 30;
 const CHOOSE_TICKS = 60 * 30;
+const CHOOSE_HOLD = 45;            // START does nothing this long: a click then Space must not skip the screen
 
 const INK = {
   red: '#ff3b3b', white: '#ffffff', yellow: '#ffd23f', orange: '#ff8a1e', green: '#3fd46b',
@@ -1117,7 +1118,7 @@ for (let i = 0; i < 512; i++) HILLS.push(Math.round(7 + 5 * Math.sin(i / 26) + 3
 
 let run = null, ridden = 'bike', mode = 'attract', page = 'title', pageT = 0, t = 0, timer = 0, clock = 0;
 let bikes = BIKES, score = 0, sky = 0, idleDist = 0, lastLine = 0, sparks = [], shake = 0, pops = [], sectorT = 0;
-let demo = false, demoT = 0, demoNext = 0, entry = null, highlight = -1, pausedFrom = null, wreck = null;
+let demo = false, demoT = 0, demoNext = 0, chooseT = 0, entry = null, highlight = -1, pausedFrom = null, wreck = null;
 
 const SFX = {
   start: () => {
@@ -1156,7 +1157,7 @@ function newGame() {
 function toChoose() {
   demo = false; highlight = -1;
   engine(false);
-  mode = 'choose'; timer = CHOOSE_TICKS;
+  mode = 'choose'; timer = CHOOSE_TICKS; chooseT = 0;
 }
 
 function startDemo() {
@@ -1266,7 +1267,7 @@ function onAction(action) {
     return;
   }
   if (mode === 'attract' || demo) { toChoose(); return; }
-  if (mode === 'choose') { newGame(); return; }
+  if (mode === 'choose') { if (chooseT >= CHOOSE_HOLD) newGame(); return; }
   if (mode === 'paused') { mode = pausedFrom; return; }
   if (mode === 'over') { timer = 0; return; }
   if (mode === 'entry') confirmLetter();
@@ -1305,7 +1306,7 @@ function onPoint(x, y) {
   if (mode !== 'choose' || y < PANEL_Y || y > PANEL_Y + PANEL_H) return false;
   const id = VEHICLE_IDS[Math.floor((x - PANEL_X) / PANEL_W)];
   if (!id) return false;
-  if (id === chosen) newGame();
+  if (id === chosen) { if (chooseT >= CHOOSE_HOLD) newGame(); }
   else { chosen = id; timer = CHOOSE_TICKS; play('blip'); }
   return true;
 }
@@ -1727,7 +1728,7 @@ function tick() {
   if (sectorT > 0) sectorT--;
   switch (mode) {
     case 'attract': attractTick(); break;
-    case 'choose': if (--timer <= 0) toAttract('title'); break;
+    case 'choose': chooseT++; if (--timer <= 0) toAttract('title'); break;
     case 'ready': if (--timer <= 0) mode = 'riding'; break;
     case 'riding': rideTick(); break;
     case 'crashed': if (++t >= 130) afterCrash(); break;
