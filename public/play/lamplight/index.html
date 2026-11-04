@@ -1013,7 +1013,7 @@ const art = makeArt();
 let maze = carve();
 let seen = new Uint8Array(MW * MH);
 const player = { x: 1, y: 1, dir: null, queued: null, face: 1, moving: false };
-let walker = null, lanterns = [], door = null, carried = 0, flares = 1, flare = 0, lamp = LAMP_RADIUS;
+let walker = null, lanterns = [], door = null, carried = 0, flares = 0, flare = 0, lamp = LAMP_RADIUS;
 let mode = 'attract', page = 'title', pageT = 0;
 let level = 1, lives = 3, score = 0, ticks = 0, timer = 0, flash = 0, sparks = [];
 let demo = false, demoT = 0, pausedFrom = null, tally = null, entry = null, highlight = -1;
@@ -1044,8 +1044,8 @@ function play(name) { if (!demo) SFX[name](); }
 // ---------------------------------------------------------------- the game
 
 function build(full) {
-  if (full) { level = 1; lives = 3; score = 0; flares = 0; }
-  flares = Math.max(flares, 1); flare = 0; lamp = LAMP_RADIUS;
+  if (full) { level = 1; lives = 3; score = 0; }
+  flares = 0; flare = 0; lamp = LAMP_RADIUS; // every maze starts with none: a flare is earned at a lantern
   maze = carve();
   seen = new Uint8Array(MW * MH);
   resetPlayer();
@@ -1448,7 +1448,7 @@ function drawHowTo() {
   text(ctx, 'HOW TO PLAY', W / 2, 30, INK.cyan, { align: 'center' });
   text(ctx, 'FIND 3 LANTERNS, THEN THE DOOR.', W / 2, 48, INK.white, { align: 'center' });
   const rows = [
-    [art.lantern[0], 'LANTERN: ONE MORE FLARE', '250 PTS', INK.yellow],
+    [art.lantern[0], 'LANTERN: GIVES A FLARE', '250 PTS', INK.yellow],
     [art.doorOpen[0], 'OPEN DOOR', '500 X MAZE', INK.yellow],
     [art.walker[0], 'OUT OF SIGHT, IT FORGETS.', '', INK.pink],
     [art.walkerAlert[0], 'CORNERS BREAK ITS SIGHT.', '', INK.orange],
@@ -1608,6 +1608,9 @@ window.__lamplight = {
   get walker() { return { x: walker.x, y: walker.y, state: walker.state }; },
   // Put the walker on the player, to check a flare and a banish.
   walkerOnPlayer() { Object.assign(walker, { x: player.x, y: player.y, dir: null }); },
+  // Put the player on a lantern, and start the next maze, to check where flares come from.
+  playerOnLantern() { const l = lanterns.find(l => !l.taken); Object.assign(player, { x: l.x, y: l.y, dir: null, queued: null, moving: false }); },
+  nextMaze() { build(false); },
   attract(p) { toAttract(p); },
   endGame(s) { demo = false; score = s; lives = 0; mode = 'over'; timer = 1; },
 };
