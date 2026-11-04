@@ -195,7 +195,7 @@ body.touch .pad { display: flex; }
 
 <main class="stage" id="stage">
   <div class="screen" id="screen">
-    <canvas id="c" role="img" aria-label="Near Miss game screen. Left and right to steer, Space to start, P to pause."></canvas>
+    <canvas id="c" role="img" aria-label="Near Miss game screen. Left and right to steer, Space to jump or climb, P to pause."></canvas>
   </div>
 </main>
 
@@ -584,7 +584,11 @@ function makeScores(key, defaults) {
 // at the slowest it can steer, on the worst bend. That is the promise of the
 // game: there is always a way through.
 //
-// How a vehicle handles is a row in VEHICLES, so a new one is a new row.
+// How a vehicle handles is a row in VEHICLES. Each asks for a different skill:
+// the bike weaves, the bus plans ahead and can take a hit, the board jumps what
+// lies across the road, and the helicopter has height, so it goes over walls
+// and under bridges. Height is measured in cells too: a piece fills from `lo`
+// to its top, and a vehicle from `alt` to `alt + tall`.
 const HALF = 4;             // half the width of the road
 const VIEW = 60;            // cells ahead that rows exist and can be seen
 const BIKES = 3;
@@ -597,13 +601,34 @@ const MAX_COMBO = 8;
 const SECTOR_PTS = 250;
 const MAX_CURVE = 0.012;
 const DRIFT = 6;            // how hard a bend pushes you outward
-const MAX_DRIFT = MAX_CURVE * TOP_SPEED * DRIFT;
 const CLEAR_AHEAD = 30;     // cells emptied in front of you after a crash
+const JUMP_TICKS = 34;       // a skateboard jump, take-off to landing
+const JUMP_H = 1.2;
+const ALT_MAX = 2.6;        // the helicopter's ceiling
+const JUMP_BUFFER = 6;             // a press this close to landing still counts
+const FLY_START = 1;
 const LINE_MAX = HALF - 0.7;
 
 const VEHICLES = {
-  bike: { name: 'MOTORBIKE', half: 0.25, steer: 0.115, grip: 0.25 },
+  bike: { name: 'MOTORBIKE', half: 0.25, tall: 0.7, steer: 0.115, grip: 0.25, pace: 1, pays: 1, drift: 1, armour: 0, action: null },
+  bus: { name: 'BUS', half: 0.6, tall: 1.2, steer: 0.075, grip: 0.08, pace: 0.85, pays: 0.5, drift: 0.6, armour: 2, action: null },
+  board: { name: 'SKATEBOARD', half: 0.2, tall: 0.7, steer: 0.095, grip: 0.14, pace: 0.9, pays: 1, drift: 1, armour: 0, action: 'jump' },
+  heli: { name: 'HELICOPTER', half: 0.45, tall: 0.4, steer: 0.1, grip: 0.07, pace: 1, pays: 1, drift: 0.8, armour: 0, action: 'fly', lift: 0.006, climb: 0.05 },
 };
+const VEHICLE_IDS = Object.keys(VEHICLES);
+// A heavy vehicle is slow to answer: this much of the time between rows is spent
+// turning it, not moving it across.
+const steerTicks = (ticks, v) => Math.max(0, ticks - 1.5 / v.grip);
+const maxDrift = v => MAX_CURVE * TOP_SPEED * v.pace * DRIFT * v.drift;
+
+// All four share one score table, and the bus lasts far longer than the rest,
+// so it pays half: `pays` scales every point.
+
+// How tall each thing is. A jump clears all but the barrier; a tower is too
+// tall to fly over, and a bridge can only be flown under.
+const TOPS = { rail: 0.35, slider: 0.5, cone: 0.7, crate: 0.9, barrier: 1.25, wall: 1.4, tower: 9, bridge: 9 };
+const BRIDGE_LO = 1.2;
+const pieceLo = p => (p.type === 'bridge' ? BRIDGE_LO : 0);
 
 const speedAt = dist => START_SPEED + (TOP_SPEED - START_SPEED) * (1 - Math.exp(-dist / 1800));
 const sectorOf = dist => 1 + Math.floor(dist / SECTOR_CELLS);
@@ -627,35 +652,55 @@ function newRun(rand, { vehicle = 'bike', reach = 0.6, gap = null, firstRow = 50
     rand, vehicle: VEHICLES[vehicle], reach, gap,
     dist: 0, x: 0, vx: 0, rec: 1, combo: 0, sector: 1,
     rows: [], nextD: firstRow, line: 0,
+    alt: 0, vy: 0, air: 0, buffer: 0, wasAction: false, armour: VEHICLES[vehicle].armour, breather: false,
   };
+  if (run.vehicle.action === 'fly') run.alt = FLY_START;
   fillRows(run);
   return run;
 }
 
-const speedOf = run => speedAt(run.dist) * run.rec;
+const speedOf = run => speedAt(run.dist) * run.rec * run.vehicle.pace;
 
 function fillRows(run) {
   while (run.nextD < run.dist + VIEW) addRow(run);
 }
 
 function addRow(run) {
-  const { rand } = run, d = run.nextD, sector = sectorOf(d), ticks = spacingTicks(sector);
-  const room = ticks * (run.vehicle.steer - MAX_DRIFT) * run.reach;
+  const { rand, vehicle: v } = run, d = run.nextD, sector = sectorOf(d), ticks = spacingTicks(sector);
+  run.nextD = d + speedAt(d) * v.pace * ticks;
+  const across = acrossRow(run, d, sector);
+  if (across) { run.rows.push(across); return; }
+  const room = steerTicks(ticks, v) * (v.steer - maxDrift(v)) * run.reach;
   const swing = rand() * 2 - 1;
   const line = Math.max(-LINE_MAX, Math.min(LINE_MAX, run.line + Math.sign(swing) * Math.sqrt(Math.abs(swing)) * room));
-  const g = run.gap ?? gapHalf(sector);
+  const g = (run.gap ?? gapHalf(sector)) + v.half - VEHICLES.bike.half;
   const pieces = [
     ...sidePieces(rand, -HALF, line - g, sector),
     ...sidePieces(rand, line + g, HALF, sector),
   ];
   // A row with nothing in it is a wasted row: stand something beside the gap.
   if (!pieces.length) {
-    const left = line + HALF > HALF - line;
-    pieces.push(left ? { type: 'cone', x: line - g - 0.25, w: 0.5 } : { type: 'cone', x: line + g + 0.25, w: 0.5 });
+    const left = line > 0;
+    pieces.push({ type: 'cone', x: line + (left ? -1 : 1) * (g + 0.25), w: 0.5 });
   }
+  if (v.action === 'fly') for (const p of pieces) p.type = 'tower'; // on the ground, you steer; in the air too
   run.rows.push({ d, line, pieces, passed: false });
   run.line = line;
-  run.nextD = d + speedAt(d) * ticks;
+}
+
+// A row right across the road, with no gap at the sides: the skill the vehicle
+// has that the others do not. Never two in a row, so there is always time.
+function acrossRow(run, d, sector) {
+  const { rand, vehicle: v } = run;
+  if (!v.action) return null;
+  if (run.breather || d < 90) { run.breather = false; return null; }
+  if (rand() > Math.min(0.45, 0.2 + 0.03 * (sector - 1))) return null;
+  run.breather = true;
+  const whole = type => [{ type, x: 0, w: HALF * 2 }];
+  if (v.action === 'jump') return { d, line: run.line, pieces: whole('rail'), need: 'jump', passed: false };
+  return rand() < 0.5
+    ? { d, line: run.line, pieces: whole('wall'), alt: TOPS.wall + 0.5, passed: false }
+    : { d, line: run.line, pieces: whole('bridge'), alt: 0.3, passed: false };
 }
 
 // Fills one side of the gap, from a to b, with something that stays inside it.
@@ -682,16 +727,21 @@ function wall(a, b) {
 
 // One tick. Returns what happened: `crash` is the piece that was hit, `near`
 // the points for a near miss, `sector` the sector just entered.
-function stepRun(run, { left = false, right = false } = {}) {
+function stepRun(run, { left = false, right = false, action = false } = {}) {
   const v = run.vehicle, speed = speedOf(run);
-  const out = { crash: null, near: 0, sector: 0, scrape: false };
+  const out = { crash: null, near: 0, sector: 0, scrape: false, dent: false, jumped: false };
 
   run.vx += ((right ? v.steer : 0) - (left ? v.steer : 0) - run.vx) * v.grip;
-  run.x += run.vx - curveAt(run.dist) * speed * DRIFT;
+  run.x += run.vx - curveAt(run.dist) * speed * DRIFT * v.drift;
+  if (v.action === 'jump') stepJump(run, action, out);
+  else if (v.action === 'fly') stepFlight(run, action);
   const limit = HALF - v.half;
   if (Math.abs(run.x) > limit) {
-    run.x = Math.sign(run.x) * limit;
-    run.vx = 0;
+    const side = Math.sign(run.x);
+    run.x = side * limit;
+    // Only the push into the kerb stops. Stop the steering away from it too, and
+    // a heavy vehicle on a bend can never build up enough to leave.
+    if (run.vx * side > 0) run.vx = 0;
     run.rec = Math.max(0.75, run.rec - 0.012); // the kerb costs speed, not a bike
     out.scrape = true;
   } else run.rec = Math.min(1, run.rec + 0.002);
@@ -701,15 +751,24 @@ function stepRun(run, { left = false, right = false } = {}) {
   for (const row of run.rows) {
     if (row.passed || row.d > run.dist || row.d < from) continue;
     row.passed = true;
-    let closest = Infinity;
+    let closest = Infinity, dented = false;
     for (const p of row.pieces) {
-      const edge = Math.abs(run.x - pieceX(p, row.d)) - p.w / 2 - v.half;
-      if (edge < 0) { out.crash = p; return out; }
+      const edge = clearance(run, p, row.d);
+      if (edge < 0) {
+        if (run.armour > 0) { // the bus takes it, and the thing it hit is gone
+          run.armour--; p.gone = true; dented = out.dent = true;
+          run.rec = Math.min(run.rec, 0.7);
+          continue;
+        }
+        out.crash = p;
+        return out;
+      }
       closest = Math.min(closest, edge);
     }
-    if (closest < NEAR) {
+    if (dented) run.combo = 0;
+    else if (closest < NEAR) {
       run.combo = Math.min(MAX_COMBO, run.combo + 1);
-      out.near = NEAR_PTS * run.combo;
+      out.near = NEAR_PTS * run.combo * v.pays;
     } else run.combo = 0;
   }
   run.rows = run.rows.filter(r => r.d > run.dist - 2);
@@ -720,22 +779,65 @@ function stepRun(run, { left = false, right = false } = {}) {
   return out;
 }
 
+// How far clear of a piece the vehicle is: past it to the side, or over or
+// under it, whichever is greater. Below zero is a hit.
+function clearance(run, p, dist) {
+  const v = run.vehicle;
+  const side = Math.abs(run.x - pieceX(p, dist)) - p.w / 2 - v.half;
+  const height = Math.max(run.alt - TOPS[p.type], pieceLo(p) - run.alt - v.tall);
+  return Math.max(side, height);
+}
+
+function stepJump(run, action, out) {
+  const press = action && !run.wasAction;
+  run.wasAction = action;
+  if (press) run.buffer = JUMP_BUFFER;
+  else if (run.buffer > 0) run.buffer--;
+  if (run.air > 0) {
+    run.air--;
+    const u = 1 - run.air / JUMP_TICKS;
+    run.alt = run.air ? JUMP_H * 4 * u * (1 - u) : 0;
+  } else if (run.buffer > 0) {
+    run.buffer = 0;
+    run.air = JUMP_TICKS;
+    out.jumped = true;
+  }
+}
+
+function stepFlight(run, action) {
+  const v = run.vehicle;
+  run.vy = Math.max(-v.climb, Math.min(v.climb, run.vy + (action ? v.lift : -v.lift)));
+  run.alt += run.vy;
+  if (run.alt <= 0 || run.alt >= ALT_MAX) {
+    run.alt = Math.max(0, Math.min(ALT_MAX, run.alt));
+    run.vy = 0;
+  }
+}
+
 // After a crash: back up to speed from a clear stretch, with time to reach
 // whatever comes next from wherever you are.
 function respawn(run) {
-  Object.assign(run, { rec: 0.6, vx: 0, combo: 0 });
+  const v = run.vehicle;
+  Object.assign(run, { rec: 0.6, vx: 0, vy: 0, combo: 0, air: 0, buffer: 0, armour: v.armour, alt: v.action === 'fly' ? FLY_START : 0 });
   run.rows = run.rows.filter(r => r.d > run.dist + CLEAR_AHEAD);
   run.nextD = Math.max(run.nextD, run.dist + CLEAR_AHEAD);
   fillRows(run);
 }
 
 // The demo rider, and the tests' proof that the road can really be ridden: it
-// has only the two steering keys, on the same rules as the player.
+// has only the player's controls, on the same rules.
 function rider(run) {
-  const next = run.rows.find(r => !r.passed);
-  if (!next) return { left: false, right: false };
-  const off = next.line - run.x;
-  return { left: off < -0.1, right: off > 0.1 };
+  const v = run.vehicle, ahead = run.rows.filter(r => !r.passed);
+  const next = ahead[0];
+  if (!next) return {};
+  const off = next.line - (run.x + run.vx / (2 * v.grip)); // where it is heading, allowing for the bend
+  const out = { left: off < -0.1, right: off > 0.1, action: false };
+  if (v.action === 'jump') out.action = next.need === 'jump' && next.d - run.dist <= (speedOf(run) * JUMP_TICKS) / 2;
+  if (v.action === 'fly') {
+    const need = ahead.slice(0, 2).find(r => r.alt !== undefined);
+    out.action = run.alt + run.vy * 8 < (need ? need.alt : FLY_START);
+  }
+  return out;
 }
 
 // ---- engine/sprites.js
@@ -848,6 +950,73 @@ const MINI = [
   '...TT...',
 ];
 
+const SKATER = [
+  '........CCCC........',
+  '.......CCCCCC.......',
+  '.......CCCCcc.......',
+  '........NNNN........',
+  '.......SSSSSS.......',
+  '..NN.SSSSSSSsss.NN..',
+  '...NNSSSSSSSsssNN...',
+  '.....SSSSSSSsss.....',
+  '.....SSSSSSSsss.....',
+  '......SSSSSsss......',
+  '......LLLLLlll......',
+  '.....LLLLLLllll.....',
+  '.....LLL....lll.....',
+  '....LLL......lll....',
+  '....LLL......lll....',
+  '....WWW......www....',
+  '..BBBBBBBBBBBBBBBB..',
+  '...TT..........TT...',
+];
+const SKATER_INK = {
+  C: '#ff8a1e', c: '#b85a10', N: '#e0a878', S: '#3fd46b', s: '#25884a',
+  L: '#2b4cff', l: '#14206e', W: '#ffffff', w: '#c8c8d8', B: '#ffd23f', T: '#ff5fb8',
+};
+
+const CHOPPER = [
+  '.................MM.................',
+  '.................MM.................',
+  '.............CCCCCCCCCC.............',
+  '...........CCCCCCCCCCCCCC...........',
+  '..........CCCGGGGCCGGGGCCC..........',
+  '..........CCCGGGGCCGGGGCCC..........',
+  '..........CCCCCCCCCCCCCCcc..........',
+  '..........CCCCCFFFFCCCCcc...........',
+  '...........CCCCFFFFCCCcc............',
+  '.............ccFFFFcc...............',
+  '...............FFFF.................',
+  '..........K..............K..........',
+  '........KKKKKKKKKKKKKKKKKKKK........',
+];
+const CHOPPER_INK = { C: '#5eeaf5', c: '#2f8fb0', G: '#14206e', F: '#ff3b3b', M: '#8f8fb0', K: '#c8c8d8', R: '#ffffff', r: '#8f8fb0' };
+const ROTOR = ['RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR', '.........rrrrrrrrrrrrrrrrrr.........'];
+
+// The back of a bus, drawn row by row: it is too big to be worth typing out.
+function busRows() {
+  const w = 44, line = (edge, mid) => edge + mid.repeat(w - edge.length * 2) + edge;
+  const glass = '..YY' + 'G'.repeat(17) + 'YY' + 'G'.repeat(17) + 'YY..';
+  const rows = [
+    '....' + 'Y'.repeat(w - 8) + '....',
+    line('..', 'Y'), line('..', 'y'),
+  ];
+  for (let i = 0; i < 12; i++) rows.push(glass);
+  rows.push(line('..', 'Y'), line('..', 'Y'), line('..', 'K'), line('..', 'K'), line('..', 'Y'));
+  for (let i = 0; i < 6; i++) rows.push('..RRRRYYYY' + 'Y'.repeat(24) + 'YYYYRRRR..');
+  rows.push(line('..', 'Y'), line('..', 'y'), line('.', 'A'), line('.', 'A'));
+  for (let i = 0; i < 4; i++) rows.push('...TTTTTTT' + '.'.repeat(24) + 'TTTTTTT...');
+  return rows;
+}
+const BUS_INK = { Y: '#ffd23f', y: '#b8862a', G: '#14206e', K: '#16161f', R: '#ff3b3b', A: '#c8c8d8', T: '#16161f' };
+const BUS_DIM = { ...BUS_INK, R: '#a81e3a' };
+
+const MINIS = {
+  bus: ['.YYYYYY.', '.YGGGGY.', '.YGGGGY.', '.YYYYYY.', '.RYYYYR.', '.YYYYYY.', '.T....T.', '........'],
+  board: ['...CC...', '...CC...', '..SSSS..', '...SS...', '...LL...', '..L..L..', '.BBBBBB.', '..T..T..'],
+  heli: ['RRRRRRRR', '...MM...', '..CCCC..', '.CGGGGC.', '.CCCCCC.', '..CCCC..', '.K....K.', 'KKKKKKKK'],
+};
+
 const SPREAD = 8; // room for the lean, either side
 
 function lean(rows, perRow) {
@@ -860,18 +1029,24 @@ function lean(rows, perRow) {
 
 const LEAN_STEPS = 2;
 
-function makeArt() {
-  const frames = lit => {
-    const ink = lit ? BIKE_INK : TAIL_DIM, out = {};
-    for (let s = -LEAN_STEPS; s <= LEAN_STEPS; s++) out[s] = sprite(lean(BIKE, s * 0.15), ink);
+// frames[animation frame][lean step], its size, and a small one for the score bar.
+function vehicle(rowSets, inks, perRow, mini, miniInk) {
+  const frames = rowSets.map((rows, i) => {
+    const out = {};
+    for (let s = -LEAN_STEPS; s <= LEAN_STEPS; s++) out[s] = sprite(lean(rows, s * perRow), inks[i]);
     return out;
-  };
+  });
+  return { frames, w: rowSets[0][0].length + SPREAD * 2, h: rowSets[0].length, mini: sprite(mini, miniInk) };
+}
+
+function makeArt() {
+  const bus = busRows();
   return {
-    bike: [frames(true), frames(false)],
-    bikeW: BIKE[0].length + SPREAD * 2,
-    bikeH: BIKE.length,
+    bike: vehicle([BIKE, BIKE], [BIKE_INK, TAIL_DIM], 0.15, MINI, BIKE_INK),
+    bus: vehicle([bus, bus], [BUS_INK, BUS_DIM], 0.05, MINIS.bus, BUS_INK),
+    board: vehicle([SKATER, SKATER], [SKATER_INK, SKATER_INK], 0.15, MINIS.board, SKATER_INK),
+    heli: vehicle(ROTOR.map(r => [r, ...CHOPPER]), [CHOPPER_INK, CHOPPER_INK], 0.08, MINIS.heli, CHOPPER_INK),
     cone: sprite(CONE, CONE_INK),
-    mini: sprite(MINI, BIKE_INK),
   };
 }
 
@@ -884,6 +1059,7 @@ const GRID = 2;                    // cells between grid lines
 const POST_EVERY = 8;
 const TICK_MS = 1000 / 60;
 const DEMO_TICKS = 60 * 30;
+const CHOOSE_TICKS = 60 * 30;
 
 const INK = {
   red: '#ff3b3b', white: '#ffffff', yellow: '#ffd23f', orange: '#ff8a1e', green: '#3fd46b',
@@ -917,6 +1093,17 @@ const engine = sound.drone({ cutoff: 300, vol: 0.09 });
 const scores = makeScores('lk.nearmiss.scores', DEFAULT_SCORES);
 const art = makeArt();
 
+// What each vehicle asks of you, on the choosing screen.
+const actionKey = () => (input.touch ? 'START' : 'SPACE');
+const SKILLS = {
+  bike: () => ['NARROW AND TWITCHY.', 'IT SLIPS THROUGH ANYTHING.'],
+  bus: () => ['WIDE AND SLOW TO TURN.', 'EACH BUS TAKES 2 HITS, BUT SCORES HALF.'],
+  board: () => ['TAP ' + actionKey() + ' TO JUMP.', 'RAILS RUN RIGHT ACROSS THE ROAD.'],
+  heli: () => ['HOLD ' + actionKey() + ' TO CLIMB, LET GO TO SINK.', 'OVER WALLS, UNDER BRIDGES.'],
+};
+let chosen = 'bike';
+try { const saved = localStorage.getItem('lk.nearmiss.vehicle'); if (VEHICLES[saved]) chosen = saved; } catch {}
+
 // Which distance ahead each screen row shows, worked out once.
 const ROW_Z = new Float32Array(H);
 for (let y = HORIZON + 1; y < H; y++) ROW_Z[y] = (CAM_H * FOCAL) / (y - HORIZON);
@@ -928,9 +1115,9 @@ for (let i = 0; i < 50; i++) STARS.push({ x: (i * 137) % W, y: TOP + ((i * 53) %
 const HILLS = [];
 for (let i = 0; i < 512; i++) HILLS.push(Math.round(7 + 5 * Math.sin(i / 26) + 3 * Math.sin(i / 9 + 1) + 2 * Math.sin(i / 4)));
 
-let run = null, mode = 'attract', page = 'title', pageT = 0, t = 0, timer = 0, clock = 0;
+let run = null, ridden = 'bike', mode = 'attract', page = 'title', pageT = 0, t = 0, timer = 0, clock = 0;
 let bikes = BIKES, score = 0, sky = 0, idleDist = 0, lastLine = 0, sparks = [], shake = 0, pops = [], sectorT = 0;
-let demo = false, demoT = 0, entry = null, highlight = -1, pausedFrom = null, wreck = null;
+let demo = false, demoT = 0, demoNext = 0, entry = null, highlight = -1, pausedFrom = null, wreck = null;
 
 const SFX = {
   start: () => {
@@ -940,6 +1127,8 @@ const SFX = {
   near: combo => sound.note(620 + combo * 110, 0.07, { vol: 0.04 }),
   sector: () => sound.tune([[659, 0.09], [880, 0.09], [1175, 0.24]], { vol: 0.045 }),
   scrape: () => sound.noise(0.06, { vol: 0.07, cutoff: 2600 }),
+  jump: () => sound.note(330, 0.14, { to: 880, vol: 0.04 }),
+  dent: () => { sound.noise(0.22, { vol: 0.24, cutoff: 900 }); sound.note(160, 0.2, { to: 70, vol: 0.05 }); },
   crash: () => { sound.noise(0.7, { vol: 0.32, cutoff: 700 }); sound.note(240, 0.6, { to: 50, vol: 0.05 }); },
   blip: () => sound.note(988, 0.05, { vol: 0.04 }),
   over: () => sound.tune([[392, 0.22], [370, 0.22], [349, 0.22], [330, 0.7]], { type: 'triangle', vol: 0.12 }),
@@ -949,23 +1138,31 @@ function play(name, arg) { if (!demo) SFX[name](arg); }
 
 // ---------------------------------------------------------------- the game
 
-function fresh() {
-  run = newRun(Math.random);
+function fresh(id) {
+  run = newRun(Math.random, { vehicle: id });
+  ridden = id;
   lastLine = 0; sparks = []; pops = []; shake = 0; sectorT = 0; wreck = null;
 }
 
 function newGame() {
   demo = false; highlight = -1;
   bikes = BIKES; score = 0;
-  fresh();
+  try { localStorage.setItem('lk.nearmiss.vehicle', chosen); } catch {}
+  fresh(chosen);
   mode = 'ready'; timer = 150;
   play('start');
+}
+
+function toChoose() {
+  demo = false; highlight = -1;
+  engine(false);
+  mode = 'choose'; timer = CHOOSE_TICKS;
 }
 
 function startDemo() {
   demo = true; demoT = 0;
   bikes = BIKES; score = 0;
-  fresh();
+  fresh(VEHICLE_IDS[demoNext++ % VEHICLE_IDS.length]); // the demo shows each in turn
   mode = 'ready'; timer = 60;
 }
 
@@ -983,11 +1180,11 @@ function toAttract(p) {
 function rideTick() {
   if (demo && ++demoT > DEMO_TICKS) { endDemo(); return; }
   const h = input.held;
-  const r = stepRun(run, demo ? rider(run) : { left: h.left, right: h.right });
+  const r = stepRun(run, demo ? rider(run) : { left: h.left, right: h.right, action: h.fire || h.up });
   sky += curveAt(run.dist) * speedOf(run) * 260;
   if (!demo) engine(true);
 
-  const line = Math.floor(run.dist / GRID);
+  const line = Math.floor((run.dist * run.vehicle.pays) / GRID);
   score += line - lastLine;
   lastLine = line;
 
@@ -1002,22 +1199,34 @@ function rideTick() {
     play('near', run.combo);
   }
   if (r.sector) {
-    score += SECTOR_PTS * (r.sector - 1);
+    score += SECTOR_PTS * (r.sector - 1) * run.vehicle.pays;
     sectorT = 130;
     play('sector');
   }
+  if (r.jumped) play('jump');
+  if (r.dent) {
+    play('dent');
+    shake = reduceMotion ? 0 : 8;
+    burst(bikeX(), vehicleY() - 16, 14);
+    pops.push({ s: run.armour ? 'DENTED! TAKES ' + run.armour + ' MORE' : 'DENTED! NO MORE HITS', t: 80 });
+    if (pops.length > 2) pops.shift();
+  }
   if (r.crash) crash();
+}
+
+function burst(x, y, n) {
+  for (let i = 0; i < (reduceMotion ? 10 : n); i++) {
+    const a = Math.random() * Math.PI * 2, sp = 0.5 + Math.random() * 3.5;
+    sparks.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 1, life: 1 });
+  }
 }
 
 function crash() {
   engine(false);
   bikes--;
   shake = reduceMotion ? 0 : 16;
-  wreck = { x: bikeX(), y: BIKE_Y - 12 };
-  for (let i = 0; i < (reduceMotion ? 10 : 40); i++) {
-    const a = Math.random() * Math.PI * 2, sp = 0.5 + Math.random() * 3.5;
-    sparks.push({ x: wreck.x, y: wreck.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 1, life: 1 });
-  }
+  wreck = { x: bikeX(), y: vehicleY() - 12 };
+  burst(wreck.x, wreck.y, 40);
   mode = 'crashed'; t = 0;
   play('crash');
 }
@@ -1056,7 +1265,8 @@ function onAction(action) {
     if (!demo && ['ready', 'riding', 'crashed'].includes(mode)) { pausedFrom = mode; mode = 'paused'; engine(false); }
     return;
   }
-  if (mode === 'attract' || demo) { newGame(); return; }
+  if (mode === 'attract' || demo) { toChoose(); return; }
+  if (mode === 'choose') { newGame(); return; }
   if (mode === 'paused') { mode = pausedFrom; return; }
   if (mode === 'over') { timer = 0; return; }
   if (mode === 'entry') confirmLetter();
@@ -1068,7 +1278,19 @@ function confirmLetter() {
   if (entry.pos >= 3) saveEntry();
 }
 
+function pick(step) {
+  const n = VEHICLE_IDS.length;
+  chosen = VEHICLE_IDS[(VEHICLE_IDS.indexOf(chosen) + step + n) % n];
+  timer = CHOOSE_TICKS;
+  play('blip');
+}
+
 function onDir(dir) {
+  if (mode === 'choose') {
+    if (dir === 'left') pick(-1);
+    else if (dir === 'right') pick(1);
+    return;
+  }
   if (mode !== 'entry') return;
   const n = ENTRY_LETTERS.length, i = entry.pos;
   if (dir === 'up') { entry.letters[i] = (entry.letters[i] + 1) % n; play('blip'); }
@@ -1077,7 +1299,18 @@ function onDir(dir) {
   else if (dir === 'left' && entry.pos > 0) { entry.pos--; play('blip'); }
 }
 
-const input = makeInput({ screen: canvas, onAction, onDir, onAny: () => sound.wake() });
+// On the choosing screen a tap picks a vehicle; a second tap on it rides it.
+const PANEL_X = 12, PANEL_Y = 54, PANEL_W = 74, PANEL_H = 96;
+function onPoint(x, y) {
+  if (mode !== 'choose' || y < PANEL_Y || y > PANEL_Y + PANEL_H) return false;
+  const id = VEHICLE_IDS[Math.floor((x - PANEL_X) / PANEL_W)];
+  if (!id) return false;
+  if (id === chosen) newGame();
+  else { chosen = id; timer = CHOOSE_TICKS; play('blip'); }
+  return true;
+}
+
+const input = makeInput({ screen: canvas, onAction, onDir, onPoint, onAny: () => sound.wake() });
 
 const crtBtn = document.querySelector('[data-action="crt"]');
 const muteBtn = document.querySelector('[data-action="mute"]');
@@ -1106,6 +1339,7 @@ const bendAt = (dist, z) => (curveAt(dist + z / 2) * z * FOCAL) / 2;
 const screenX = (x, z, dist, cam) => W / 2 + bendAt(dist, z) + ((x - cam) * FOCAL) / z;
 const screenY = z => HORIZON + (CAM_H * FOCAL) / z;
 const bikeX = () => Math.round(screenX(run.x, BIKE_Z, run.dist, camOf(run.x)));
+const vehicleY = () => Math.round(BIKE_Y - (run.alt * FOCAL) / BIKE_Z);
 
 function drawSky(g, p, dist, shift) {
   g.fillStyle = p.sky;
@@ -1214,31 +1448,69 @@ function drawSlider(g, x, y, w, h) {
   g.fillStyle = '#16161f'; g.fillRect(x + Math.round(w / 4), y + edge * 2, Math.ceil(w / 2), Math.max(1, edge));
 }
 
-function drawPiece(g, piece, rowD, dist, cam) {
-  const z = rowD - dist + BIKE_Z, s = FOCAL / z;
-  const w = Math.max(2, Math.round(piece.w * s));
-  const cx = screenX(pieceX(piece, rowD), z, dist, cam), y = Math.round(screenY(z)), x = Math.round(cx - w / 2);
-  if (piece.type === 'cone') {
-    const size = Math.max(3, Math.round(s * 0.75));
-    g.drawImage(art.cone, Math.round(cx - size / 2), y - size, size, size);
-  } else if (piece.type === 'crate') {
-    const h = Math.max(2, Math.round(s * 0.9));
-    drawCrate(g, x, y - h, w, h);
-  } else if (piece.type === 'slider') {
-    const h = Math.max(2, Math.round(s * 0.5));
-    drawSlider(g, x, y - h, w, h);
-  } else {
-    const h = Math.max(2, Math.round(s * 0.65));
-    drawBarrier(g, x, y - h, w, h);
+// Right across the road: low enough to jump.
+function drawRail(g, x, y, w, h) {
+  const stripe = Math.max(2, Math.round(h * 1.5));
+  for (let i = 0; i < w; i += stripe) {
+    g.fillStyle = Math.floor(i / stripe) % 2 ? INK.red : '#ffffff';
+    g.fillRect(x + i, y, Math.min(stripe, w - i), h);
   }
 }
 
-function drawBike(g, x, y, vx, steer) {
+function drawWall(g, x, y, w, h) {
+  g.fillStyle = '#5a5a70'; g.fillRect(x, y, w, h);
+  g.fillStyle = '#c8c8d8'; g.fillRect(x, y, w, Math.max(1, Math.round(h / 10)));
+  g.fillStyle = '#3a3a48';
+  const seam = Math.max(4, Math.round(h / 2));
+  for (let i = seam; i < h; i += seam) g.fillRect(x, y + i, w, 1);
+}
+
+// A tall block with lit windows: there is no flying over this one.
+function drawTower(g, x, y, w, h) {
+  g.fillStyle = '#34344a'; g.fillRect(x, y, w, h);
+  g.fillStyle = '#5a5a70'; g.fillRect(x, y, w, Math.max(1, Math.round(h / 24)));
+  const cell = Math.max(3, Math.round(w / 5));
+  if (cell < 4) return;
+  g.fillStyle = INK.yellow;
+  for (let j = cell; j < h - cell; j += cell * 2) for (let i = cell >> 1; i < w - cell; i += cell * 2) g.fillRect(x + i, y + j, cell, cell);
+}
+
+function drawBridge(g, x, y, w, s) {
+  const low = Math.round(BRIDGE_LO * s), deck = Math.max(2, Math.round(s * 0.45)), post = Math.max(1, Math.round(s * 0.25));
+  g.fillStyle = '#5a5a70';
+  g.fillRect(x, y - low, post, low);
+  g.fillRect(x + w - post, y - low, post, low);
+  g.fillStyle = '#a34fe0'; g.fillRect(x - post, y - low - deck, w + post * 2, deck);
+  g.fillStyle = '#ffffff'; g.fillRect(x - post, y - low - deck, w + post * 2, Math.max(1, Math.round(deck / 5)));
+  g.fillStyle = '#6a35a0'; g.fillRect(x - post, y - low - 1, w + post * 2, 1);
+}
+
+function drawPiece(g, piece, rowD, dist, cam) {
+  if (piece.gone) return;
+  const z = rowD - dist + BIKE_Z, s = FOCAL / z;
+  const w = Math.max(2, Math.round(piece.w * s));
+  const cx = screenX(pieceX(piece, rowD), z, dist, cam), y = Math.round(screenY(z)), x = Math.round(cx - w / 2);
+  const h = Math.max(2, Math.round(s * Math.min(TOPS[piece.type], 3.4)));
+  if (piece.type === 'cone') {
+    const size = Math.max(3, Math.round(s * 0.75));
+    g.drawImage(art.cone, Math.round(cx - size / 2), y - size, size, size);
+  } else if (piece.type === 'crate') drawCrate(g, x, y - h, w, h);
+  else if (piece.type === 'slider') drawSlider(g, x, y - h, w, h);
+  else if (piece.type === 'rail') drawRail(g, x, y - h, w, h);
+  else if (piece.type === 'wall') drawWall(g, x, y - h, w, h);
+  else if (piece.type === 'tower') drawTower(g, x, y - h, w, h);
+  else if (piece.type === 'bridge') drawBridge(g, x, y, w, s);
+  else drawBarrier(g, x, y - h, w, h);
+}
+
+function drawVehicle(g, id, x, y, vx, steer, ground = y) {
+  const v = art[id];
   const step = Math.max(-LEAN_STEPS, Math.min(LEAN_STEPS, Math.round((vx / steer) * LEAN_STEPS)));
-  const frame = art.bike[(clock >> 2) & 1][step];
+  const frame = v.frames[(clock >> 2) & 1][step];
+  const shadow = id === 'bus' ? 22 : 8;
   g.fillStyle = '#000';
-  g.fillRect(x - 8, y - 1, 16, 2);
-  g.drawImage(frame, x - (art.bikeW >> 1), y - art.bikeH);
+  g.fillRect(x - shadow, ground - 1, shadow * 2, 2); // off the ground, this is how you read your height
+  g.drawImage(frame, x - (v.w >> 1), y - v.h);
 }
 
 function drawWorld() {
@@ -1253,7 +1525,7 @@ function drawWorld() {
     if (r.d < run.dist) continue;
     for (const piece of r.pieces) drawPiece(ctx, piece, r.d, run.dist, cam);
   }
-  if (!wreck) drawBike(ctx, bikeX(), BIKE_Y, run.vx, run.vehicle.steer);
+  if (!wreck) drawVehicle(ctx, ridden, bikeX(), vehicleY(), run.vx, run.vehicle.steer, BIKE_Y);
   for (const r of run.rows) {
     if (r.d >= run.dist) continue;
     for (const piece of r.pieces) drawPiece(ctx, piece, r.d, run.dist, cam);
@@ -1282,8 +1554,10 @@ function drawHud() {
   text(ctx, String(score).padStart(2, '0'), 50, 12, INK.white, { align: 'right' });
   text(ctx, 'HI-SCORE', W / 2, 3, INK.red, { align: 'center' });
   text(ctx, String(hi), W / 2, 12, INK.white, { align: 'center' });
-  if (mode === 'attract' || mode === 'entry') return;
-  for (let i = 0; i < bikes; i++) ctx.drawImage(art.mini, 60 + i * 10, 11);
+  if (mode === 'attract' || mode === 'entry' || mode === 'choose') return;
+  for (let i = 0; i < bikes; i++) ctx.drawImage(art[ridden].mini, 60 + i * 10, 11);
+  ctx.fillStyle = INK.green;
+  for (let i = 0; i < run.armour; i++) ctx.fillRect(94 + i * 5, 12, 3, 7); // hits the bus can still take
   text(ctx, 'SECTOR ' + run.sector, W - 8, 3, INK.red, { align: 'right' });
   text(ctx, Math.round(speedOf(run) * 600) + ' KM/H', W - 8, 12, INK.white, { align: 'right' });
 }
@@ -1304,7 +1578,7 @@ function drawTitle() {
   drawFloor(ctx, p, idleDist, 0);
   text(ctx, 'NEAR MISS', W / 2 + 2, 36, '#3c1470', { align: 'center', scale: 5 });
   text(ctx, 'NEAR MISS', W / 2, 34, LOGO_INK, { align: 'center', scale: 5 });
-  drawBike(ctx, W / 2, BIKE_Y, 0, 1);
+  drawVehicle(ctx, 'bike', W / 2, BIKE_Y, 0, 1);
   if (blinkOn()) banner([[prompt(), INK.yellow]], 124);
   banner([['LEON KARSTEN 2026', INK.grey]], 226);
 }
@@ -1312,8 +1586,8 @@ function drawTitle() {
 function drawHowTo() {
   text(ctx, 'HOW TO PLAY', W / 2, 30, INK.cyan, { align: 'center' });
   text(ctx, 'LEFT AND RIGHT. THE SPEED IS NOT UP TO YOU.', W / 2, 48, INK.white, { align: 'center' });
-  text(ctx, 'THERE IS ALWAYS A GAP. ONE TOUCH AND', W / 2, 60, INK.white, { align: 'center' });
-  text(ctx, 'THE BIKE IS GONE. YOU HAVE ' + BIKES + '.', W / 2, 70, INK.white, { align: 'center' });
+  text(ctx, 'THERE IS ALWAYS A WAY THROUGH. FOUR VEHICLES,', W / 2, 60, INK.white, { align: 'center' });
+  text(ctx, 'EACH A DIFFERENT SKILL. YOU GET ' + BIKES + ' OF YOURS.', W / 2, 70, INK.white, { align: 'center' });
   ctx.drawImage(art.cone, 92, 80);
   drawCrate(ctx, 118, 80, 18, 16);
   drawBarrier(ctx, 146, 84, 36, 12);
@@ -1330,6 +1604,22 @@ function drawHowTo() {
   row(174, 'EACH NEW SECTOR', SECTOR_PTS + ' X SECTORS PAST');
   text(ctx, 'THE CLOSER YOU RIDE, THE MORE IT PAYS.', W / 2, 196, INK.orange, { align: 'center' });
   if (blinkOn()) text(ctx, prompt(), W / 2, 218, INK.yellow, { align: 'center' });
+}
+
+function drawChoose() {
+  text(ctx, 'CHOOSE YOUR RIDE', W / 2, 32, INK.cyan, { align: 'center' });
+  VEHICLE_IDS.forEach((id, i) => {
+    const x = PANEL_X + i * PANEL_W, on = id === chosen;
+    ctx.fillStyle = on ? PALETTES[0].road : '#000';
+    ctx.fillRect(x + 1, PANEL_Y, PANEL_W - 2, PANEL_H);
+    ctx.fillStyle = on ? INK.yellow : INK.dim;
+    for (const [rx, ry, rw, rh] of [[x + 1, PANEL_Y, PANEL_W - 2, 1], [x + 1, PANEL_Y + PANEL_H - 1, PANEL_W - 2, 1], [x + 1, PANEL_Y, 1, PANEL_H], [x + PANEL_W - 2, PANEL_Y, 1, PANEL_H]]) ctx.fillRect(rx, ry, rw, rh);
+    drawVehicle(ctx, id, x + (PANEL_W >> 1), PANEL_Y + 66, 0, 1);
+    text(ctx, VEHICLES[id].name, x + (PANEL_W >> 1), PANEL_Y + 80, on ? INK.white : INK.grey, { align: 'center' });
+  });
+  SKILLS[chosen]().forEach((s, i) => text(ctx, s, W / 2, 162 + i * 12, i ? INK.grey : INK.white, { align: 'center' }));
+  if (blinkOn()) text(ctx, input.touch ? 'TAP IT AGAIN OR TAP START' : 'LEFT AND RIGHT, THEN SPACE', W / 2, 196, INK.yellow, { align: 'center' });
+  text(ctx, 'TIME ' + Math.ceil(timer / 60), W / 2, 216, INK.orange, { align: 'center' });
 }
 
 function drawScores() {
@@ -1376,12 +1666,13 @@ function draw() {
     return;
   }
   if (mode === 'entry') { drawHud(); drawEntry(); return; }
+  if (mode === 'choose') { drawChoose(); drawHud(); return; }
   drawWorld();
   drawHud();
   drawPops();
   if (mode === 'ready') banner(demo ? [['DEMO PLAY', INK.cyan]] : [['PLAYER ONE', INK.cyan], ['READY!', INK.yellow]], 120);
   else if (mode === 'paused') banner([['PAUSED', INK.white], [input.touch ? 'TAP START' : 'PRESS P', INK.grey]], 120);
-  else if (mode === 'crashed' && t > 30) banner(bikes > 0 ? [['WIPED OUT', INK.red], [bikes + (bikes === 1 ? ' BIKE LEFT' : ' BIKES LEFT'), INK.grey]] : [['WIPED OUT', INK.red]], 120);
+  else if (mode === 'crashed' && t > 30) banner(bikes > 0 ? [['WIPED OUT', INK.red], [bikes + ' LEFT', INK.grey]] : [['WIPED OUT', INK.red]], 120);
   else if (mode === 'over') banner([['GAME OVER', INK.red]], 120);
   else if (sectorT > 0 && !demo) banner([['SECTOR ' + run.sector, INK.cyan]], 60);
   if (demo && mode === 'riding' && blinkOn()) banner([['DEMO PLAY', INK.cyan]], 60);
@@ -1406,8 +1697,8 @@ function drawCard() {
   drawPiece(g, { type: 'cone', x: 0.75, w: 0.5 }, 2.2, 0, 0);
   // The bike at twice the size, leaning past the cone.
   g.imageSmoothingEnabled = false;
-  const frame = art.bike[0][-1];
-  g.drawImage(frame, 160 - 36 - art.bikeW, 228 - art.bikeH * 2, art.bikeW * 2, art.bikeH * 2);
+  const bike = art.bike;
+  g.drawImage(bike.frames[0][-1], 160 - 36 - bike.w, 228 - bike.h * 2, bike.w * 2, bike.h * 2);
   text(g, 'NEAR MISS', 162, 12, '#3c1470', { align: 'center', scale: 5 });
   text(g, 'NEAR MISS', 160, 10, LOGO_INK, { align: 'center', scale: 5 });
   return c;
@@ -1436,6 +1727,7 @@ function tick() {
   if (sectorT > 0) sectorT--;
   switch (mode) {
     case 'attract': attractTick(); break;
+    case 'choose': if (--timer <= 0) toAttract('title'); break;
     case 'ready': if (--timer <= 0) mode = 'riding'; break;
     case 'riding': rideTick(); break;
     case 'crashed': if (++t >= 130) afterCrash(); break;
@@ -1454,7 +1746,7 @@ function frame(now) {
   while (acc >= TICK_MS) { tick(); acc -= TICK_MS; }
   draw();
 }
-fresh();
+fresh('bike');
 requestAnimationFrame(frame);
 
 // Read-only view for the page checks, plus shortcuts so a check can reach the
@@ -1465,14 +1757,20 @@ window.__nearmiss = {
   get demo() { return demo; },
   get score() { return score; },
   get bikes() { return bikes; },
-  get run() { return { x: run.x, dist: run.dist, speed: speedOf(run), sector: run.sector, combo: run.combo }; },
+  get run() { return { x: run.x, alt: run.alt, armour: run.armour, dist: run.dist, speed: speedOf(run), sector: run.sector, combo: run.combo }; },
+  get ridden() { return ridden; },
+  get chosen() { return chosen; },
   attract(p) { toAttract(p); },
   endGame(s) { demo = false; score = s; bikes = 0; mode = 'over'; timer = 1; },
   // Stand a crate right in front of the bike, or just beside it.
   blockAhead() { run.rows.unshift({ d: run.dist + 1, line: run.x + 2, pieces: [{ type: 'crate', x: run.x, w: 1 }], passed: false }); },
   shaveAhead() { run.rows.unshift({ d: run.dist + 1, line: run.x, pieces: [{ type: 'cone', x: run.x + 0.7, w: 0.5 }], passed: false }); },
+  // Empty the road, so a check meets only what it stands there itself.
+  clearRoad() { run.rows = []; run.nextD = run.dist + 400; },
+  // Stand something right across the road just ahead.
+  acrossAhead(type, cells = 8) { run.rows.unshift({ d: run.dist + cells, line: run.x, pieces: [{ type, x: 0, w: HALF * 2 }], passed: false }); },
   // Jump along the road, to see a later sector.
-  jump(d) { run.dist = d; run.rows = []; run.nextD = d + 20; run.sector = 1 + Math.floor(d / 400); lastLine = Math.floor(d / GRID); },
+  jump(d) { run.dist = d; run.rows = []; run.nextD = d + 20; run.sector = 1 + Math.floor(d / 400); lastLine = Math.floor((d * run.vehicle.pays) / GRID); },
 };
 window.__arcade = { card: drawCard };
 })();

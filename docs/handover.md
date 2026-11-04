@@ -129,7 +129,7 @@ the same path collide in Astro.
    - Play them on his iPhone with sound on; decide on the CRT switch. Nobody has heard the sound.
    - **Wings Level** real tilt and **Soft Focus** (whether eyes fuse the pixel stereogram) can only
      be checked by a person; the checks cover the d-pad/keys path and that the dots encode the shape.
-   - **Near Miss** added 4 Nov: a road game on the Games page grid, motorbike only so far. Bus, skateboard and helicopter wait on Leon's verdict on how it rides.
+   - **Near Miss** added 4 Nov: a road game on the Games page grid. Four vehicles, each a different skill: motorbike, bus, skateboard, helicopter. Go-kart, roller skates, spaceship and airplane are the agreed next ones.
    - **Lamplight**'s walker changed on 4 Nov (Leon: too hard once it sees you): always a little slower than the player when hunting, forgets when out of sight, and a flare (Space or START, earned at a lantern, none at the start of a maze) makes it flee and lets you banish it. The Qlaim cabinet keeps the old walker.
    - **House Call** has ONE RULE CHANGED from Qlaim: egg sacs hang at head height, because at the
      Qlaim height no spray could reach them (proved in the arcade repo's `test-house.mjs`). The
