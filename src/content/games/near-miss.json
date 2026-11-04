@@ -1,0 +1,8 @@
+{
+  "name": "Near Miss",
+  "slug": "near-miss",
+  "summary": "A motorbike on a neon grid and a road that keeps closing in. There is always a gap, and the closer you ride, the more it pays.",
+  "app": "/play/near-miss/",
+  "image": "/play/near-miss/card.png",
+  "tags": ["road", "keyboard or touch"]
+}

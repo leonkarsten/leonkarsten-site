@@ -1,0 +1,1481 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Near Miss</title>
+<meta name="description" content="There is always a gap. The closer you ride, the more it pays.">
+<meta name="theme-color" content="#000000">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2016%2016'%20shape-rendering='crispEdges'%3E%3Crect%20width='16'%20height='16'%20fill='%23130b30'/%3E%3Crect%20y='7'%20width='16'%20height='1'%20fill='%235eeaf5'/%3E%3Crect%20y='11'%20width='16'%20height='1'%20fill='%235eeaf5'/%3E%3Crect%20x='6'%20y='2'%20width='4'%20height='3'%20fill='%23fff'/%3E%3Crect%20x='4'%20y='5'%20width='8'%20height='4'%20fill='%23ff3b3b'/%3E%3Crect%20x='7'%20y='9'%20width='2'%20height='6'%20fill='%2316161f'/%3E%3C/svg%3E">
+<style>
+:root {
+  --void: #000;
+  --chrome: #8f8fb0;
+  --chrome-hi: #5eeaf5;
+  --edge: #2a2a40;
+  --start: #e8302f;
+  --ui: ui-monospace, 'Cascadia Mono', Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; height: 100%; background: var(--void); color: var(--chrome); }
+body {
+  font-family: var(--ui);
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  height: 100dvh;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: 'bar' 'stage' 'pad';
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.bar {
+  grid-area: bar;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+}
+.bar a, .bar button {
+  font: 700 12px/1 var(--ui);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--chrome);
+  background: none;
+  border: 1px solid transparent;
+  padding: 9px 10px;
+  text-decoration: none;
+  cursor: pointer;
+  border-radius: 0;
+}
+.bar a:hover, .bar button:hover, .bar a:focus-visible, .bar button:focus-visible {
+  color: var(--chrome-hi);
+  border-color: var(--edge);
+  outline: none;
+}
+.bar button[aria-pressed='true'] { color: var(--chrome-hi); }
+.toggles { display: flex; gap: 2px; }
+
+.stage {
+  grid-area: stage;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  padding: 8px 16px;
+}
+/* A faint edge, so an unexplored black playfield still has a size. */
+.screen { position: relative; line-height: 0; touch-action: none; box-shadow: 0 0 0 1px #1c1c2c; }
+.screen canvas {
+  display: block;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+/* The CRT switch. Off by default: sharp pixels are the honest picture, the
+   tube is a costume. Scanlines are one per game pixel row (--px is set by
+   the screen fit), so they never beat against the art. */
+.screen.crt { border-radius: 3% / 4%; overflow: hidden; box-shadow: 0 0 0 4px #0b0b14, 0 0 36px rgba(94, 234, 245, 0.12); }
+.screen.crt canvas { filter: saturate(1.25) brightness(1.12) contrast(1.05) blur(calc(var(--px) * 0.18)); }
+.screen.crt::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background:
+    radial-gradient(ellipse at center, rgba(0, 0, 0, 0) 58%, rgba(0, 0, 0, 0.6) 100%),
+    repeating-linear-gradient(to bottom,
+      rgba(0, 0, 0, 0) 0, rgba(0, 0, 0, 0) calc(var(--px) * 0.55),
+      rgba(0, 0, 0, 0.38) calc(var(--px) * 0.55), rgba(0, 0, 0, 0.38) var(--px));
+  box-shadow: inset 0 0 48px rgba(0, 0, 0, 0.75);
+}
+
+/* Touch controls: shown on touch screens only. */
+.pad {
+  grid-area: pad;
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  max-width: 380px;
+  margin: 0 auto;
+  padding: 4px 20px 16px;
+}
+body.touch .pad { display: flex; }
+.dpad {
+  display: grid;
+  grid-template-columns: repeat(3, 54px);
+  grid-template-rows: repeat(3, 50px);
+  gap: 3px;
+}
+.dpad button, .start {
+  font: 700 18px/1 var(--ui);
+  color: var(--chrome);
+  background: #12121e;
+  border: 2px solid var(--edge);
+  border-radius: 6px;
+  padding: 0;
+  touch-action: none;
+  cursor: pointer;
+}
+.dpad button:active { background: #24243a; color: var(--chrome-hi); }
+.dpad .up { grid-area: 1 / 2; }
+.dpad .left { grid-area: 2 / 1; }
+.dpad .right { grid-area: 2 / 3; }
+.dpad .down { grid-area: 3 / 2; }
+.start {
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  background: var(--start);
+  border: 4px solid #7a1414;
+  color: #fff;
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  box-shadow: inset 0 -6px 0 rgba(0, 0, 0, 0.25);
+}
+.start:active { transform: translateY(2px); box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.25); }
+
+/* A phone on its side: d-pad left of the screen, START right of it. A game
+   with no d-pad (its keys are on the screen) moves the bar to a column
+   instead, so an upright screen gets the full height. */
+@media (orientation: landscape) and (max-height: 520px) {
+  body.no-pad {
+    grid-template-rows: minmax(0, 1fr);
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas: 'bar stage';
+  }
+  body.no-pad .bar { flex-direction: column; justify-content: flex-start; align-items: flex-start; }
+  body.no-pad .toggles { flex-direction: column; }
+  .stage { padding: 4px 8px; }
+  body.touch:not(.no-pad) {
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas: 'bar bar bar' 'dpad stage start';
+  }
+  body.touch:not(.no-pad) .pad { display: contents; }
+  body.touch .dpad { grid-area: dpad; align-self: center; margin-left: 12px; }
+  body.touch .start { grid-area: start; align-self: center; margin-right: 16px; }
+}
+
+/* Two-button pairs, for games with two things to turn (Sorted's loops). */
+.pair { display: grid; grid-template-columns: repeat(2, 54px); grid-template-rows: 54px auto; gap: 3px; justify-items: center; }
+.pair button {
+  width: 54px; height: 54px;
+  font: 700 18px/1 var(--ui); color: var(--chrome);
+  background: #12121e; border: 2px solid var(--edge); border-radius: 6px;
+  padding: 0; touch-action: none; cursor: pointer;
+}
+.pair button:active { background: #24243a; color: var(--chrome-hi); }
+.pair span { grid-column: 1 / 3; font: 700 10px/1 var(--ui); letter-spacing: 0.14em; color: var(--chrome); }
+@media (orientation: landscape) and (max-height: 520px) {
+  body.touch:not(.no-pad) .pad.loops { display: flex; flex-direction: column; gap: 12px; grid-area: start; align-self: center; margin-right: 12px; padding: 0; }
+  body.touch:not(.no-pad) .pad.loops .start { margin: 0; }
+}
+</style>
+</head>
+<body>
+
+<header class="bar">
+  <a href="/games/">&larr; Games</a>
+  <div class="toggles">
+    <button type="button" data-action="crt" aria-pressed="false">CRT off</button>
+    <button type="button" data-action="mute" aria-pressed="true">Sound on</button>
+    <button type="button" data-action="pause">Pause</button>
+  </div>
+</header>
+
+<main class="stage" id="stage">
+  <div class="screen" id="screen">
+    <canvas id="c" role="img" aria-label="Near Miss game screen. Left and right to steer, Space to start, P to pause."></canvas>
+  </div>
+</main>
+
+<div class="pad">
+  <div class="dpad">
+    <button type="button" class="up" data-dir="up" aria-label="Up">&#9650;</button>
+    <button type="button" class="left" data-dir="left" aria-label="Left">&#9664;</button>
+    <button type="button" class="right" data-dir="right" aria-label="Right">&#9654;</button>
+    <button type="button" class="down" data-dir="down" aria-label="Down">&#9660;</button>
+  </div>
+  <button type="button" class="start" data-action="start">Start</button>
+</div>
+
+<script>
+(() => {
+'use strict';
+// ---- engine/font.js
+// 5x7 bitmap font, one string per glyph, rows separated by spaces. Drawn with
+// fillRect so it stays on the pixel grid at any scale; there is no web font.
+const GLYPHS = {
+  A: '.###. #...# #...# ##### #...# #...# #...#',
+  B: '####. #...# #...# ####. #...# #...# ####.',
+  C: '.###. #...# #.... #.... #.... #...# .###.',
+  D: '####. #...# #...# #...# #...# #...# ####.',
+  E: '##### #.... #.... ####. #.... #.... #####',
+  F: '##### #.... #.... ####. #.... #.... #....',
+  G: '.###. #...# #.... #.### #...# #...# .####',
+  H: '#...# #...# #...# ##### #...# #...# #...#',
+  I: '.###. ..#.. ..#.. ..#.. ..#.. ..#.. .###.',
+  J: '..### ...#. ...#. ...#. ...#. #..#. .##..',
+  K: '#...# #..#. #.#.. ##... #.#.. #..#. #...#',
+  L: '#.... #.... #.... #.... #.... #.... #####',
+  M: '#...# ##.## #.#.# #.#.# #...# #...# #...#',
+  N: '#...# #...# ##..# #.#.# #..## #...# #...#',
+  O: '.###. #...# #...# #...# #...# #...# .###.',
+  P: '####. #...# #...# ####. #.... #.... #....',
+  Q: '.###. #...# #...# #...# #.#.# #..#. .##.#',
+  R: '####. #...# #...# ####. #.#.. #..#. #...#',
+  S: '.###. #...# #.... .###. ....# #...# .###.',
+  T: '##### ..#.. ..#.. ..#.. ..#.. ..#.. ..#..',
+  U: '#...# #...# #...# #...# #...# #...# .###.',
+  V: '#...# #...# #...# #...# #...# .#.#. ..#..',
+  W: '#...# #...# #...# #.#.# #.#.# #.#.# .#.#.',
+  X: '#...# #...# .#.#. ..#.. .#.#. #...# #...#',
+  Y: '#...# #...# .#.#. ..#.. ..#.. ..#.. ..#..',
+  Z: '##### ....# ...#. ..#.. .#... #.... #####',
+  0: '.###. #...# #..## #.#.# ##..# #...# .###.',
+  1: '..#.. .##.. ..#.. ..#.. ..#.. ..#.. .###.',
+  2: '.###. #...# ....# ...#. ..#.. .#... #####',
+  3: '##### ...#. ..#.. ...#. ....# #...# .###.',
+  4: '...#. ..##. .#.#. #..#. ##### ...#. ...#.',
+  5: '##### #.... ####. ....# ....# #...# .###.',
+  6: '..##. .#... #.... ####. #...# #...# .###.',
+  7: '##### ....# ...#. ..#.. .#... .#... .#...',
+  8: '.###. #...# #...# .###. #...# #...# .###.',
+  9: '.###. #...# #...# .#### ....# ...#. .##..',
+  ' ': '..... ..... ..... ..... ..... ..... .....',
+  '.': '..... ..... ..... ..... ..... .##.. .##..',
+  ',': '..... ..... ..... ..... .##.. ..#.. .#...',
+  '!': '..#.. ..#.. ..#.. ..#.. ..#.. ..... ..#..',
+  '?': '.###. #...# ....# ...#. ..#.. ..... ..#..',
+  '-': '..... ..... ..... .###. ..... ..... .....',
+  '+': '..... ..#.. ..#.. ##### ..#.. ..#.. .....',
+  '=': '..... ..... ##### ..... ##### ..... .....',
+  ':': '..... .##.. .##.. ..... .##.. .##.. .....',
+  '/': '....# ...#. ...#. ..#.. .#... .#... #....',
+  "'": '..#.. ..#.. .#... ..... ..... ..... .....',
+  '<': '...#. ..#.. .#... #.... .#... ..#.. ...#.',
+  '>': '.#... ..#.. ...#. ....# ...#. ..#.. .#...',
+  '*': '..... #...# .#.#. ..#.. .#.#. #...# .....',
+  '%': '##..# ##.#. ...#. ..#.. .#... .#.## #..##',
+};
+const FONT_CHARS = Object.keys(GLYPHS).join('');
+
+const FONT_BITS = {};
+for (const [ch, rows] of Object.entries(GLYPHS)) FONT_BITS[ch] = rows.split(' ');
+
+const GLYPH_W = 5, GLYPH_H = 7, ADVANCE = 6;
+
+function textWidth(str, scale = 1) {
+  return str.length ? (str.length * ADVANCE - 1) * scale : 0;
+}
+
+// `color` is one colour, or an array of seven (one per glyph row) for the
+// striped logos arcade title screens used.
+function text(ctx, str, x, y, color, opts = {}) {
+  const scale = opts.scale || 1;
+  const s = String(str).toUpperCase();
+  let left = x;
+  if (opts.align === 'center') left = x - Math.floor(textWidth(s, scale) / 2);
+  else if (opts.align === 'right') left = x - textWidth(s, scale);
+  for (let i = 0; i < s.length; i++) {
+    const rows = FONT_BITS[s[i]] || FONT_BITS['?'];
+    const gx = left + i * ADVANCE * scale;
+    for (let r = 0; r < GLYPH_H; r++) {
+      ctx.fillStyle = Array.isArray(color) ? color[r] : color;
+      const row = rows[r];
+      for (let c = 0; c < GLYPH_W; c++) {
+        if (row[c] === '#') ctx.fillRect(gx + c * scale, y + r * scale, scale, scale);
+      }
+    }
+  }
+}
+
+// ---- engine/screen.js
+// The arcade screen: a small fixed-resolution canvas, scaled up in whole
+// DEVICE pixels so every game pixel is the same size and stays sharp. A 336px
+// screen on a 3x phone is drawn at exactly 3 device pixels per game pixel,
+// never 3.35, which is what makes uneven, shimmering pixels.
+function makeScreen({ canvas, stage, frame, w, h, crtKey }) {
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+
+  function fit() {
+    const dpr = window.devicePixelRatio || 1;
+    // clientWidth/Height include the stage's padding; the screen gets only
+    // what is inside it.
+    const cs = getComputedStyle(stage);
+    const aw = stage.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    const ah = stage.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+    const s = Math.max(1, Math.floor(Math.min((aw * dpr) / w, (ah * dpr) / h)));
+    canvas.style.width = (s * w) / dpr + 'px';
+    canvas.style.height = (s * h) / dpr + 'px';
+    frame.style.setProperty('--px', s / dpr + 'px');
+  }
+  addEventListener('resize', fit);
+  if (window.visualViewport) visualViewport.addEventListener('resize', fit);
+  fit();
+
+  let crt = false;
+  try { crt = localStorage.getItem(crtKey) === '1'; } catch { crt = false; }
+  function setCrt(on) {
+    crt = on;
+    frame.classList.toggle('crt', on);
+    try { localStorage.setItem(crtKey, on ? '1' : '0'); } catch {}
+  }
+  setCrt(crt);
+
+  return {
+    ctx, w, h, fit,
+    get crt() { return crt; },
+    toggleCrt() { setCrt(!crt); return crt; },
+  };
+}
+
+// ---- engine/sound.js
+// Chip sound: square, triangle and noise voices made in the browser. No audio
+// files. Browsers only allow sound after a tap or key, so `wake()` is called
+// from every input handler and does nothing until then.
+function makeSound(muteKey) {
+  let ac = null, out = null;
+  let muted = false;
+  try { muted = localStorage.getItem(muteKey) === '1'; } catch { muted = false; }
+
+  function wake() {
+    if (ac) { if (ac.state === 'suspended') ac.resume(); return; }
+    const Ctor = window.AudioContext || window.webkitAudioContext;
+    if (!Ctor) return;
+    ac = new Ctor();
+    out = ac.createGain();
+    out.gain.value = muted ? 0 : 1;
+    out.connect(ac.destination);
+  }
+
+  // One note. `at` is seconds from now, `to` slides the pitch.
+  function note(freq, dur, { type = 'square', vol = 0.05, at = 0, to = null } = {}) {
+    if (!ac) return;
+    const t = ac.currentTime + at;
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(freq, t);
+    if (to) o.frequency.exponentialRampToValueAtTime(to, t + dur);
+    g.gain.setValueAtTime(vol, t);
+    g.gain.setValueAtTime(vol, t + dur * 0.7);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(out);
+    o.start(t); o.stop(t + dur + 0.02);
+  }
+
+  // A run of notes: [[freq, dur], ...], each after the last; 0 is a rest.
+  function tune(notes, opts = {}) {
+    let at = opts.at || 0;
+    for (const [f, d] of notes) {
+      if (f) note(f, d * 0.92, { ...opts, at });
+      at += d;
+    }
+  }
+
+  function noise(dur, { vol = 0.2, cutoff = 900, at = 0 } = {}) {
+    if (!ac) return;
+    const len = Math.floor(ac.sampleRate * dur);
+    const buf = ac.createBuffer(1, len, ac.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len) ** 2;
+    const s = ac.createBufferSource(); s.buffer = buf;
+    const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = cutoff;
+    const g = ac.createGain(); g.gain.value = vol;
+    s.connect(f); f.connect(g); g.connect(out);
+    s.start(ac.currentTime + at);
+  }
+
+  // A held sound (an engine): filtered noise that runs for the whole session
+  // and is gated by its gain. Starting a source every frame is what makes
+  // engine sound crackle. Returns set(on); safe to call before wake().
+  function drone({ cutoff = 420, vol = 0.16 } = {}) {
+    let gain = null;
+    return on => {
+      if (!ac) return;
+      if (!gain) {
+        const len = ac.sampleRate * 2;
+        const buf = ac.createBuffer(1, len, ac.sampleRate);
+        const d = buf.getChannelData(0);
+        for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+        const s = ac.createBufferSource(); s.buffer = buf; s.loop = true;
+        const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = cutoff;
+        gain = ac.createGain(); gain.gain.value = 0;
+        s.connect(f); f.connect(gain); gain.connect(out);
+        s.start();
+      }
+      gain.gain.setTargetAtTime(on ? vol : 0, ac.currentTime, 0.03);
+    };
+  }
+
+  function setMuted(on) {
+    muted = on;
+    if (out) out.gain.value = on ? 0 : 1;
+    try { localStorage.setItem(muteKey, on ? '1' : '0'); } catch {}
+  }
+
+  return {
+    wake, note, tune, noise, drone,
+    get muted() { return muted; },
+    toggleMute() { setMuted(!muted); return muted; },
+  };
+}
+
+// ---- engine/input.js
+// Keyboard and touch in one place. `held` is what a game polls each tick;
+// `onDir` fires once per press (menus, initials); `onAction` carries the
+// buttons: start, pause, back, crt, mute.
+//
+// A word game passes `onLetter`: then every letter key is a letter (WASD stop
+// being directions, P/C/M stop being shortcuts; those stay on the buttons) and
+// only the arrows move. `onKey(code)` gets any other key and returns true if
+// it used it. `onPoint(x, y)` receives taps on the screen in GAME
+// pixels; returning true means the game used the tap, otherwise it is START.
+function makeInput({ screen, onAction, onDir, onAny, onLetter = null, onPoint = null, onKey = null }) {
+  // `fire` is Space, Enter or the START button while held, for games that
+  // hold a trigger down; every other game ignores it.
+  const held = { up: false, down: false, left: false, right: false, fire: false };
+  const KEYS = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
+  const ACTIONS = { Space: 'start', Enter: 'start', Escape: 'back' };
+  if (!onLetter) {
+    Object.assign(KEYS, { KeyW: 'up', KeyS: 'down', KeyA: 'left', KeyD: 'right' });
+    Object.assign(ACTIONS, { KeyP: 'pause', KeyC: 'crt', KeyM: 'mute' });
+  }
+
+  let touch = matchMedia('(pointer: coarse)').matches;
+  const markTouch = on => {
+    touch = on;
+    document.body.classList.toggle('touch', on);
+  };
+  markTouch(touch);
+  addEventListener('touchstart', () => { if (!touch) markTouch(true); }, { passive: true });
+
+  addEventListener('keydown', e => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const dir = KEYS[e.code];
+    if (dir) {
+      e.preventDefault();
+      onAny();
+      if (!e.repeat) onDir(dir);
+      held[dir] = true;
+      return;
+    }
+    const action = ACTIONS[e.code];
+    if (action) {
+      if (action === 'start') held.fire = true;
+      // Space and Enter on a focused button or link belong to that control.
+      if ((e.code === 'Space' || e.code === 'Enter') && e.target.closest && e.target.closest('button, a')) return;
+      e.preventDefault();
+      onAny();
+      if (!e.repeat) onAction(action);
+      return;
+    }
+    // e.key, not e.code: the letter printed on the key, whatever the layout.
+    // Digits come through the same door, for games that number their keys.
+    if (onLetter && /^[a-z0-9]$/i.test(e.key)) {
+      e.preventDefault();
+      onAny();
+      if (!e.repeat) onLetter(e.key.toUpperCase());
+    }
+    // Anything else a game asked for by code (Z for undo, R for restart).
+    else if (onKey && !e.repeat && onKey(e.code)) { e.preventDefault(); onAny(); }
+  });
+  addEventListener('keyup', e => {
+    const dir = KEYS[e.code];
+    if (dir) held[dir] = false;
+    if (ACTIONS[e.code] === 'start') held.fire = false;
+  });
+  addEventListener('blur', () => { held.up = held.down = held.left = held.right = held.fire = false; });
+
+  for (const b of document.querySelectorAll('[data-dir]')) {
+    const dir = b.dataset.dir;
+    const down = e => {
+      e.preventDefault();
+      onAny();
+      held.up = held.down = held.left = held.right = false;
+      held[dir] = true;
+      onDir(dir);
+    };
+    const up = () => { held[dir] = false; };
+    b.addEventListener('pointerdown', down);
+    b.addEventListener('pointerup', up);
+    b.addEventListener('pointerleave', up);
+    b.addEventListener('pointercancel', up);
+    b.addEventListener('contextmenu', e => e.preventDefault());
+  }
+  // Buttons that send a letter (Sorted's left loop is A and D).
+  for (const b of document.querySelectorAll('[data-letter]')) {
+    b.addEventListener('pointerdown', e => { e.preventDefault(); onAny(); if (onLetter) onLetter(b.dataset.letter); });
+    b.addEventListener('contextmenu', e => e.preventDefault());
+  }
+  for (const b of document.querySelectorAll('[data-action]')) {
+    const action = b.dataset.action;
+    // pointerdown for the START button, so it answers as fast as the d-pad;
+    // click for the toggles, so keyboard users can press them too.
+    if (b.classList.contains('start')) {
+      b.addEventListener('pointerdown', e => { e.preventDefault(); onAny(); held.fire = true; onAction(action); });
+      for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(ev, () => { held.fire = false; });
+    } else {
+      b.addEventListener('click', () => { onAny(); onAction(action); });
+    }
+  }
+  screen.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    onAny();
+    if (onPoint) {
+      const r = screen.getBoundingClientRect();
+      const x = ((e.clientX - r.left) * screen.width) / r.width;
+      const y = ((e.clientY - r.top) * screen.height) / r.height;
+      if (onPoint(x, y)) return;
+    }
+    onAction('start');
+  });
+
+  return { held, get touch() { return touch; } };
+}
+
+// ---- engine/scores.js
+// The top-ten table, kept on this device only. A new browser starts with a
+// table of invented initials so the attract mode has something to show.
+const ENTRY_LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ.';
+
+function makeScores(key, defaults) {
+  let table = defaults.map(r => ({ ...r }));
+  try {
+    const saved = JSON.parse(localStorage.getItem(key) || 'null');
+    if (Array.isArray(saved) && saved.length === 10 && saved.every(r => typeof r.s === 'number' && typeof r.n === 'string')) table = saved;
+  } catch {}
+
+  return {
+    get table() { return table; },
+    get top() { return table[0].s; },
+    qualifies(score) { return score > 0 && score > table[9].s; },
+    // Returns the rank (0-9) the new row landed on.
+    add(n, s) {
+      let rank = table.findIndex(r => s > r.s);
+      if (rank === -1) return -1;
+      table.splice(rank, 0, { n, s });
+      table.length = 10;
+      try { localStorage.setItem(key, JSON.stringify(table)); } catch {}
+      return rank;
+    },
+  };
+}
+
+// ---- games/near-miss/rules.js
+// Near Miss's rules, with no drawing, so the tests can ride them directly.
+//
+// The road is measured in cells: x runs from -HALF to HALF across it, and
+// `dist` is how far along it you are. Things stand in rows across the road.
+// Every row is built around a safe line, and the next row's line is never
+// further away than the vehicle can steer in the time it takes to get there,
+// at the slowest it can steer, on the worst bend. That is the promise of the
+// game: there is always a way through.
+//
+// How a vehicle handles is a row in VEHICLES, so a new one is a new row.
+const HALF = 4;             // half the width of the road
+const VIEW = 60;            // cells ahead that rows exist and can be seen
+const BIKES = 3;
+const START_SPEED = 0.18;   // cells per tick, 60 ticks a second
+const TOP_SPEED = 0.42;
+const SECTOR_CELLS = 400;
+const NEAR = 0.45;          // pass closer than this and it is a near miss
+const NEAR_PTS = 50;
+const MAX_COMBO = 8;
+const SECTOR_PTS = 250;
+const MAX_CURVE = 0.012;
+const DRIFT = 6;            // how hard a bend pushes you outward
+const MAX_DRIFT = MAX_CURVE * TOP_SPEED * DRIFT;
+const CLEAR_AHEAD = 30;     // cells emptied in front of you after a crash
+const LINE_MAX = HALF - 0.7;
+
+const VEHICLES = {
+  bike: { name: 'MOTORBIKE', half: 0.25, steer: 0.115, grip: 0.25 },
+};
+
+const speedAt = dist => START_SPEED + (TOP_SPEED - START_SPEED) * (1 - Math.exp(-dist / 1800));
+const sectorOf = dist => 1 + Math.floor(dist / SECTOR_CELLS);
+const gapHalf = sector => Math.max(0.55, 1.3 - 0.1 * (sector - 1));
+const spacingTicks = sector => Math.max(38, 72 - 4 * (sector - 1));
+
+// Smooth, and straight for the first stretch while you find your feet.
+function curveAt(dist) {
+  const easeIn = Math.min(1, Math.max(0, (dist - 60) / 120));
+  return MAX_CURVE * easeIn * (0.6 * Math.sin(dist / 97) + 0.4 * Math.sin(dist / 41 + 1));
+}
+
+// A sliding piece moves with your distance, not the clock, so where it will be
+// when you reach it is fixed, however fast you are going.
+const pieceX = (p, dist) => (p.amp ? p.x + p.amp * Math.sin(p.phase + dist * p.rate) : p.x);
+
+// `reach` is the share of the steering the safe line may ask for, and `gap`
+// overrides the width of the gap; the tests break both on purpose.
+function newRun(rand, { vehicle = 'bike', reach = 0.6, gap = null, firstRow = 50 } = {}) {
+  const run = {
+    rand, vehicle: VEHICLES[vehicle], reach, gap,
+    dist: 0, x: 0, vx: 0, rec: 1, combo: 0, sector: 1,
+    rows: [], nextD: firstRow, line: 0,
+  };
+  fillRows(run);
+  return run;
+}
+
+const speedOf = run => speedAt(run.dist) * run.rec;
+
+function fillRows(run) {
+  while (run.nextD < run.dist + VIEW) addRow(run);
+}
+
+function addRow(run) {
+  const { rand } = run, d = run.nextD, sector = sectorOf(d), ticks = spacingTicks(sector);
+  const room = ticks * (run.vehicle.steer - MAX_DRIFT) * run.reach;
+  const swing = rand() * 2 - 1;
+  const line = Math.max(-LINE_MAX, Math.min(LINE_MAX, run.line + Math.sign(swing) * Math.sqrt(Math.abs(swing)) * room));
+  const g = run.gap ?? gapHalf(sector);
+  const pieces = [
+    ...sidePieces(rand, -HALF, line - g, sector),
+    ...sidePieces(rand, line + g, HALF, sector),
+  ];
+  // A row with nothing in it is a wasted row: stand something beside the gap.
+  if (!pieces.length) {
+    const left = line + HALF > HALF - line;
+    pieces.push(left ? { type: 'cone', x: line - g - 0.25, w: 0.5 } : { type: 'cone', x: line + g + 0.25, w: 0.5 });
+  }
+  run.rows.push({ d, line, pieces, passed: false });
+  run.line = line;
+  run.nextD = d + speedAt(d) * ticks;
+}
+
+// Fills one side of the gap, from a to b, with something that stays inside it.
+function sidePieces(rand, a, b, sector) {
+  const room = b - a;
+  if (room < 0.5) return [];
+  if (rand() < Math.min(0.7, 0.08 * (sector - 1))) return wall(a, b);
+  if (rand() > Math.min(1, 0.55 + 0.08 * (sector - 1))) return [];
+  const kind = rand();
+  if (sector >= 2 && kind < 0.25 && room >= 2) {
+    const w = 1, amp = (room - w) / 2;
+    return [{ type: 'slider', x: (a + b) / 2, w, amp, phase: rand() * 6.28, rate: 0.12 + rand() * 0.1 }];
+  }
+  const [type, w] = kind < 0.45 ? ['cone', 0.5] : kind < 0.8 ? ['crate', 1] : ['barrier', 1.5 + rand()];
+  const fit = Math.min(w, room);
+  return [{ type: fit < 1 ? 'cone' : type, x: a + fit / 2 + rand() * (room - fit), w: fit < 1 ? 0.5 : fit }];
+}
+
+function wall(a, b) {
+  const out = [], n = Math.ceil((b - a) / 3), w = (b - a) / n;
+  for (let i = 0; i < n; i++) out.push({ type: 'barrier', x: a + w * (i + 0.5), w });
+  return out;
+}
+
+// One tick. Returns what happened: `crash` is the piece that was hit, `near`
+// the points for a near miss, `sector` the sector just entered.
+function stepRun(run, { left = false, right = false } = {}) {
+  const v = run.vehicle, speed = speedOf(run);
+  const out = { crash: null, near: 0, sector: 0, scrape: false };
+
+  run.vx += ((right ? v.steer : 0) - (left ? v.steer : 0) - run.vx) * v.grip;
+  run.x += run.vx - curveAt(run.dist) * speed * DRIFT;
+  const limit = HALF - v.half;
+  if (Math.abs(run.x) > limit) {
+    run.x = Math.sign(run.x) * limit;
+    run.vx = 0;
+    run.rec = Math.max(0.75, run.rec - 0.012); // the kerb costs speed, not a bike
+    out.scrape = true;
+  } else run.rec = Math.min(1, run.rec + 0.002);
+
+  const from = run.dist;
+  run.dist += speed;
+  for (const row of run.rows) {
+    if (row.passed || row.d > run.dist || row.d < from) continue;
+    row.passed = true;
+    let closest = Infinity;
+    for (const p of row.pieces) {
+      const edge = Math.abs(run.x - pieceX(p, row.d)) - p.w / 2 - v.half;
+      if (edge < 0) { out.crash = p; return out; }
+      closest = Math.min(closest, edge);
+    }
+    if (closest < NEAR) {
+      run.combo = Math.min(MAX_COMBO, run.combo + 1);
+      out.near = NEAR_PTS * run.combo;
+    } else run.combo = 0;
+  }
+  run.rows = run.rows.filter(r => r.d > run.dist - 2);
+  fillRows(run);
+
+  const sector = sectorOf(run.dist);
+  if (sector > run.sector) { run.sector = sector; out.sector = sector; }
+  return out;
+}
+
+// After a crash: back up to speed from a clear stretch, with time to reach
+// whatever comes next from wherever you are.
+function respawn(run) {
+  Object.assign(run, { rec: 0.6, vx: 0, combo: 0 });
+  run.rows = run.rows.filter(r => r.d > run.dist + CLEAR_AHEAD);
+  run.nextD = Math.max(run.nextD, run.dist + CLEAR_AHEAD);
+  fillRows(run);
+}
+
+// The demo rider, and the tests' proof that the road can really be ridden: it
+// has only the two steering keys, on the same rules as the player.
+function rider(run) {
+  const next = run.rows.find(r => !r.passed);
+  if (!next) return { left: false, right: false };
+  const off = next.line - run.x;
+  return { left: off < -0.1, right: off > 0.1 };
+}
+
+// ---- engine/sprites.js
+// Sprites are drawn as text: one character per pixel, '.' is transparent and
+// every other character is looked up in a palette. Swapping the palette is how
+// a sprite changes state (lit, remembered, alerted) — the way the hardware did it.
+function sprite(rows, palette) {
+  const w = rows[0].length, h = rows.length;
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const g = c.getContext('2d');
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const ch = rows[y][x];
+    if (ch === '.' || !palette[ch]) continue;
+    g.fillStyle = palette[ch];
+    g.fillRect(x, y, 1, 1);
+  }
+  return c;
+}
+
+function mirrored(src) {
+  const c = document.createElement('canvas');
+  c.width = src.width; c.height = src.height;
+  const g = c.getContext('2d');
+  g.translate(src.width, 0);
+  g.scale(-1, 1);
+  g.drawImage(src, 0, 0);
+  return c;
+}
+
+// A 16x16 tile painted by a function of (x, y) -> colour or null.
+function tile(size, paint) {
+  const c = document.createElement('canvas');
+  c.width = size; c.height = size;
+  const g = c.getContext('2d');
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    const col = paint(x, y);
+    if (!col) continue;
+    g.fillStyle = col;
+    g.fillRect(x, y, 1, 1);
+  }
+  return c;
+}
+
+// ---- games/near-miss/art.js
+// The bike from behind. Leaning is the same drawing with each row pushed over
+// further the higher it is, so the wheels stay on the road.
+const BIKE = [
+  '........HHHH........',
+  '.......HHHHHH.......',
+  '.......HHHHHh.......',
+  '.......HHHHhh.......',
+  '........hhhh........',
+  '.......JJJJJJ.......',
+  '.....JJJJJJJJjj.....',
+  '....JJJJJJJJJjjj....',
+  '...JJJJJWWJJJjjjj...',
+  '...JJ.JJWWJJj.jjj...',
+  '...JJ.JJJJJJj.jj....',
+  '..GKK.JJJJJjj.KKG...',
+  '.GGGGGGGGGGGGGGGGGG.',
+  '.......jjjjjj.......',
+  '.....KKKKKKKKKK.....',
+  '....BB.KKKKKK.BB....',
+  '....BBGKRRRRKGBB....',
+  '....BBKKRRRRKKBB....',
+  '.....KKKKKKKKKK.....',
+  '.......KKKKKK.......',
+  '........TTTT........',
+  '........TtTT........',
+  '........TTTT........',
+  '........TTtT........',
+  '........TTTT........',
+  '.........TT.........',
+];
+const BIKE_INK = {
+  H: '#ffffff', h: '#b8b8d0', J: '#ff3b3b', j: '#a81e3a', W: '#ffd23f', G: '#c8c8d8',
+  K: '#34344a', B: '#5a5a70', R: '#ff5f5f', T: '#16161f', t: '#5a5a70',
+};
+const TAIL_DIM = { ...BIKE_INK, R: '#a81e3a' };
+
+const CONE = [
+  '.......OO.......',
+  '.......OO.......',
+  '......OOOO......',
+  '......OOOO......',
+  '......WWWW......',
+  '.....WWWWWW.....',
+  '.....OOOOOO.....',
+  '.....OOOOOO.....',
+  '....OOOOOOOo....',
+  '....OOOOOOOo....',
+  '....WWWWWWWw....',
+  '...WWWWWWWWww...',
+  '...OOOOOOOOoo...',
+  '...OOOOOOOOoo...',
+  '.OOOOOOOOOOOOoo.',
+  'oooooooooooooooo',
+];
+const CONE_INK = { O: '#ff8a1e', o: '#b85a10', W: '#ffffff', w: '#c8c8d8' };
+
+const MINI = [
+  '...HH...',
+  '...HH...',
+  '..JJJJ..',
+  '.GGGGGG.',
+  '..KKKK..',
+  '..KRRK..',
+  '...TT...',
+  '...TT...',
+];
+
+const SPREAD = 8; // room for the lean, either side
+
+function lean(rows, perRow) {
+  const h = rows.length;
+  return rows.map((r, i) => {
+    const shift = Math.round((h - 1 - i) * perRow);
+    return '.'.repeat(SPREAD + shift) + r + '.'.repeat(SPREAD - shift);
+  });
+}
+
+const LEAN_STEPS = 2;
+
+function makeArt() {
+  const frames = lit => {
+    const ink = lit ? BIKE_INK : TAIL_DIM, out = {};
+    for (let s = -LEAN_STEPS; s <= LEAN_STEPS; s++) out[s] = sprite(lean(BIKE, s * 0.15), ink);
+    return out;
+  };
+  return {
+    bike: [frames(true), frames(false)],
+    bikeW: BIKE[0].length + SPREAD * 2,
+    bikeH: BIKE.length,
+    cone: sprite(CONE, CONE_INK),
+    mini: sprite(MINI, BIKE_INK),
+  };
+}
+
+// ---- games/near-miss/game.js
+const W = 320, H = 240, TOP = 22;
+const HORIZON = 96;
+const CAM_H = 3, FOCAL = 160;      // camera height in cells, focal length in pixels
+const BIKE_Z = 4.4;                // how far ahead of the camera the bike rides
+const GRID = 2;                    // cells between grid lines
+const POST_EVERY = 8;
+const TICK_MS = 1000 / 60;
+const DEMO_TICKS = 60 * 30;
+
+const INK = {
+  red: '#ff3b3b', white: '#ffffff', yellow: '#ffd23f', orange: '#ff8a1e', green: '#3fd46b',
+  cyan: '#5eeaf5', pink: '#ff5fb8', grey: '#8f8fb0', dim: '#4a4a6a',
+};
+const ROW_INKS = ['#ff3b3b', '#ff8a1e', '#ffd23f', '#3fd46b', '#5eeaf5', '#8f7bff', '#ff5fb8', '#ff8a1e', '#ffd23f', '#3fd46b'];
+const LOGO_INK = ['#ffe14a', '#ffd23f', '#ffb02e', '#ff8a1e', '#ff6a4a', '#ff5fb8', '#d84fd8'];
+const RANKS = ['1ST', '2ND', '3RD', '4TH', '5TH', '6TH', '7TH', '8TH', '9TH', '10TH'];
+
+// Each sector is a palette swap. The first is the grid on the Games page:
+// blue lines crossing purple ones, in solid colours.
+const PALETTES = [
+  { sky: '#0a0420', hill: '#241050', road: '#130b30', off: '#0c0622', cross: ['#5eeaf5', '#2f8fb0', '#1a4a70'], along: ['#a34fe0', '#6a35a0', '#3c2070'], edge: ['#ff5fb8', '#ffffff'], sun: ['#ffe14a', '#ff8a1e', '#ff5fb8'] },
+  { sky: '#04141c', hill: '#0a3040', road: '#061c24', off: '#041218', cross: ['#3fd46b', '#25884a', '#14502e'], along: ['#2f8fb0', '#1f6480', '#123c50'], edge: ['#ffd23f', '#ffffff'], sun: ['#ffffff', '#5eeaf5', '#3fd46b'] },
+  { sky: '#1c0810', hill: '#3c1420', road: '#240c14', off: '#16060c', cross: ['#ffd23f', '#b8862a', '#6a4a18'], along: ['#ff3b3b', '#a82830', '#601820'], edge: ['#5eeaf5', '#ffffff'], sun: ['#ffffff', '#ffd23f', '#ff3b3b'] },
+  { sky: '#100c28', hill: '#20204c', road: '#141038', off: '#0c0a20', cross: ['#ff5fb8', '#a83c80', '#602450'], along: ['#5eeaf5', '#2f8fb0', '#1a4a70'], edge: ['#ffd23f', '#ffffff'], sun: ['#ffd23f', '#ff5fb8', '#8f7bff'] },
+];
+
+// Invented initials, so a first visit has a table to beat.
+const DEFAULT_SCORES = [
+  ['VRM', 6000], ['ZIP', 5000], ['APX', 4000], ['KRB', 3200], ['TOP', 2500],
+  ['GRD', 2000], ['REV', 1500], ['SKD', 1000], ['NOS', 600], ['BIT', 300],
+].map(([n, s]) => ({ n, s }));
+
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const canvas = document.getElementById('c');
+const screen = makeScreen({ canvas, stage: document.getElementById('stage'), frame: document.getElementById('screen'), w: W, h: H, crtKey: 'lk.arcade.crt' });
+const ctx = screen.ctx;
+const sound = makeSound('lk.arcade.mute');
+const engine = sound.drone({ cutoff: 300, vol: 0.09 });
+const scores = makeScores('lk.nearmiss.scores', DEFAULT_SCORES);
+const art = makeArt();
+
+// Which distance ahead each screen row shows, worked out once.
+const ROW_Z = new Float32Array(H);
+for (let y = HORIZON + 1; y < H; y++) ROW_Z[y] = (CAM_H * FOCAL) / (y - HORIZON);
+const BIKE_Y = Math.round(HORIZON + (CAM_H * FOCAL) / BIKE_Z);
+
+// A fixed sky and a line of hills, the same on every visit.
+const STARS = [];
+for (let i = 0; i < 50; i++) STARS.push({ x: (i * 137) % W, y: TOP + ((i * 53) % (HORIZON - TOP - 6)), c: i % 4 ? '#8f8fb0' : '#ffffff' });
+const HILLS = [];
+for (let i = 0; i < 512; i++) HILLS.push(Math.round(7 + 5 * Math.sin(i / 26) + 3 * Math.sin(i / 9 + 1) + 2 * Math.sin(i / 4)));
+
+let run = null, mode = 'attract', page = 'title', pageT = 0, t = 0, timer = 0, clock = 0;
+let bikes = BIKES, score = 0, sky = 0, idleDist = 0, lastLine = 0, sparks = [], shake = 0, pops = [], sectorT = 0;
+let demo = false, demoT = 0, entry = null, highlight = -1, pausedFrom = null, wreck = null;
+
+const SFX = {
+  start: () => {
+    sound.tune([[392, 0.1], [523, 0.1], [659, 0.1], [784, 0.1], [0, 0.05], [659, 0.1], [784, 0.34]], { vol: 0.045 });
+    sound.tune([[98, 0.32], [131, 0.32], [196, 0.44]], { type: 'triangle', vol: 0.12 });
+  },
+  near: combo => sound.note(620 + combo * 110, 0.07, { vol: 0.04 }),
+  sector: () => sound.tune([[659, 0.09], [880, 0.09], [1175, 0.24]], { vol: 0.045 }),
+  scrape: () => sound.noise(0.06, { vol: 0.07, cutoff: 2600 }),
+  crash: () => { sound.noise(0.7, { vol: 0.32, cutoff: 700 }); sound.note(240, 0.6, { to: 50, vol: 0.05 }); },
+  blip: () => sound.note(988, 0.05, { vol: 0.04 }),
+  over: () => sound.tune([[392, 0.22], [370, 0.22], [349, 0.22], [330, 0.7]], { type: 'triangle', vol: 0.12 }),
+};
+// The demo plays silently: nobody asked for noise from a screen they are not using.
+function play(name, arg) { if (!demo) SFX[name](arg); }
+
+// ---------------------------------------------------------------- the game
+
+function fresh() {
+  run = newRun(Math.random);
+  lastLine = 0; sparks = []; pops = []; shake = 0; sectorT = 0; wreck = null;
+}
+
+function newGame() {
+  demo = false; highlight = -1;
+  bikes = BIKES; score = 0;
+  fresh();
+  mode = 'ready'; timer = 150;
+  play('start');
+}
+
+function startDemo() {
+  demo = true; demoT = 0;
+  bikes = BIKES; score = 0;
+  fresh();
+  mode = 'ready'; timer = 60;
+}
+
+function endDemo() {
+  demo = false;
+  engine(false);
+  toAttract('scores');
+}
+
+function toAttract(p) {
+  mode = 'attract'; page = p; pageT = 0; demo = false; entry = null; wreck = null;
+  engine(false);
+}
+
+function rideTick() {
+  if (demo && ++demoT > DEMO_TICKS) { endDemo(); return; }
+  const h = input.held;
+  const r = stepRun(run, demo ? rider(run) : { left: h.left, right: h.right });
+  sky += curveAt(run.dist) * speedOf(run) * 260;
+  if (!demo) engine(true);
+
+  const line = Math.floor(run.dist / GRID);
+  score += line - lastLine;
+  lastLine = line;
+
+  if (r.scrape) {
+    if (clock % 6 === 0) play('scrape');
+    if (!reduceMotion) sparks.push({ x: bikeX(), y: BIKE_Y - 2, vx: -Math.sign(run.x) * Math.random() * 2, vy: -Math.random() * 2, life: 0.6 });
+  }
+  if (r.near) {
+    score += r.near;
+    pops.push({ s: (run.combo > 1 ? 'X' + run.combo + ' ' : '') + 'NEAR MISS +' + r.near, t: 70 });
+    if (pops.length > 2) pops.shift();
+    play('near', run.combo);
+  }
+  if (r.sector) {
+    score += SECTOR_PTS * (r.sector - 1);
+    sectorT = 130;
+    play('sector');
+  }
+  if (r.crash) crash();
+}
+
+function crash() {
+  engine(false);
+  bikes--;
+  shake = reduceMotion ? 0 : 16;
+  wreck = { x: bikeX(), y: BIKE_Y - 12 };
+  for (let i = 0; i < (reduceMotion ? 10 : 40); i++) {
+    const a = Math.random() * Math.PI * 2, sp = 0.5 + Math.random() * 3.5;
+    sparks.push({ x: wreck.x, y: wreck.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 1, life: 1 });
+  }
+  mode = 'crashed'; t = 0;
+  play('crash');
+}
+
+function afterCrash() {
+  if (demo) { endDemo(); return; }
+  if (bikes <= 0) { mode = 'over'; timer = 200; play('over'); return; }
+  respawn(run);
+  wreck = null;
+  mode = 'ready'; timer = 90;
+}
+
+function afterOver() {
+  if (scores.qualifies(score)) {
+    entry = { letters: [0, 0, 0], pos: 0, timer: 60 * 30 };
+    mode = 'entry';
+  } else {
+    toAttract('scores');
+  }
+}
+
+function saveEntry() {
+  const name = entry.letters.map(i => ENTRY_LETTERS[i]).join('');
+  highlight = scores.add(name, score);
+  toAttract('scores');
+}
+
+// ---------------------------------------------------------------- input
+
+function onAction(action) {
+  if (action === 'crt') { screen.toggleCrt(); syncToggles(); return; }
+  if (action === 'mute') { sound.toggleMute(); syncToggles(); return; }
+  if (action === 'back') { toAttract('title'); return; }
+  if (action === 'pause') {
+    if (mode === 'paused') { mode = pausedFrom; return; }
+    if (!demo && ['ready', 'riding', 'crashed'].includes(mode)) { pausedFrom = mode; mode = 'paused'; engine(false); }
+    return;
+  }
+  if (mode === 'attract' || demo) { newGame(); return; }
+  if (mode === 'paused') { mode = pausedFrom; return; }
+  if (mode === 'over') { timer = 0; return; }
+  if (mode === 'entry') confirmLetter();
+}
+
+function confirmLetter() {
+  play('blip');
+  entry.pos++;
+  if (entry.pos >= 3) saveEntry();
+}
+
+function onDir(dir) {
+  if (mode !== 'entry') return;
+  const n = ENTRY_LETTERS.length, i = entry.pos;
+  if (dir === 'up') { entry.letters[i] = (entry.letters[i] + 1) % n; play('blip'); }
+  else if (dir === 'down') { entry.letters[i] = (entry.letters[i] + n - 1) % n; play('blip'); }
+  else if (dir === 'right') confirmLetter();
+  else if (dir === 'left' && entry.pos > 0) { entry.pos--; play('blip'); }
+}
+
+const input = makeInput({ screen: canvas, onAction, onDir, onAny: () => sound.wake() });
+
+const crtBtn = document.querySelector('[data-action="crt"]');
+const muteBtn = document.querySelector('[data-action="mute"]');
+function syncToggles() {
+  crtBtn.textContent = 'CRT ' + (screen.crt ? 'on' : 'off');
+  crtBtn.setAttribute('aria-pressed', String(screen.crt));
+  muteBtn.textContent = 'Sound ' + (sound.muted ? 'off' : 'on');
+  muteBtn.setAttribute('aria-pressed', String(!sound.muted));
+}
+syncToggles();
+
+// A phone that locks or switches app mid-ride comes back paused, not crashed.
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && !demo && ['ready', 'riding'].includes(mode)) { pausedFrom = mode; mode = 'paused'; engine(false); }
+});
+
+// ---------------------------------------------------------------- the road
+
+const blinkOn = (rate = 32) => reduceMotion || ((clock / rate) | 0) % 2 === 0;
+const prompt = () => (input.touch ? 'TAP START' : 'PRESS SPACE');
+const paletteOf = sector => PALETTES[(sector - 1) % PALETTES.length];
+const camOf = x => x * 0.75;
+
+// A bend swings the far road sideways, more the further away it is.
+const bendAt = (dist, z) => (curveAt(dist + z / 2) * z * FOCAL) / 2;
+const screenX = (x, z, dist, cam) => W / 2 + bendAt(dist, z) + ((x - cam) * FOCAL) / z;
+const screenY = z => HORIZON + (CAM_H * FOCAL) / z;
+const bikeX = () => Math.round(screenX(run.x, BIKE_Z, run.dist, camOf(run.x)));
+
+function drawSky(g, p, dist, shift) {
+  g.fillStyle = p.sky;
+  g.fillRect(0, TOP, W, HORIZON - TOP);
+  for (const s of STARS) { g.fillStyle = s.c; g.fillRect(s.x, s.y, 1, 1); }
+  // A low sun in solid bands, cut by the gaps the hardware would have used.
+  const cx = Math.round(W / 2 + bendAt(dist, VIEW)), r = 30;
+  for (let dy = 0; dy < r; dy++) {
+    if (dy < 14 && dy % 4 === 2) continue;
+    const half = Math.round(Math.sqrt(r * r - dy * dy));
+    g.fillStyle = p.sun[dy > 20 ? 0 : dy > 8 ? 1 : 2];
+    g.fillRect(cx - half, HORIZON - 1 - dy, half * 2, 1);
+  }
+  g.fillStyle = p.hill;
+  const off = Math.round(shift) & 511;
+  for (let x = 0; x < W; x++) {
+    const h = HILLS[(x + off + 512) & 511];
+    g.fillRect(x, HORIZON - h, 1, h);
+  }
+}
+
+function drawFloor(g, p, dist, cam) {
+  let lastCross = null;
+  const lines = Math.floor(HALF / GRID) + 11, prev = new Array(lines * 2 + 1).fill(null);
+  for (let y = HORIZON + 1; y < H; y++) {
+    const z = ROW_Z[y], s = FOCAL / z, cx = W / 2 + bendAt(dist, z) - cam * s;
+    const band = z > 30 ? 2 : z > 13 ? 1 : 0;
+
+    g.fillStyle = p.off;
+    g.fillRect(0, y, W, 1);
+    const left = Math.round(cx - HALF * s), right = Math.round(cx + HALF * s);
+    g.fillStyle = p.road;
+    g.fillRect(left, y, right - left, 1);
+
+    // The lines across: every row that crosses one, thicker up close. Far off
+    // they would touch and make a solid band, so only every 2nd or 4th is drawn.
+    const every = z > 34 ? 4 : z > 20 ? 2 : 1;
+    const along = (dist + z) / (GRID * every), cross = Math.floor(along);
+    if (z <= VIEW && ((lastCross !== null && cross !== lastCross) || along - cross < 0.05 / every)) {
+      g.fillStyle = p.cross[band];
+      g.fillRect(0, y, W, 1);
+    }
+    lastCross = cross;
+
+    // The lines along the road, joined up so a slanted one has no holes.
+    g.fillStyle = p.along[band];
+    const gap = GRID * s, skip = gap < 4 ? 4 : gap < 8 ? 2 : 1;
+    for (let i = -lines; i <= lines; i++) {
+      const px = Math.round(cx + i * GRID * s), was = prev[i + lines];
+      prev[i + lines] = px;
+      if (Math.abs(i * GRID) === HALF || i % skip) continue;
+      const a = was === null ? px : Math.min(px, was), b = was === null ? px : Math.max(px, was);
+      if (b < 0 || a >= W) continue;
+      g.fillRect(a, y, b - a + 1, 1);
+    }
+
+    // The edge of the road, striped so its speed can be read.
+    const edge = Math.max(1, Math.round(s * 0.09));
+    g.fillStyle = p.edge[Math.floor((dist + z) / 1.5) % 2 ? 1 : 0];
+    g.fillRect(left - edge, y, edge, 1);
+    g.fillRect(right, y, edge, 1);
+  }
+}
+
+function drawPosts(g, p, dist, cam) {
+  const first = Math.ceil((dist + 3.4) / POST_EVERY) * POST_EVERY;
+  for (let d = first + Math.floor(VIEW / POST_EVERY) * POST_EVERY; d >= first; d -= POST_EVERY) {
+    const z = d - dist, s = FOCAL / z, y = Math.round(screenY(z)), h = Math.round(s * 1.6), w = Math.max(1, Math.round(s * 0.09));
+    for (const side of [-1, 1]) {
+      const x = Math.round(screenX(side * (HALF + 1.2), z, dist, cam));
+      g.fillStyle = p.along[z > 30 ? 2 : 1];
+      g.fillRect(x, y - h, w, h);
+      g.fillStyle = p.edge[1];
+      g.fillRect(x - w, y - h, w * 3, Math.max(1, w));
+    }
+  }
+}
+
+// Solid blocks, drawn at whatever size the distance asks for. Stripes are
+// whole pixels, never fewer than 2 wide, so far ones simply merge.
+function drawBarrier(g, x, y, w, h) {
+  const stripe = Math.max(2, Math.round(w / 8));
+  for (let i = 0; i < w; i += stripe) {
+    g.fillStyle = Math.floor(i / stripe) % 2 ? '#16161f' : INK.yellow;
+    g.fillRect(x + i, y, Math.min(stripe, w - i), h);
+  }
+  g.fillStyle = '#ffffff';
+  g.fillRect(x, y, w, Math.max(1, Math.round(h / 8)));
+}
+
+function drawCrate(g, x, y, w, h) {
+  const edge = Math.max(1, Math.round(w / 8));
+  g.fillStyle = '#a8602a'; g.fillRect(x, y, w, h);
+  g.fillStyle = '#e09a4a'; g.fillRect(x, y, w, edge);
+  g.fillStyle = '#6a3a18';
+  g.fillRect(x, y + h - edge, w, edge);
+  g.fillRect(x, y, edge, h);
+  g.fillRect(x + w - edge, y, edge, h);
+  g.fillRect(x + Math.round(w / 2 - edge / 2), y, edge, h);
+}
+
+function drawSlider(g, x, y, w, h) {
+  g.fillStyle = INK.pink; g.fillRect(x, y, w, h);
+  const edge = Math.max(1, Math.round(h / 5));
+  g.fillStyle = '#ffffff'; g.fillRect(x, y, w, edge);
+  g.fillStyle = '#16161f'; g.fillRect(x + Math.round(w / 4), y + edge * 2, Math.ceil(w / 2), Math.max(1, edge));
+}
+
+function drawPiece(g, piece, rowD, dist, cam) {
+  const z = rowD - dist + BIKE_Z, s = FOCAL / z;
+  const w = Math.max(2, Math.round(piece.w * s));
+  const cx = screenX(pieceX(piece, rowD), z, dist, cam), y = Math.round(screenY(z)), x = Math.round(cx - w / 2);
+  if (piece.type === 'cone') {
+    const size = Math.max(3, Math.round(s * 0.75));
+    g.drawImage(art.cone, Math.round(cx - size / 2), y - size, size, size);
+  } else if (piece.type === 'crate') {
+    const h = Math.max(2, Math.round(s * 0.9));
+    drawCrate(g, x, y - h, w, h);
+  } else if (piece.type === 'slider') {
+    const h = Math.max(2, Math.round(s * 0.5));
+    drawSlider(g, x, y - h, w, h);
+  } else {
+    const h = Math.max(2, Math.round(s * 0.65));
+    drawBarrier(g, x, y - h, w, h);
+  }
+}
+
+function drawBike(g, x, y, vx, steer) {
+  const step = Math.max(-LEAN_STEPS, Math.min(LEAN_STEPS, Math.round((vx / steer) * LEAN_STEPS)));
+  const frame = art.bike[(clock >> 2) & 1][step];
+  g.fillStyle = '#000';
+  g.fillRect(x - 8, y - 1, 16, 2);
+  g.drawImage(frame, x - (art.bikeW >> 1), y - art.bikeH);
+}
+
+function drawWorld() {
+  const p = paletteOf(run.sector), cam = camOf(run.x);
+  ctx.save();
+  if (shake > 0.5) ctx.translate(Math.round((Math.random() - 0.5) * shake / 2), Math.round((Math.random() - 0.5) * shake / 2));
+  drawSky(ctx, p, run.dist, sky);
+  drawFloor(ctx, p, run.dist, cam);
+  drawPosts(ctx, p, run.dist, cam);
+  for (let i = run.rows.length - 1; i >= 0; i--) {
+    const r = run.rows[i];
+    if (r.d < run.dist) continue;
+    for (const piece of r.pieces) drawPiece(ctx, piece, r.d, run.dist, cam);
+  }
+  if (!wreck) drawBike(ctx, bikeX(), BIKE_Y, run.vx, run.vehicle.steer);
+  for (const r of run.rows) {
+    if (r.d >= run.dist) continue;
+    for (const piece of r.pieces) drawPiece(ctx, piece, r.d, run.dist, cam);
+  }
+  for (const s of sparks) {
+    ctx.fillStyle = s.life > 0.6 ? INK.white : s.life > 0.3 ? INK.yellow : INK.orange;
+    ctx.fillRect(Math.round(s.x), Math.round(s.y), 2, 2);
+  }
+  ctx.restore();
+}
+
+// ---------------------------------------------------------------- screens
+
+function banner(lines, y) {
+  const wide = Math.max(...lines.map(([s]) => s.length)) * 6 + 10;
+  ctx.fillStyle = '#000';
+  ctx.fillRect(Math.floor((W - wide) / 2), y - 5, wide, lines.length * 12 + 7);
+  lines.forEach(([s, ink], i) => text(ctx, s, W / 2, y + i * 12, ink, { align: 'center' }));
+}
+
+function drawHud() {
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, W, TOP);
+  const hi = Math.max(scores.top, demo ? 0 : score);
+  if (!(mode === 'riding' && !demo) || blinkOn(24)) text(ctx, '1UP', 8, 3, INK.red);
+  text(ctx, String(score).padStart(2, '0'), 50, 12, INK.white, { align: 'right' });
+  text(ctx, 'HI-SCORE', W / 2, 3, INK.red, { align: 'center' });
+  text(ctx, String(hi), W / 2, 12, INK.white, { align: 'center' });
+  if (mode === 'attract' || mode === 'entry') return;
+  for (let i = 0; i < bikes; i++) ctx.drawImage(art.mini, 60 + i * 10, 11);
+  text(ctx, 'SECTOR ' + run.sector, W - 8, 3, INK.red, { align: 'right' });
+  text(ctx, Math.round(speedOf(run) * 600) + ' KM/H', W - 8, 12, INK.white, { align: 'right' });
+}
+
+function drawPops() {
+  pops.forEach((p, i) => {
+    const y = TOP + 8 + i * 10;
+    const wide = p.s.length * 6 + 6;
+    ctx.fillStyle = '#000';
+    ctx.fillRect(Math.round(W / 2 - wide / 2), y - 2, wide, 11);
+    text(ctx, p.s, W / 2, y, p.t > 20 || blinkOn(6) ? INK.yellow : INK.orange, { align: 'center' });
+  });
+}
+
+function drawTitle() {
+  const p = PALETTES[0];
+  drawSky(ctx, p, 0, 0);
+  drawFloor(ctx, p, idleDist, 0);
+  text(ctx, 'NEAR MISS', W / 2 + 2, 36, '#3c1470', { align: 'center', scale: 5 });
+  text(ctx, 'NEAR MISS', W / 2, 34, LOGO_INK, { align: 'center', scale: 5 });
+  drawBike(ctx, W / 2, BIKE_Y, 0, 1);
+  if (blinkOn()) banner([[prompt(), INK.yellow]], 124);
+  banner([['LEON KARSTEN 2026', INK.grey]], 226);
+}
+
+function drawHowTo() {
+  text(ctx, 'HOW TO PLAY', W / 2, 30, INK.cyan, { align: 'center' });
+  text(ctx, 'LEFT AND RIGHT. THE SPEED IS NOT UP TO YOU.', W / 2, 48, INK.white, { align: 'center' });
+  text(ctx, 'THERE IS ALWAYS A GAP. ONE TOUCH AND', W / 2, 60, INK.white, { align: 'center' });
+  text(ctx, 'THE BIKE IS GONE. YOU HAVE ' + BIKES + '.', W / 2, 70, INK.white, { align: 'center' });
+  ctx.drawImage(art.cone, 92, 80);
+  drawCrate(ctx, 118, 80, 18, 16);
+  drawBarrier(ctx, 146, 84, 36, 12);
+  drawSlider(ctx, 194, 86, 20, 10);
+  text(ctx, 'THE KERB ONLY SLOWS YOU.', W / 2, 104, INK.grey, { align: 'center' });
+  text(ctx, 'SCORING', W / 2, 122, INK.yellow, { align: 'center' });
+  const row = (y, label, value, ink = INK.white) => {
+    text(ctx, label, 44, y, INK.grey);
+    text(ctx, value, 276, y, ink, { align: 'right' });
+  };
+  row(138, 'EACH GRID LINE', '1 PT');
+  row(150, 'SHAVE PAST SOMETHING', NEAR_PTS + ' PTS');
+  row(162, 'SHAVE THE NEXT ONE TOO', 'X2, X3 UP TO X8');
+  row(174, 'EACH NEW SECTOR', SECTOR_PTS + ' X SECTORS PAST');
+  text(ctx, 'THE CLOSER YOU RIDE, THE MORE IT PAYS.', W / 2, 196, INK.orange, { align: 'center' });
+  if (blinkOn()) text(ctx, prompt(), W / 2, 218, INK.yellow, { align: 'center' });
+}
+
+function drawScores() {
+  text(ctx, 'HIGH SCORES', W / 2, 32, INK.yellow, { align: 'center' });
+  text(ctx, 'RANK', 80, 50, INK.grey);
+  text(ctx, 'SCORE', 196, 50, INK.grey, { align: 'right' });
+  text(ctx, 'NAME', 220, 50, INK.grey);
+  scores.table.forEach((r, i) => {
+    if (i === highlight && !blinkOn(16)) return;
+    const y = 64 + i * 14;
+    const ink = i === highlight ? INK.white : ROW_INKS[i];
+    text(ctx, RANKS[i], 80, y, ink);
+    text(ctx, String(r.s), 196, y, ink, { align: 'right' });
+    text(ctx, r.n, 220, y, ink);
+  });
+  if (blinkOn()) text(ctx, prompt(), W / 2, 216, INK.yellow, { align: 'center' });
+}
+
+function drawEntry() {
+  text(ctx, 'YOU MADE THE TOP TEN', W / 2, 40, INK.cyan, { align: 'center' });
+  text(ctx, String(score), W / 2, 54, INK.yellow, { align: 'center', scale: 2 });
+  text(ctx, 'ENTER YOUR INITIALS', W / 2, 84, INK.white, { align: 'center' });
+  for (let i = 0; i < 3; i++) {
+    const x = W / 2 - 39 + i * 30;
+    const current = i === entry.pos;
+    if (!current || blinkOn(16)) text(ctx, ENTRY_LETTERS[entry.letters[i]], x, 102, current ? INK.yellow : INK.white, { scale: 3 });
+    ctx.fillStyle = current ? INK.yellow : INK.dim;
+    ctx.fillRect(x - 2, 128, 18, 2);
+  }
+  text(ctx, 'UP / DOWN   CHANGE LETTER', W / 2, 148, INK.grey, { align: 'center' });
+  text(ctx, (input.touch ? 'RIGHT OR START' : 'RIGHT OR SPACE') + '   NEXT', W / 2, 160, INK.grey, { align: 'center' });
+  text(ctx, 'LEFT   BACK', W / 2, 172, INK.grey, { align: 'center' });
+  text(ctx, 'TIME ' + Math.ceil(entry.timer / 60), W / 2, 198, INK.orange, { align: 'center' });
+}
+
+function draw() {
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, W, H);
+  if (mode === 'attract') {
+    if (page === 'title') drawTitle();
+    else if (page === 'howto') drawHowTo();
+    else drawScores();
+    drawHud();
+    return;
+  }
+  if (mode === 'entry') { drawHud(); drawEntry(); return; }
+  drawWorld();
+  drawHud();
+  drawPops();
+  if (mode === 'ready') banner(demo ? [['DEMO PLAY', INK.cyan]] : [['PLAYER ONE', INK.cyan], ['READY!', INK.yellow]], 120);
+  else if (mode === 'paused') banner([['PAUSED', INK.white], [input.touch ? 'TAP START' : 'PRESS P', INK.grey]], 120);
+  else if (mode === 'crashed' && t > 30) banner(bikes > 0 ? [['WIPED OUT', INK.red], [bikes + (bikes === 1 ? ' BIKE LEFT' : ' BIKES LEFT'), INK.grey]] : [['WIPED OUT', INK.red]], 120);
+  else if (mode === 'over') banner([['GAME OVER', INK.red]], 120);
+  else if (sectorT > 0 && !demo) banner([['SECTOR ' + run.sector, INK.cyan]], 60);
+  if (demo && mode === 'riding' && blinkOn()) banner([['DEMO PLAY', INK.cyan]], 60);
+}
+
+// ---------------------------------------------------------------- card art
+
+// The picture on the site's Games page, 320x240, drawn with the game's own
+// road and bike. scripts/cards.mjs saves it as a PNG.
+function drawCard() {
+  const c = document.createElement('canvas');
+  c.width = 320; c.height = 240;
+  const g = c.getContext('2d');
+  g.fillStyle = '#000'; g.fillRect(0, 0, 320, 240);
+  const p = PALETTES[0];
+  g.fillStyle = p.sky; g.fillRect(0, 0, 320, TOP);
+  drawSky(g, p, 0, 0);
+  drawFloor(g, p, 0.6, 0);
+  drawPosts(g, p, 0.6, 0);
+  drawPiece(g, { type: 'barrier', x: -2.4, w: 3 }, 16, 0, 0);
+  drawPiece(g, { type: 'crate', x: 2.5, w: 1 }, 24, 0, 0);
+  drawPiece(g, { type: 'cone', x: 0.75, w: 0.5 }, 2.2, 0, 0);
+  // The bike at twice the size, leaning past the cone.
+  g.imageSmoothingEnabled = false;
+  const frame = art.bike[0][-1];
+  g.drawImage(frame, 160 - 36 - art.bikeW, 228 - art.bikeH * 2, art.bikeW * 2, art.bikeH * 2);
+  text(g, 'NEAR MISS', 162, 12, '#3c1470', { align: 'center', scale: 5 });
+  text(g, 'NEAR MISS', 160, 10, LOGO_INK, { align: 'center', scale: 5 });
+  return c;
+}
+
+// ---------------------------------------------------------------- loop
+
+const PAGES = { title: ['howto', 420], howto: ['demo', 540], scores: ['title', 420] };
+function attractTick() {
+  pageT++;
+  if (!reduceMotion) idleDist += 0.1;
+  const [next, length] = PAGES[page];
+  if (pageT < length) return;
+  if (next === 'demo') { startDemo(); return; }
+  if (next === 'title') highlight = -1;
+  toAttract(next);
+}
+
+function tick() {
+  clock++;
+  for (const s of sparks) { s.x += s.vx; s.y += s.vy; s.vy += 0.12; s.life -= 0.02; }
+  sparks = sparks.filter(s => s.life > 0);
+  for (const p of pops) p.t--;
+  pops = pops.filter(p => p.t > 0);
+  if (shake > 0) shake *= 0.86;
+  if (sectorT > 0) sectorT--;
+  switch (mode) {
+    case 'attract': attractTick(); break;
+    case 'ready': if (--timer <= 0) mode = 'riding'; break;
+    case 'riding': rideTick(); break;
+    case 'crashed': if (++t >= 130) afterCrash(); break;
+    case 'over': if (--timer <= 0) afterOver(); break;
+    case 'entry': if (--entry.timer <= 0) saveEntry(); break;
+  }
+}
+
+// A fixed 60 ticks a second whatever the display's refresh rate.
+let acc = 0, lastT = 0;
+function frame(now) {
+  requestAnimationFrame(frame);
+  if (!lastT) lastT = now;
+  acc += Math.min(100, now - lastT);
+  lastT = now;
+  while (acc >= TICK_MS) { tick(); acc -= TICK_MS; }
+  draw();
+}
+fresh();
+requestAnimationFrame(frame);
+
+// Read-only view for the page checks, plus shortcuts so a check can reach the
+// later screens without riding a whole game.
+window.__nearmiss = {
+  get mode() { return mode; },
+  get page() { return page; },
+  get demo() { return demo; },
+  get score() { return score; },
+  get bikes() { return bikes; },
+  get run() { return { x: run.x, dist: run.dist, speed: speedOf(run), sector: run.sector, combo: run.combo }; },
+  attract(p) { toAttract(p); },
+  endGame(s) { demo = false; score = s; bikes = 0; mode = 'over'; timer = 1; },
+  // Stand a crate right in front of the bike, or just beside it.
+  blockAhead() { run.rows.unshift({ d: run.dist + 1, line: run.x + 2, pieces: [{ type: 'crate', x: run.x, w: 1 }], passed: false }); },
+  shaveAhead() { run.rows.unshift({ d: run.dist + 1, line: run.x, pieces: [{ type: 'cone', x: run.x + 0.7, w: 0.5 }], passed: false }); },
+  // Jump along the road, to see a later sector.
+  jump(d) { run.dist = d; run.rows = []; run.nextD = d + 20; run.sector = 1 + Math.floor(d / 400); lastLine = Math.floor(d / GRID); },
+};
+window.__arcade = { card: drawCard };
+})();
+</script>
+</body>
+</html>
