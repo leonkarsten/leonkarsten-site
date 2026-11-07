@@ -36,8 +36,9 @@ const games = (await getCollection('games')).sort((a, b) => a.data.name.localeCo
         <div class="grid">
           {games.map((g) => (
             <a class="card cab" href={g.data.app}>
-              <div class="cab-art">
+              <div class="cab-art" data-live={g.data.live ? `${g.data.app}?cabinet` : undefined}>
                 {g.data.image && <img src={g.data.image} alt="" width="960" height="720" loading="lazy" decoding="async" />}
+                {g.data.live && <span class="tube" aria-hidden="true"></span>}
               </div>
               <div class="cab-body">
                 <div class="cab-row">
@@ -68,6 +69,32 @@ const games = (await getCollection('games')).sort((a, b) => a.data.name.localeCo
     </div>
   </section>
 </Base>
+
+<script>
+  // A live cabinet runs the game itself, but only while it is on screen, and never
+  // for someone who has asked for less motion: they keep the still picture.
+  const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (!still && 'IntersectionObserver' in window) {
+    const watch = new IntersectionObserver(entries => {
+      for (const { target, isIntersecting } of entries) {
+        const on = target.querySelector('iframe');
+        if (isIntersecting && !on) {
+          const screen = document.createElement('iframe');
+          screen.src = target.dataset.live;
+          screen.title = '';
+          screen.tabIndex = -1;
+          screen.setAttribute('aria-hidden', 'true');
+          screen.addEventListener('load', () => target.classList.add('on'));
+          target.insertBefore(screen, target.querySelector('.tube'));
+        } else if (!isIntersecting && on) {
+          on.remove();
+          target.classList.remove('on');
+        }
+      }
+    }, { rootMargin: '120px' });
+    document.querySelectorAll('[data-live]').forEach(el => watch.observe(el));
+  }
+</script>
 
 <style>
   /* ---- the hero: a striped sun going down over a neon grid that runs toward you ---- */
@@ -207,6 +234,51 @@ const games = (await getCollection('games')).sort((a, b) => a.data.name.localeCo
     width: 100%;
     height: 100%;
     object-fit: cover;
+  }
+  /* A live cabinet: the running game, seen through the glass of a tube. Clicks go
+     through it to the card. */
+  .cab-art[data-live] { position: relative; overflow: hidden; background: #000; }
+  .cab-art :global(iframe) {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    border: 0;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+  .cab-art.on :global(iframe) { opacity: 1; animation: tube-hum 7s steps(1) infinite; }
+  .tube {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    border-radius: 7% / 9%;
+    box-shadow: 0 0 0 12px #06040c, inset 0 0 44px 12px rgba(0, 0, 0, 0.72), inset 0 0 3px 1px rgba(255, 255, 255, 0.14);
+    background:
+      radial-gradient(ellipse 60% 34% at 26% 12%, rgba(255, 255, 255, 0.09), transparent 70%),
+      repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.3) 0 1px, transparent 1px 3px);
+  }
+  /* the slow band of a tube's own refresh, rolling down the glass */
+  .tube::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 26%;
+    background: linear-gradient(180deg, transparent, rgba(255, 255, 255, 0.05), transparent);
+    animation: tube-roll 8s linear infinite;
+  }
+  @keyframes tube-roll {
+    from { top: -30%; }
+    to { top: 104%; }
+  }
+  @keyframes tube-hum {
+    0%, 91%, 93%, 100% { filter: brightness(1.08) saturate(1.2); }
+    92% { filter: brightness(1.2) saturate(1.2); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .tube::after { animation: none; display: none; }
   }
   .cab-body {
     display: flex;

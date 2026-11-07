@@ -180,6 +180,12 @@ body.touch .pad { display: flex; }
   body.touch:not(.no-pad) .pad.loops { display: flex; flex-direction: column; gap: 12px; grid-area: start; align-self: center; margin-right: 12px; padding: 0; }
   body.touch:not(.no-pad) .pad.loops .start { margin: 0; }
 }
+/* ?cabinet: the game as the screen of a cabinet on the Games page. */
+body.cabinet { display: block; background: #000; overflow: hidden; }
+body.cabinet .bar, body.cabinet .pad { display: none !important; }
+body.cabinet .stage { padding: 0; width: 100vw; height: 100vh; }
+body.cabinet .screen { width: 100%; height: 100%; box-shadow: none; }
+body.cabinet .screen canvas { width: 100% !important; height: 100% !important; image-rendering: auto; }
 </style>
 </head>
 <body>
@@ -1164,6 +1170,11 @@ const DEFAULT_SCORES = [
   ['GRD', 2000], ['REV', 1500], ['SKD', 1000], ['NOS', 600], ['BIT', 300],
 ].map(([n, s]) => ({ n, s }));
 
+// ?cabinet is the game running on the Games page, as an unattended machine:
+// nothing but the attract loop, no sound, nobody at the controls.
+const cabinet = new URLSearchParams(location.search).has('cabinet');
+if (cabinet) document.body.classList.add('cabinet');
+
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const canvas = document.getElementById('c');
 const screen = makeScreen({ canvas, stage: document.getElementById('stage'), frame: document.getElementById('screen'), w: W, h: H, crtKey: 'lk.arcade.crt' });
@@ -1201,7 +1212,7 @@ for (let i = 0; i < 512; i++) HILLS.push(Math.round(7 + 5 * Math.sin(i / 26) + 3
 
 let run = null, ridden = 'bike', mode = 'attract', page = 'title', pageT = 0, t = 0, timer = 0, clock = 0;
 let bikes = BIKES, score = 0, sky = 0, idleDist = 0, lastLine = 0, sparks = [], shake = 0, pops = [], sectorT = 0;
-let demo = false, demoT = 0, demoNext = 0, chooseT = 0, entry = null, highlight = -1, pausedFrom = null, wreck = null;
+let demo = false, demoT = 0, demoLife = 0, demoNext = 0, chooseT = 0, entry = null, highlight = -1, pausedFrom = null, wreck = null;
 
 const SFX = {
   start: () => {
@@ -1243,11 +1254,25 @@ function toChoose() {
   mode = 'choose'; timer = CHOOSE_TICKS; chooseT = 0;
 }
 
+// Jump along the road, to a later sector.
+function jumpTo(d, lead = 20) {
+  run.dist = d; run.rows = []; run.nextD = d + lead; run.sector = 1 + Math.floor(d / 400);
+  lastLine = Math.floor((d * run.vehicle.pays) / GRID);
+}
+
 function startDemo() {
   demo = true; demoT = 0;
   bikes = BIKES; score = 0;
   fresh(VEHICLE_IDS[demoNext++ % VEHICLE_IDS.length]); // the demo shows each in turn
   mode = 'ready'; timer = 60;
+  // An unattended machine shows off: it starts further down the road, somewhere
+  // new each time, and after a while its rider stops trying and crashes.
+  if (cabinet) {
+    jumpTo(600 + Math.floor(Math.random() * 4) * 400, 40);
+    score = lastLine;
+    demoLife = 60 * (12 + Math.random() * 8);
+    timer = 45;
+  }
 }
 
 function endDemo() {
@@ -1264,7 +1289,7 @@ function toAttract(p) {
 function rideTick() {
   if (demo && ++demoT > DEMO_TICKS) { endDemo(); return; }
   const h = input.held;
-  const r = stepRun(run, demo ? rider(run) : { left: h.left, right: h.right, action: h.fire || h.up });
+  const r = stepRun(run, demo ? (cabinet && demoT > demoLife ? {} : rider(run)) : { left: h.left, right: h.right, action: h.fire || h.up });
   sky += curveAt(run.dist) * speedOf(run) * 260;
   if (!demo) engine(true);
 
@@ -1413,7 +1438,8 @@ document.addEventListener('visibilitychange', () => {
 // ---------------------------------------------------------------- the road
 
 const blinkOn = (rate = 32) => reduceMotion || ((clock / rate) | 0) % 2 === 0;
-const prompt = () => (input.touch ? 'TAP START' : 'PRESS SPACE');
+const prompt = () => (cabinet ? 'INSERT COIN' : input.touch ? 'TAP START' : 'PRESS SPACE');
+const demoBanner = () => (cabinet ? [['INSERT COIN', INK.yellow]] : [['DEMO PLAY', INK.cyan]]);
 const paletteOf = sector => PALETTES[(sector - 1) % PALETTES.length];
 const camOf = x => x * 0.75;
 
@@ -1754,6 +1780,11 @@ function drawEntry() {
 }
 
 function draw() {
+  drawScreen();
+  if (cabinet) text(ctx, 'CREDIT 0', W - 20, H - 18, INK.white, { align: 'right' });
+}
+
+function drawScreen() {
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, W, H);
   if (mode === 'attract') {
@@ -1768,12 +1799,13 @@ function draw() {
   drawWorld();
   drawHud();
   drawPops();
-  if (mode === 'ready') banner(demo ? [['DEMO PLAY', INK.cyan]] : [['PLAYER ONE', INK.cyan], ['READY!', INK.yellow]], 120);
+  if (mode === 'ready') banner(demo ? demoBanner() : [['PLAYER ONE', INK.cyan], ['READY!', INK.yellow]], 120);
   else if (mode === 'paused') banner([['PAUSED', INK.white], [input.touch ? 'TAP START' : 'PRESS P', INK.grey]], 120);
+  else if (mode === 'crashed' && t > 30 && cabinet) banner([['GAME OVER', INK.red], ['INSERT COIN', INK.yellow]], 120);
   else if (mode === 'crashed' && t > 30) banner(bikes > 0 ? [['WIPED OUT', INK.red], [bikes + ' LEFT', INK.grey]] : [['WIPED OUT', INK.red]], 120);
   else if (mode === 'over') banner([['GAME OVER', INK.red]], 120);
   else if (sectorT > 0 && !demo) banner([['SECTOR ' + run.sector, INK.cyan]], 60);
-  if (demo && mode === 'riding' && blinkOn()) banner([['DEMO PLAY', INK.cyan]], 60);
+  if (demo && mode === 'riding' && blinkOn()) banner(demoBanner(), 60);
 }
 
 // ---------------------------------------------------------------- card art
@@ -1804,7 +1836,9 @@ function drawCard() {
 
 // ---------------------------------------------------------------- loop
 
-const PAGES = { title: ['howto', 420], howto: ['demo', 540], scores: ['title', 420] };
+const PAGES = cabinet
+  ? { title: ['demo', 300], scores: ['title', 300] }
+  : { title: ['howto', 420], howto: ['demo', 540], scores: ['title', 420] };
 function attractTick() {
   pageT++;
   if (!reduceMotion) idleDist += 0.1;
@@ -1858,6 +1892,7 @@ window.__nearmiss = {
   get run() { return { x: run.x, alt: run.alt, armour: run.armour, energy: run.energy, dist: run.dist, speed: speedOf(run), sector: run.sector, combo: run.combo }; },
   get ridden() { return ridden; },
   get chosen() { return chosen; },
+  get cabinet() { return cabinet; },
   attract(p) { toAttract(p); },
   endGame(s) { demo = false; score = s; bikes = 0; mode = 'over'; timer = 1; },
   // Stand a crate right in front of the bike, or just beside it.
@@ -1868,7 +1903,7 @@ window.__nearmiss = {
   // Stand something right across the road just ahead.
   acrossAhead(type, cells = 8) { run.rows.unshift({ d: run.dist + cells, line: run.x, pieces: [{ type, x: 0, w: HALF * 2 }], passed: false }); },
   // Jump along the road, to see a later sector.
-  jump(d) { run.dist = d; run.rows = []; run.nextD = d + 20; run.sector = 1 + Math.floor(d / 400); lastLine = Math.floor((d * run.vehicle.pays) / GRID); },
+  jump(d) { jumpTo(d); },
 };
 window.__arcade = { card: drawCard };
 })();

@@ -4,5 +4,6 @@
   "summary": "A road that keeps closing in, and eight ways to ride it, from a bus to a spaceship. Each needs a different skill. The closer you ride, the more it pays.",
   "app": "/play/near-miss/",
   "image": "/play/near-miss/card.png",
+  "live": true,
   "tags": ["road", "keyboard or touch"]
 }

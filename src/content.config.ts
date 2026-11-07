@@ -34,6 +34,8 @@ const appSchema = z.object({
   app: z.string(),
   /** optional card picture under /public, 4:3, e.g. /play/<slug>/card.png */
   image: z.string().optional(),
+  /** a game whose cabinet on the Games page runs the game itself (?cabinet) */
+  live: z.boolean().optional(),
   /** optional source repo */
   repo: z.string().url().optional(),
   version: z.string().optional(),
