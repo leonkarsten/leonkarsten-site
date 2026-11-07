@@ -128,7 +128,7 @@ the same path collide in Astro.
    - Play them on his iPhone with sound on; decide on the CRT switch. Nobody has heard the sound.
    - **Wings Level** real tilt can only be checked by a person; the checks cover the d-pad/keys path.
    - **Soft Focus** removed 7 Nov (Leon: it stands out, and is not something an 80s arcade would have). Its source, with the seven sculpted subjects, is at tag `soft-focus-final` in the arcade repo.
-   - **Live cabinets** (7 Nov): a game with `"live": true` in its JSON runs itself on its cabinet on the Games page, through a tube effect, only while on screen and never under reduced motion. Near Miss, Lamplight and Launch Window so far; a game needs a `?cabinet` mode first (`cabinetMode()` in the arcade's engine).
+   - **Live cabinets** (7 Nov): a game with `"live": true` in its JSON runs itself on its cabinet on the Games page, through a tube effect, only while on screen and never under reduced motion. Near Miss, Lamplight, Launch Window and Two Hills so far; a game needs a `?cabinet` mode first (`cabinetMode()` in the arcade's engine).
    - **Near Miss** added 4 Nov: a road game on the Games page grid. Eight vehicles, each a different skill: motorbike, bus, skateboard, helicopter, go-kart, skates, spaceship, airplane.
    - **Lamplight**'s walker changed on 4 Nov (Leon: too hard once it sees you): always a little slower than the player when hunting, forgets when out of sight, and a thrown lantern (Space or START) makes it flee and lets you banish it. Only lanterns still in hand pay at the door. The light stops at walls. The Qlaim cabinet keeps the old walker.
    - **House Call** has ONE RULE CHANGED from Qlaim: egg sacs hang at head height, because at the

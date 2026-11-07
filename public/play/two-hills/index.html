@@ -180,6 +180,13 @@ body.touch .pad { display: flex; }
   body.touch:not(.no-pad) .pad.loops { display: flex; flex-direction: column; gap: 12px; grid-area: start; align-self: center; margin-right: 12px; padding: 0; }
   body.touch:not(.no-pad) .pad.loops .start { margin: 0; }
 }
+
+/* ?cabinet: the game as the screen of a cabinet on the Games page. */
+body.cabinet { display: block; background: #000; overflow: hidden; }
+body.cabinet .bar, body.cabinet .pad { display: none !important; }
+body.cabinet .stage { padding: 0; width: 100vw; height: 100vh; }
+body.cabinet .screen { width: 100%; height: 100%; box-shadow: none; }
+body.cabinet .screen canvas { width: 100% !important; height: 100% !important; object-fit: contain; image-rendering: auto; }
 </style>
 </head>
 <body>
@@ -382,6 +389,15 @@ function makeScreen({ canvas, stage, frame, w, h, crtKey }) {
     get crt() { return crt; },
     toggleCrt() { setCrt(!crt); return crt; },
   };
+}
+
+// ?cabinet is a game running on the Games page as an unattended machine: only
+// its attract loop, no sound, nobody at the controls. The page goes; the screen
+// fills its frame, with black at the sides if it is squarer than the cabinet.
+function cabinetMode() {
+  const on = new URLSearchParams(location.search).has('cabinet');
+  if (on) document.body.classList.add('cabinet');
+  return on;
 }
 
 // ---- engine/sound.js
@@ -699,6 +715,7 @@ const TANK_PALS = [
 ];
 const TANK_DEAD = { T: '#4a4a6a', B: '#3a3a55', W: '#24243a' };
 
+const cabinet = cabinetMode();
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const canvas = document.getElementById('c');
 const screen = makeScreen({ canvas, stage: document.getElementById('stage'), frame: document.getElementById('screen'), w: W, h: H, crtKey: 'lk.arcade.crt' });
@@ -801,7 +818,7 @@ function toAttract(p) { mode = 'attract'; page = p; pageT = 0; demo = false; }
 // it a step at a time, so it can be watched aiming.
 function cpuTick() {
   const p = players[turn];
-  if (!cpuPlan) { cpuPlan = aimShot(ground, wind, turn); t = 0; return; }
+  if (!cpuPlan) { cpuPlan = aimShot(ground, wind, turn, Math.random, cabinet && demo ? 2 : 4); t = 0; return; }
   if (++t % 2) return;
   if (p.angle !== cpuPlan.angle) p.angle += Math.sign(cpuPlan.angle - p.angle);
   else if (p.power !== cpuPlan.power) p.power += Math.sign(cpuPlan.power - p.power);
@@ -882,7 +899,7 @@ document.addEventListener('visibilitychange', () => {
 // ---------------------------------------------------------------- drawing
 
 const blinkOn = (rate = 32) => reduceMotion || ((clock / rate) | 0) % 2 === 0;
-const prompt = () => (input.touch ? 'TAP START' : 'PRESS SPACE');
+const prompt = () => (cabinet ? 'INSERT COIN' : input.touch ? 'TAP START' : 'PRESS SPACE');
 
 function disc(g, cx, cy, r, col) {
   g.fillStyle = col;
@@ -1002,7 +1019,7 @@ function drawTitle() {
     text(ctx, s, W / 2, r.y + 7, on ? INK.yellow : INK.grey, { align: 'center' });
   });
   ctx.fillStyle = '#000'; ctx.fillRect(80, 151, 160, 22);
-  if (blinkOn()) text(ctx, input.touch ? 'TAP ONE TO PLAY' : 'UP / DOWN, THEN SPACE', W / 2, 154, INK.yellow, { align: 'center' });
+  if (blinkOn()) text(ctx, cabinet ? 'INSERT COIN' : input.touch ? 'TAP ONE TO PLAY' : 'UP / DOWN, THEN SPACE', W / 2, 154, INK.yellow, { align: 'center' });
   text(ctx, 'LEON KARSTEN 2026', W / 2, 164, INK.dim, { align: 'center' });
 }
 
@@ -1021,6 +1038,11 @@ function drawHowTo() {
 }
 
 function draw() {
+  drawScreen();
+  if (cabinet) { ctx.fillStyle = '#000'; ctx.fillRect(W - 62, H - 13, 58, 10); text(ctx, 'CREDIT 0', W - 6, H - 11, INK.white, { align: 'right' }); }
+}
+
+function drawScreen() {
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, W, H);
   if (mode === 'attract') { if (page === 'title') drawTitle(); else drawHowTo(); return; }
@@ -1032,11 +1054,12 @@ function draw() {
   else if (mode === 'round' || mode === 'match') {
     const lines = [[message, INK.yellow], [players[0].wins + ' - ' + players[1].wins, INK.white]];
     if (t >= 40 && !demo && blinkOn()) lines.push([mode === 'match' ? prompt() : prompt() + ' FOR THE NEXT ROUND', INK.cyan]);
+    if (t >= 30 && demo && cabinet) lines.push(['GAME OVER', INK.red], ['INSERT COIN', INK.yellow]);
     banner(lines, mid);
   } else if (mode === 'aiming' && !players[turn].cpu && t < 90 && !demo) {
     text(ctx, name(turn) + ' TO FIRE', W / 2, TOP + 6, SIDE_INK[turn], { align: 'center' });
   }
-  if (demo && blinkOn()) text(ctx, 'DEMO PLAY', W / 2, TOP + 6, INK.yellow, { align: 'center' });
+  if (demo && blinkOn() && !(cabinet && (mode === 'round' || mode === 'match'))) text(ctx, cabinet ? 'INSERT COIN' : 'DEMO PLAY', W / 2, TOP + 6, INK.yellow, { align: 'center' });
 }
 
 // ---------------------------------------------------------------- card art
@@ -1064,7 +1087,7 @@ function drawCard() {
 
 // ---------------------------------------------------------------- loop
 
-const PAGES = { title: ['howto', 600], howto: ['demo', 540] };
+const PAGES = cabinet ? { title: ['demo', 300] } : { title: ['howto', 600], howto: ['demo', 540] };
 function attractTick() {
   pageT++;
   const [next, length] = PAGES[page];
@@ -1107,6 +1130,7 @@ window.__twohills = {
   get mode() { return mode; },
   get page() { return page; },
   get demo() { return demo; },
+  get cabinet() { return cabinet; },
   get turn() { return turn; },
   get players() { return players.map(p => ({ angle: p.angle, power: p.power, hp: p.hp, wins: p.wins, cpu: p.cpu })); },
   attract(p) { toAttract(p); },
