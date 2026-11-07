@@ -4,5 +4,6 @@
   "summary": "A maze in the dark. Find three lanterns, then the door, while something walks the corridors. Break its sight, or throw a lantern and chase it, but only the lanterns you keep pay at the door.",
   "app": "/play/lamplight/",
   "image": "/play/lamplight/card.png",
+  "live": true,
   "tags": ["maze", "keyboard or touch"]
 }

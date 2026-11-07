@@ -180,12 +180,13 @@ body.touch .pad { display: flex; }
   body.touch:not(.no-pad) .pad.loops { display: flex; flex-direction: column; gap: 12px; grid-area: start; align-self: center; margin-right: 12px; padding: 0; }
   body.touch:not(.no-pad) .pad.loops .start { margin: 0; }
 }
+
 /* ?cabinet: the game as the screen of a cabinet on the Games page. */
 body.cabinet { display: block; background: #000; overflow: hidden; }
 body.cabinet .bar, body.cabinet .pad { display: none !important; }
 body.cabinet .stage { padding: 0; width: 100vw; height: 100vh; }
 body.cabinet .screen { width: 100%; height: 100%; box-shadow: none; }
-body.cabinet .screen canvas { width: 100% !important; height: 100% !important; image-rendering: auto; }
+body.cabinet .screen canvas { width: 100% !important; height: 100% !important; object-fit: contain; image-rendering: auto; }
 </style>
 </head>
 <body>
@@ -346,6 +347,15 @@ function makeScreen({ canvas, stage, frame, w, h, crtKey }) {
     get crt() { return crt; },
     toggleCrt() { setCrt(!crt); return crt; },
   };
+}
+
+// ?cabinet is a game running on the Games page as an unattended machine: only
+// its attract loop, no sound, nobody at the controls. The page goes; the screen
+// fills its frame, with black at the sides if it is squarer than the cabinet.
+function cabinetMode() {
+  const on = new URLSearchParams(location.search).has('cabinet');
+  if (on) document.body.classList.add('cabinet');
+  return on;
 }
 
 // ---- engine/sound.js
@@ -1170,10 +1180,7 @@ const DEFAULT_SCORES = [
   ['GRD', 2000], ['REV', 1500], ['SKD', 1000], ['NOS', 600], ['BIT', 300],
 ].map(([n, s]) => ({ n, s }));
 
-// ?cabinet is the game running on the Games page, as an unattended machine:
-// nothing but the attract loop, no sound, nobody at the controls.
-const cabinet = new URLSearchParams(location.search).has('cabinet');
-if (cabinet) document.body.classList.add('cabinet');
+const cabinet = cabinetMode();
 
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const canvas = document.getElementById('c');

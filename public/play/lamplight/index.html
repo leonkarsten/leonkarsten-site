@@ -180,6 +180,13 @@ body.touch .pad { display: flex; }
   body.touch:not(.no-pad) .pad.loops { display: flex; flex-direction: column; gap: 12px; grid-area: start; align-self: center; margin-right: 12px; padding: 0; }
   body.touch:not(.no-pad) .pad.loops .start { margin: 0; }
 }
+
+/* ?cabinet: the game as the screen of a cabinet on the Games page. */
+body.cabinet { display: block; background: #000; overflow: hidden; }
+body.cabinet .bar, body.cabinet .pad { display: none !important; }
+body.cabinet .stage { padding: 0; width: 100vw; height: 100vh; }
+body.cabinet .screen { width: 100%; height: 100%; box-shadow: none; }
+body.cabinet .screen canvas { width: 100% !important; height: 100% !important; object-fit: contain; image-rendering: auto; }
 </style>
 </head>
 <body>
@@ -340,6 +347,15 @@ function makeScreen({ canvas, stage, frame, w, h, crtKey }) {
     get crt() { return crt; },
     toggleCrt() { setCrt(!crt); return crt; },
   };
+}
+
+// ?cabinet is a game running on the Games page as an unattended machine: only
+// its attract loop, no sound, nobody at the controls. The page goes; the screen
+// fills its frame, with black at the sides if it is squarer than the cabinet.
+function cabinetMode() {
+  const on = new URLSearchParams(location.search).has('cabinet');
+  if (on) document.body.classList.add('cabinet');
+  return on;
 }
 
 // ---- engine/sound.js
@@ -1029,6 +1045,7 @@ const DEFAULT_SCORES = [
   ['ASH', 7000], ['BAT', 5000], ['INK', 3500], ['RUN', 2000], ['DOT', 1000],
 ].map(([n, s]) => ({ n, s }));
 
+const cabinet = cabinetMode();
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const canvas = document.getElementById('c');
 const frameEl = document.getElementById('screen');
@@ -1045,7 +1062,7 @@ const player = { x: 1, y: 1, dir: null, queued: null, face: 1, moving: false };
 let walker = null, lanterns = [], door = null, found = 0, held = 0, blaze = 0, lamp = LAMP_RADIUS, thrown = null;
 let mode = 'attract', page = 'title', pageT = 0;
 let level = 1, lives = 3, score = 0, ticks = 0, timer = 0, flash = 0, sparks = [];
-let demo = false, demoT = 0, pausedFrom = null, tally = null, entry = null, highlight = -1;
+let demo = false, demoT = 0, demoLife = 0, stalked = false, pausedFrom = null, tally = null, entry = null, highlight = -1;
 let clock = 0;
 
 const DIRS = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
@@ -1123,7 +1140,7 @@ function autopilot() {
 
 function playerStep() {
   if (!player.dir) {
-    const want = demo ? autopilot() : heldDir();
+    const want = demo ? (givenUp() ? null : autopilot()) : heldDir();
     if (want) {
       const [dx, dy] = DIRS[want];
       const nx = Math.round(player.x) + dx, ny = Math.round(player.y) + dy;
@@ -1193,7 +1210,11 @@ function afterDying() {
 function playTick() {
   ticks++;
   if (demo && ++demoT > DEMO_TICKS) { endDemo(); return; }
-  if (demo && held > 0 && walker.state === 'hunt' && Math.hypot(player.x - walker.x, player.y - walker.y) < 5) throwLantern();
+  if (cabinet && demo) {
+    if (!stalked && held > 0) { stalked = true; stalk(); }
+    if (Math.abs(demoT - demoLife) < 1) stalk();
+  }
+  if (demo && !givenUp() && held > 0 && walker.state === 'hunt' && Math.hypot(player.x - walker.x, player.y - walker.y) < 5) throwLantern();
   playerStep();
   if (walkerStep(walker, maze, Math.round(player.x), Math.round(player.y))) play('alert');
   blazeTick();
@@ -1261,7 +1282,23 @@ function startDemo() {
   demo = true; demoT = 0;
   build(true);
   mode = 'ready'; timer = 60;
+  // A dark maze can be empty for a long time. An unattended machine shows off:
+  // the walker comes for its rider once it has a lantern to throw, and again at
+  // the end, when the rider stops trying.
+  demoLife = 60 * (15 + Math.random() * 6); stalked = false;
 }
+
+// The walker, set on the player's trail from just out of the light.
+function stalk() {
+  const px = Math.round(player.x), py = Math.round(player.y), steps = distancesFrom(maze, px, py);
+  const near = [];
+  for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) if (steps[y * MW + x] >= 5 && steps[y * MW + x] <= 8) near.push([x, y]);
+  if (!near.length) return;
+  const [x, y] = near[(Math.random() * near.length) | 0];
+  Object.assign(walker, { x, y, dir: null, last: null, state: 'hunt', seen: { x: px, y: py }, stun: 0 });
+}
+
+const givenUp = () => cabinet && demoT > demoLife;
 
 function endDemo() {
   demo = false;
@@ -1272,7 +1309,9 @@ function toAttract(p) {
   mode = 'attract'; page = p; pageT = 0; demo = false; tally = null; entry = null;
 }
 
-const PAGES = { title: ['howto', 420], howto: ['demo', 540], scores: ['title', 420] };
+const PAGES = cabinet
+  ? { title: ['demo', 300], scores: ['title', 300] }
+  : { title: ['howto', 420], howto: ['demo', 540], scores: ['title', 420] };
 function attractTick() {
   pageT++;
   const [next, length] = PAGES[page];
@@ -1352,7 +1391,8 @@ document.addEventListener('visibilitychange', () => {
 // ---------------------------------------------------------------- drawing
 
 const blinkOn = (rate = 32) => reduceMotion || ((clock / rate) | 0) % 2 === 0;
-const prompt = () => (input.touch ? 'TAP START' : 'PRESS SPACE');
+const prompt = () => (cabinet ? 'INSERT COIN' : input.touch ? 'TAP START' : 'PRESS SPACE');
+const demoInk = () => (cabinet ? ['INSERT COIN', INK.yellow] : ['DEMO PLAY', INK.cyan]);
 const band = (d, r = LAMP_RADIUS) => (d <= r - 1.1 ? 2 : d <= r + 0.6 ? 1 : 0);
 
 function banner(lines, y) {
@@ -1432,7 +1472,7 @@ function drawBottom() {
     ctx.drawImage(i < held ? art.lantern[0] : i < found ? art.lanternMemory : art.lanternEmpty, W - 4 - (LANTERNS - i) * 14, y);
   }
   if (demo) {
-    if (blinkOn()) text(ctx, 'DEMO PLAY', W / 2, y + 5, INK.cyan, { align: 'center' });
+    if (blinkOn()) text(ctx, demoInk()[0], W / 2, y + 5, demoInk()[1], { align: 'center' });
   } else if (mode === 'playing' && blaze > 0) {
     text(ctx, 'CHASE IT', W / 2, y + 5, INK.cyan, { align: 'center' });
   } else if (mode === 'playing' && walker.state === 'hunt' && blinkOn(12)) {
@@ -1483,7 +1523,7 @@ function drawTitle() {
   text(ctx, 'A MAZE IN THE DARK', W / 2, 84, INK.grey, { align: 'center' });
   drawCorridor(W / 2, 108);
   if (blinkOn()) text(ctx, prompt(), W / 2, 182, INK.yellow, { align: 'center' });
-  text(ctx, input.touch ? 'D-PAD TO MOVE' : 'ARROWS OR WASD TO MOVE', W / 2, 200, INK.grey, { align: 'center' });
+  if (!cabinet) text(ctx, input.touch ? 'D-PAD TO MOVE' : 'ARROWS OR WASD TO MOVE', W / 2, 200, INK.grey, { align: 'center' });
   text(ctx, 'LEON KARSTEN 2026', W / 2, 262, INK.dim, { align: 'center' });
 }
 
@@ -1543,6 +1583,11 @@ function drawEntry() {
 }
 
 function draw() {
+  drawScreen();
+  if (cabinet) text(ctx, 'CREDIT 0', W - 58, H - 13, INK.white, { align: 'right' });
+}
+
+function drawScreen() {
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, W, H);
   drawHud();
@@ -1561,7 +1606,8 @@ function draw() {
   drawBottom();
 
   const mid = TOP + 112;
-  if (mode === 'ready') banner(demo ? [['DEMO PLAY', INK.cyan]] : [['PLAYER ONE', INK.cyan], ['READY!', INK.yellow]], mid);
+  if (mode === 'ready') banner(demo ? [demoInk()] : [['PLAYER ONE', INK.cyan], ['READY!', INK.yellow]], mid);
+  else if (mode === 'dying' && cabinet && timer < 80) banner([['GAME OVER', INK.red], ['INSERT COIN', INK.yellow]], mid);
   else if (mode === 'paused') banner([['PAUSED', INK.white], [input.touch ? 'TAP START' : 'PRESS P', INK.grey]], mid);
   else if (mode === 'over') banner([['GAME OVER', INK.red]], mid);
   else if (mode === 'tally') drawTally();
@@ -1647,6 +1693,7 @@ window.__lamplight = {
   get demo() { return demo; },
   get score() { return score; },
   get player() { return { x: player.x, y: player.y }; },
+  get cabinet() { return cabinet; },
   get held() { return held; },
   get found() { return found; },
   get blaze() { return blaze; },
