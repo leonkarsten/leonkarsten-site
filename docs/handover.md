@@ -45,8 +45,7 @@ Nothing personal: interests, facts, instructions, coaching, experiences only.
   bead puzzle) and **Two Hills** (`/play/two-hills/`, artillery, CPU opponent added) and **No Crossing**
   (`/play/no-crossing/`, light-trail duel, CPU opponent added) and **Last Line** (`/play/last-line/`,
   dots and boxes, CPU opponent added) and **Kings Row** (`/play/kings-row/`, checkers, CPU opponent
-  added) and **Wings Level** (`/play/wings-level/`, tilt maze; real tilt needs a phone to test) and **Soft Focus**
-  (`/play/soft-focus/`, hidden-picture dots), all thirteen
+  added) and **Wings Level** (`/play/wings-level/`, tilt maze; real tilt needs a phone to test), all twelve
   built overnight 1-2 Nov while Leon slept. **Supply Line** (`/play/supply-line/`, 2 Nov) is the first ORIGINAL
   game, not a Qlaim port: a lane battle (trucks, rifles, rockets, tanks, turrets, two HQs) made after the
   Command & Conquer fan page; same rules and money for both sides, exactly mirrored field, CPU improves by
@@ -127,9 +126,8 @@ the same path collide in Astro.
 5. **Games.** Sixteen are live (Supply Line, 2 Nov, is new and untested by Leon); fifteen were (Lamplight, Launch Window, then thirteen built overnight 1-2 Nov).
    Next, for Leon:
    - Play them on his iPhone with sound on; decide on the CRT switch. Nobody has heard the sound.
-   - **Wings Level** real tilt and **Soft Focus** (whether eyes fuse the pixel stereogram) can only
-     be checked by a person; the checks cover the d-pad/keys path and that the dots encode the shape.
-   - **Soft Focus** has seven sculpted subjects since 7 Nov (Leon: the shapes are flat), with real depth and a full-colour reveal, dealt before the 32 flat shapes. Removing the flat ones waits on his verdict.
+   - **Wings Level** real tilt can only be checked by a person; the checks cover the d-pad/keys path.
+   - **Soft Focus** removed 7 Nov (Leon: it stands out, and is not something an 80s arcade would have). Its source, with the seven sculpted subjects, is at tag `soft-focus-final` in the arcade repo.
    - **Near Miss** added 4 Nov: a road game on the Games page grid. Eight vehicles, each a different skill: motorbike, bus, skateboard, helicopter, go-kart, skates, spaceship, airplane.
    - **Lamplight**'s walker changed on 4 Nov (Leon: too hard once it sees you): always a little slower than the player when hunting, forgets when out of sight, and a flare (Space or START, earned at a lantern, none at the start of a maze) makes it flee and lets you banish it. The Qlaim cabinet keeps the old walker.
    - **House Call** has ONE RULE CHANGED from Qlaim: egg sacs hang at head height, because at the

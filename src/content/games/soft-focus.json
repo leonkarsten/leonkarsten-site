@@ -1,8 +1,0 @@
-{
-  "name": "Soft Focus",
-  "slug": "soft-focus",
-  "summary": "A shape hidden in a field of dots. Look through the picture until it lifts out, guess it between yourselves, then reveal it.",
-  "app": "/play/soft-focus/",
-  "image": "/play/soft-focus/card.png",
-  "tags": ["hidden picture", "for a group"]
-}
