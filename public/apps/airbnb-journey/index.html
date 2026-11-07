@@ -62,7 +62,14 @@
   .box.response { background: var(--paper-2); border: 1px solid var(--line); gap: 8px; }
   .box.result { background: var(--paper-2); border: 1px solid var(--line); border-left: 5px solid var(--navy); }
   .box.result .v { color: var(--navy); }
-  .box.result .note { font-size: 13px; color: var(--ink-faint); font-weight: 500; }
+  .box.result .out { font-size: 14px; font-weight: 500; line-height: 1.4; color: var(--ink-soft); }
+  .box.result .out.faint { color: var(--ink-faint); font-style: italic; }
+  .box.result.unmeasured { border-left-color: var(--line); }
+  .box.result.unmeasured .v { color: var(--ink-soft); }
+  .src { font-size: 12px; font-weight: 700; }
+  .sources { font-size: 13px; color: var(--ink-muted); padding-left: 22px; margin: 0 0 32px; }
+  .sources li { margin-bottom: 6px; }
+  .sources h2 { font-family: var(--font-display); font-weight: 400; font-size: 22px; color: var(--navy); margin: 0 0 10px; }
   .arrow { display: flex; align-items: center; justify-content: center; color: var(--ink-faint); font-size: 18px; }
   .pill { display: inline-flex; align-items: center; gap: 7px; padding: 4px 10px 4px 8px; border-radius: 999px; font-size: 13px; font-weight: 600; background: var(--c); color: #fff; width: fit-content; }
   .pill.hollow { background: transparent; border: 2px solid var(--c); color: var(--c); padding: 2px 9px 2px 7px; }
@@ -122,9 +129,14 @@
 
   <aside class="reading">
     <h2>How to read it</h2>
-    <p>Each row is one chain: <strong>what happened</strong> on the left (<span style="color:var(--k-need);font-weight:700">brown</span> for a human need, <span style="color:var(--k-opp);font-weight:700">gold</span> for a business opportunity), <strong>what Airbnb did about it</strong> in the middle, tagged by the kind of innovation it was, and <strong>what came of it</strong> on the right. Releases that simply came off the roadmap are folded into a single line.</p>
+    <p>Each row is one chain: <strong>what happened</strong> on the left (<span style="color:var(--k-need);font-weight:700">brown</span> for a human need, <span style="color:var(--k-opp);font-weight:700">gold</span> for a business opportunity), <strong>what Airbnb did about it</strong> in the middle, tagged by the kind of innovation it was, and <strong>what came of it</strong> on the right, with a measured result where I could find one, and an honest blank where I couldn't. Releases that simply came off the roadmap are folded into a single line.</p>
     <p>Two things stand out. The radical moves are rare and early: the idea itself, and Experiences nine years later. Almost everything since is incremental, which is what a company that has found its model is supposed to do. And the launches people remember most warmly, housing displaced residents after Sandy, Frontline Stays, Ukraine housing, all came from responding to a need rather than from a plan.</p>
   </aside>
+
+  <section aria-labelledby="src-h">
+    <h2 id="src-h" style="font-family:var(--font-display);font-weight:400;font-size:22px;color:var(--navy);margin:0 0 10px">Sources for the outcomes</h2>
+    <ol class="sources" id="sources"></ol>
+  </section>
 </main>
 
 <footer>
@@ -151,14 +163,14 @@ const KINDS = {
 
 // i = innovations [label, type]; t = trigger [label, kind]; n = note
 const EVENTS = [
-  { d: 'Oct 2007', w: 'First guests', n: 'Three guests', i: [['What do we have? A room.', 'radical']], t: ['Founders cannot pay rent', 'need'] },
-  { d: 'Mar 2008', w: 'Official launch', n: 'Two bookings', t: ['SXSW, Austin', 'opp'] },
-  { d: 'Aug 2008', w: 'Website launch', n: '80 bookings', i: [['Own payment system', 'incremental']], t: ['Democratic National Convention', 'opp'] },
-  { d: 'Mar 2009', w: 'Changes name, expands offering', i: [['Craigslist cross-posting', 'growth'], ['Professional photos of listings', 'incremental']] },
+  { d: 'Oct 2007', w: 'First guests', n: 'Three guests', i: [['What do we have? A room.', 'radical']], t: ['Founders cannot pay rent', 'need'], r: ['Two hosts, three paying guests on air mattresses during a design conference. The idea was proven before there was a company.', 1] },
+  { d: 'Mar 2008', w: 'Official launch', n: 'Two bookings', t: ['SXSW, Austin', 'opp'], r: ['Two bookings, one of them the founders\u2019 own. Enough to learn the product was too hard to use.', 2] },
+  { d: 'Aug 2008', w: 'Website launch', n: '80 bookings', i: [['Own payment system', 'incremental']], t: ['Democratic National Convention', 'opp'], r: ['About 80 bookings from delegates, plus $30,000 raised selling convention-themed cereal, which kept the company alive.', 2] },
+  { d: 'Mar 2009', w: 'Changes name, expands offering', i: [['Craigslist cross-posting', 'growth'], ['Professional photos of listings', 'incremental']], r: ['Photographing the New York listings themselves jump-started bookings; the practice became a 3,000-photographer programme.', 2] },
   { d: 'Nov 2010', w: 'App launch', i: [['Instant booking', 'incremental']] },
   { d: 'Jun 2011', w: 'International (Germany)' },
   { d: 'May 2012', w: '$1M host guarantee' },
-  { d: 'Nov 2012', w: 'Houses displaced residents', i: [['Partners with New York City', 'partner'], ['Disaster relief tool', 'incremental']], t: ['Hurricane Sandy', 'need'] },
+  { d: 'Nov 2012', w: 'Houses displaced residents', i: [['Partners with New York City', 'partner'], ['Disaster relief tool', 'incremental']], t: ['Hurricane Sandy', 'need'], r: ['Within days, nearly a hundred homes offered free; around 2,500 last-minute bookings sheltered 4,000+ people. The tool became the template for every disaster since.', 3] },
   { d: 'Jun 2013', w: 'New headquarters' },
   { d: 'Jul 2014', w: 'New logo' },
   { d: 'Mar 2015', w: 'Official alternative accommodation provider', t: ['Rio de Janeiro Olympics', 'opp'] },
@@ -168,16 +180,16 @@ const EVENTS = [
   { d: 'Mar 2017', w: 'Launches Chinese brand (Aibiying)' },
   { d: 'Mar 2019', w: 'Acquires HotelTonight', i: [['HotelTonight', 'disruptive']] },
   { d: 'Nov 2019', w: 'Olympic partnership', i: [['Partners with the IOC', 'partner']] },
-  { d: 'Mar 2020', w: 'Houses medical workers', i: [['Frontline Stays', 'incremental']], t: ['COVID-19', 'need'] },
+  { d: 'Mar 2020', w: 'Houses medical workers', i: [['Frontline Stays', 'incremental']], t: ['COVID-19', 'need'], r: ['Six weeks in: 200,000+ places offered by hosts and partners, 100,000+ nights booked by frontline workers across seven countries.', 4] },
   { d: 'Apr 2020', w: 'Solidarity with hosts', i: [['Online Experiences', 'incremental']] },
   { d: 'Jun 2020', w: 'Solidarity with hosts', i: [['Enhanced cleaning protocol', 'incremental']] },
   { d: 'Jun 2020', w: 'Project Lighthouse', i: [['Partners with Color of Change', 'partner'], ['Project Lighthouse', 'incremental']], t: ['Fighting discrimination', 'opp'] },
   { d: 'Sep 2020', w: 'City Portal', i: [['City Portal for local government', 'incremental']] },
-  { d: 'Dec 2020', w: 'Lists on Nasdaq' },
-  { d: 'Dec 2020', w: 'Launches non-profit', i: [['Airbnb.org', 'incremental']], t: ['Crisis times', 'need'] },
+  { d: 'Dec 2020', w: 'Lists on Nasdaq', r: ['Priced at $68, closed its first day at $144.71. Raised $3.7 billion; valued at just over $100 billion, in the middle of a pandemic.', 5] },
+  { d: 'Dec 2020', w: 'Launches non-profit', i: [['Airbnb.org', 'incremental']], t: ['Crisis times', 'need'], r: ['By December 2022: more than 250,000 people housed since 2012 and 1.5 million free nights, up from 75,000 people two years earlier.', 6] },
   { d: 'May 2021', w: '2021 release', i: [['Service and product upgrades', 'incremental']] },
   { d: 'Nov 2021', w: '2021 winter release', i: [['Translation engine', 'incremental'], ['AirCover for hosts', 'incremental']] },
-  { d: 'Feb 2022', w: 'Free temporary housing', t: ['War in Ukraine', 'need'] },
+  { d: 'Feb 2022', w: 'Free temporary housing', t: ['War in Ukraine', 'need'], r: ['100,000 people fleeing Ukraine housed by the end of August 2022, through 48,000+ hosts in 160 countries, with $8.4 million donated.', 7] },
   { d: 'Apr 2022', w: 'Live and work anywhere', i: [['Live & work anywhere policy', 'incremental']] },
   { d: 'May 2022', w: '2022 summer release', i: [['Categories', 'incremental'], ['Split Stays', 'incremental'], ['AirCover for guests', 'incremental']] },
   { d: 'Nov 2022', w: '2022 winter release', i: [['Airbnb Setup', 'incremental'], ['Airbnb-friendly apartments', 'incremental']] },
@@ -189,6 +201,17 @@ const EVENTS = [
   { d: 'Oct 2024', w: '2024 winter release', i: [['Co-host network', 'disruptive']] },
 ];
 
+const SOURCES = [
+  null,
+  ['Airbnb (2022). Two years later: Airbnb.org\u2019s support for communities around the world.', 'https://news.airbnb.com/two-years-later-airbnb-orgs-support-for-communities-around-the-world/'],
+  ['Hempel, J. (2012, May 3). Airbnb: More than a place to crash. Fortune.', 'https://fortune.com/2012/05/03/airbnb-more-than-a-place-to-crash/'],
+  ['Panzarino, M. (2012, November 7). Airbnb offers free housing to Sandy victims. The Next Web.', 'https://thenextweb.com/news/airbnb-nyc-sandy-free-housing'],
+  ['Airbnb (2020, May 14). Frontline Stays global program update.', 'https://news.airbnb.com/frontline-stays-global-program-update'],
+  ['Associated Press, via Gulf News (2020, December 11). Airbnb shares more than double in price in long-awaited IPO.', 'https://gulfnews.com/business/markets/airbnb-shares-more-than-double-in-price-in-long-awaited-ipo-1.1607747039399'],
+  ['Airbnb (2022, December 7). Two years later: Airbnb.org\u2019s support for communities around the world.', 'https://news.airbnb.com/two-years-later-airbnb-orgs-support-for-communities-around-the-world/'],
+  ['Airbnb (2022, August 31). 100,000 people fleeing Ukraine have found stays through Airbnb.org.', 'https://news.airbnb.com/en-uk/100000-people-fleeing-ukraine-have-found-stays-through-airbnb-org/'],
+];
+
 const state = { types: new Set(), kinds: new Set() };
 const $ = (s, el = document) => el.querySelector(s);
 const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; };
@@ -197,7 +220,7 @@ function build() {
   const tl = $('#tl');
   EVENTS.forEach((ev, idx) => {
     const kind = ev.t ? ev.t[1] : 'none';
-    const quiet = !ev.t && !ev.i;
+    const quiet = !ev.t && !ev.i && !ev.r;
     const li = el('li', 'ev ' + kind + (quiet ? ' quiet' : '')); li.dataset.idx = idx;
     const [mon, yr] = ev.d.split(' ');
     li.append(el('div', 'when', `<b>${yr}</b>${mon}`));
@@ -233,8 +256,10 @@ function build() {
     chain.append(resp, el('div', 'arrow', '→'));
 
     // 3. what came of it
-    const res = el('div', 'box result');
-    res.innerHTML = `<span class="k">What came of it</span><span class="v">${ev.w}</span>` + (ev.n ? `<span class="note">${ev.n}</span>` : '');
+    const res = el('div', 'box result' + (ev.r ? '' : ' unmeasured'));
+    res.innerHTML = `<span class="k">${ev.r ? 'Outcome' : 'Milestone'}</span><span class="v">${ev.w}</span>`
+      + (ev.r ? `<span class="out">${ev.r[0]} <a class="src" href="#src-${ev.r[1]}" title="source">[${ev.r[1]}]</a></span>`
+              : `<span class="out faint">No measured result I could find.</span>`);
     chain.append(res);
 
     li.append(chain); tl.append(li);
@@ -254,6 +279,8 @@ function build() {
   const reset = el('button', 'chip reset', 'Show all'); reset.type = 'button';
   reset.addEventListener('click', () => { state.types.clear(); state.kinds.clear(); document.querySelectorAll('.chip[aria-pressed]').forEach(c => c.setAttribute('aria-pressed', 'false')); apply(); });
   fk.append(reset);
+  const sl = $('#sources');
+  SOURCES.forEach((src, i) => { if (!src) return; const li = el('li', null, `<a href="${src[1]}">${src[0]}</a>`); li.id = 'src-' + i; sl.append(li); });
   apply();
 }
 
