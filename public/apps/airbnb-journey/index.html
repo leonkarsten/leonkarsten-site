@@ -46,28 +46,36 @@
   .chip.reset { border-style: dashed; }
   .status { font-size: 14px; color: var(--ink-muted); margin: 10px 0 28px; }
 
-  /* timeline */
-  .tl { position: relative; list-style: none; margin: 0; padding: 0 0 40px; }
-  .tl::before { content: ''; position: absolute; left: 86px; top: 0; bottom: 0; width: 3px; background: var(--line); }
-  .ev { position: relative; display: grid; grid-template-columns: 70px 1fr; gap: 32px; padding: 0 0 22px; transition: opacity .15s; }
+  /* timeline: each entry is a chain, trigger -> response -> result */
+  .tl { list-style: none; margin: 0; padding: 0 0 40px; display: flex; flex-direction: column; gap: 14px; }
+  .ev { display: grid; grid-template-columns: 76px 1fr; gap: 18px; align-items: start; transition: opacity .15s; }
   .ev.off { opacity: .22; }
-  .ev.hidden { display: none; }
-  .when { text-align: right; padding-top: 14px; font-size: 13px; font-weight: 700; color: var(--ink-muted); line-height: 1.2; }
-  .when b { display: block; font-size: 17px; color: var(--navy); }
-  .ev::after { content: ''; position: absolute; left: 80px; top: 18px; width: 15px; height: 15px; border-radius: 50%;
-    background: var(--paper); border: 3px solid var(--navy); }
-  .ev.need::after { border-color: var(--k-need); background: var(--k-need); }
-  .ev.opp::after { border-color: var(--k-opp); background: var(--k-opp); }
-  .card { background: var(--paper-2); border: 1px solid var(--line); border-radius: 14px; padding: 14px 18px 16px; }
-  .card .what { margin: 0; font-size: 17px; font-weight: 700; color: var(--navy); }
-  .card .note { margin: 2px 0 0; font-size: 13px; color: var(--ink-faint); }
-  .tags { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
-  .tag { display: inline-flex; align-items: center; gap: 7px; padding: 4px 10px 4px 8px; border-radius: 999px; font-size: 13px; font-weight: 600;
-    background: var(--c); color: #fff; }
-  .tag.hollow { background: transparent; border: 2px solid var(--c); color: var(--c); padding: 2px 9px 2px 7px; }
-  .tag .k { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; opacity: .85; }
-  .trigger { display: inline-flex; align-items: center; gap: 7px; margin-top: 10px; padding: 4px 10px; border-radius: 6px; font-size: 13px; color: #fff; background: var(--c); }
-  .trigger .k { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; opacity: .85; }
+  .when { padding-top: 12px; font-size: 13px; font-weight: 700; color: var(--ink-muted); line-height: 1.15; text-align: right; }
+  .when b { display: block; font-size: 18px; color: var(--navy); }
+  .chain { display: grid; grid-template-columns: minmax(0, 1.1fr) 22px minmax(0, 1.3fr) 22px minmax(0, 1fr); align-items: stretch; gap: 0; }
+  .box { border-radius: 12px; padding: 12px 14px; min-height: 64px; display: flex; flex-direction: column; justify-content: center; gap: 4px; }
+  .box .k { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; opacity: .8; }
+  .box .v { font-size: 15px; font-weight: 600; line-height: 1.3; }
+  .box.cause { background: var(--c); color: #fff; }
+  .box.cause.none { background: transparent; border: 2px dashed var(--line); color: var(--ink-faint); }
+  .box.cause.none .v { font-weight: 500; font-style: italic; }
+  .box.response { background: var(--paper-2); border: 1px solid var(--line); gap: 8px; }
+  .box.result { background: var(--paper-2); border: 1px solid var(--line); border-left: 5px solid var(--navy); }
+  .box.result .v { color: var(--navy); }
+  .box.result .note { font-size: 13px; color: var(--ink-faint); font-weight: 500; }
+  .arrow { display: flex; align-items: center; justify-content: center; color: var(--ink-faint); font-size: 18px; }
+  .pill { display: inline-flex; align-items: center; gap: 7px; padding: 4px 10px 4px 8px; border-radius: 999px; font-size: 13px; font-weight: 600; background: var(--c); color: #fff; width: fit-content; }
+  .pill.hollow { background: transparent; border: 2px solid var(--c); color: var(--c); padding: 2px 9px 2px 7px; }
+  .pill .k { font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; opacity: .85; }
+  .pill-list { display: flex; flex-direction: column; gap: 6px; }
+  .response .none { font-size: 14px; color: var(--ink-faint); font-style: italic; }
+
+  /* roadmap-only entries collapse to one line */
+  .ev.quiet .chain { display: flex; align-items: center; gap: 12px; min-height: 40px; padding: 6px 14px; border-radius: 10px; border: 1px dashed var(--line); }
+  .ev.quiet .chain .v { font-size: 14px; font-weight: 600; color: var(--ink-soft); }
+  .ev.quiet .chain .note { font-size: 13px; color: var(--ink-faint); }
+  .ev.quiet .when { padding-top: 10px; }
+  .ev.quiet .when b { font-size: 15px; }
 
   /* summary */
   .summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin: 0 0 32px; }
@@ -82,12 +90,12 @@
   footer { border-top: 1px solid var(--line); padding: 24px 0 40px; font-size: 13px; color: var(--ink-muted); }
   footer p { margin: 0 0 6px; max-width: 760px; }
 
-  @media (max-width: 640px) {
-    .tl::before { left: 14px; }
-    .ev { grid-template-columns: 1fr; gap: 6px; padding-left: 40px; }
-    .ev::after { left: 8px; }
+  @media (max-width: 720px) {
+    .ev { grid-template-columns: 1fr; gap: 6px; }
     .when { text-align: left; padding-top: 0; }
     .when b { display: inline; margin-right: 8px; }
+    .chain { grid-template-columns: 1fr; }
+    .arrow { transform: rotate(90deg); min-height: 22px; }
     .fgroup .label { min-width: 0; width: 100%; }
   }
   @media (prefers-reduced-motion: reduce) { .ev { transition: none; } }
@@ -114,7 +122,7 @@
 
   <aside class="reading">
     <h2>How to read it</h2>
-    <p>The dot colour on the line marks the trigger: <strong style="color:var(--k-need)">dark brown</strong> for a human need (a disaster, a war, a pandemic), <strong style="color:var(--k-opp)">gold</strong> for a business opportunity (a conference, an Olympics, a cause to attach to), plain for releases that came from the roadmap.</p>
+    <p>Each row is one chain: <strong>what happened</strong> on the left (<span style="color:var(--k-need);font-weight:700">brown</span> for a human need, <span style="color:var(--k-opp);font-weight:700">gold</span> for a business opportunity), <strong>what Airbnb did about it</strong> in the middle, tagged by the kind of innovation it was, and <strong>what came of it</strong> on the right. Releases that simply came off the roadmap are folded into a single line.</p>
     <p>Two things stand out. The radical moves are rare and early: the idea itself, and Experiences nine years later. Almost everything since is incremental, which is what a company that has found its model is supposed to do. And the launches people remember most warmly, housing displaced residents after Sandy, Frontline Stays, Ukraine housing, all came from responding to a need rather than from a plan.</p>
   </aside>
 </main>
@@ -189,27 +197,47 @@ function build() {
   const tl = $('#tl');
   EVENTS.forEach((ev, idx) => {
     const kind = ev.t ? ev.t[1] : 'none';
-    const li = el('li', 'ev ' + kind); li.dataset.idx = idx;
+    const quiet = !ev.t && !ev.i;
+    const li = el('li', 'ev ' + kind + (quiet ? ' quiet' : '')); li.dataset.idx = idx;
     const [mon, yr] = ev.d.split(' ');
     li.append(el('div', 'when', `<b>${yr}</b>${mon}`));
-    const card = el('div', 'card');
-    card.append(el('p', 'what', ev.w));
-    if (ev.n) card.append(el('p', 'note', ev.n));
+    const chain = el('div', 'chain');
+
+    if (quiet) {
+      chain.append(el('span', 'v', ev.w));
+      if (ev.n) chain.append(el('span', 'note', ev.n));
+      li.append(chain); tl.append(li); return;
+    }
+
+    // 1. what happened
+    const K = KINDS[kind];
+    const cause = el('div', 'box cause' + (ev.t ? '' : ' none'));
+    cause.style.setProperty('--c', K.c);
+    cause.innerHTML = ev.t ? `<span class="k">${K.name}</span><span class="v">${ev.t[0]}</span>` : `<span class="k">No trigger</span><span class="v">Came off the roadmap</span>`;
+    chain.append(cause, el('div', 'arrow', '→'));
+
+    // 2. what they did
+    const resp = el('div', 'box response');
+    resp.append(el('span', 'k', 'What Airbnb did'));
     if (ev.i) {
-      const tags = el('div', 'tags');
+      const list = el('div', 'pill-list');
       ev.i.forEach(([label, type]) => {
         const T = TYPES[type];
-        const t = el('span', 'tag' + (T.hollow ? ' hollow' : ''), `<span class="k">${T.name}</span>${label}`);
-        t.style.setProperty('--c', T.c); tags.append(t);
+        const t = el('span', 'pill' + (T.hollow ? ' hollow' : ''), `<span class="k">${T.name}</span>${label}`);
+        t.style.setProperty('--c', T.c); list.append(t);
       });
-      card.append(tags);
+      resp.append(list);
+    } else {
+      resp.append(el('span', 'none', 'Responded without a new product'));
     }
-    if (ev.t) {
-      const K = KINDS[ev.t[1]];
-      const tr = el('div', 'trigger', `<span class="k">${K.name}</span>${ev.t[0]}`);
-      tr.style.setProperty('--c', K.c); card.append(tr);
-    }
-    li.append(card); tl.append(li);
+    chain.append(resp, el('div', 'arrow', '→'));
+
+    // 3. what came of it
+    const res = el('div', 'box result');
+    res.innerHTML = `<span class="k">What came of it</span><span class="v">${ev.w}</span>` + (ev.n ? `<span class="note">${ev.n}</span>` : '');
+    chain.append(res);
+
+    li.append(chain); tl.append(li);
   });
 
   // counts
