@@ -31,7 +31,8 @@
   .rule { height: 6px; border-radius: 3px; margin: 14px 0 32px;
     background: linear-gradient(90deg, var(--navy) 0 20%, var(--teal) 20% 40%, var(--mustard) 40% 60%, var(--orange) 60% 80%, var(--red) 80% 100%); }
   h1 { font-family: var(--font-display); font-weight: 400; font-size: clamp(34px, 5vw, 48px); line-height: 1.05; margin: 0 0 12px; color: var(--navy); }
-  .lede { margin: 0 0 28px; max-width: 640px; font-size: 18px; color: var(--ink-soft); }
+  .lede { margin: 0 0 14px; max-width: 640px; font-size: 18px; color: var(--ink-soft); }
+  .orig { margin: 0 0 28px; max-width: 640px; font-size: 14px; color: var(--ink-muted); }
 
   /* filters */
   .filters { display: flex; flex-direction: column; gap: 12px; margin-bottom: 8px; }
@@ -114,6 +115,7 @@
   <div class="rule" aria-hidden="true"></div>
   <h1>Airbnb's journey</h1>
   <p class="lede">Seventeen years of launches, each tagged by the kind of innovation it was and, where there was one, by what triggered it. Filter to see the pattern.</p>
+  <p class="orig">This timeline is built from a map I drew first. <a href="map.svg">See the original map</a> (opens full-screen; pinch or scroll to zoom) or <a href="airbnb-journey.drawio" download>download the draw.io file</a> to edit it yourself.</p>
 </header>
 
 <main class="wrap">
@@ -142,6 +144,7 @@
 <footer>
   <div class="wrap">
     <p>Dates and launches from Airbnb's newsroom <a href="#src-8">[8]</a> and Malhotra (2024) <a href="#src-9">[9]</a>; outcomes from the sources numbered on each card. The classification into innovation types and triggers is my own reading, made for a piece of coursework on innovation and design; disagree with it freely.</p>
+    <p>The original map was drawn in draw.io. <a href="map.svg">View it</a> or <a href="airbnb-journey.drawio" download>download the source</a>; the SVG also opens in draw.io directly.</p>
     <p>Part of <a href="/">leonkarsten.com</a>. Runs entirely in your browser.</p>
   </div>
 </footer>
