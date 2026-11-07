@@ -129,7 +129,7 @@ the same path collide in Astro.
    - Play them on his iPhone with sound on; decide on the CRT switch. Nobody has heard the sound.
    - **Wings Level** real tilt and **Soft Focus** (whether eyes fuse the pixel stereogram) can only
      be checked by a person; the checks cover the d-pad/keys path and that the dots encode the shape.
-   - **Soft Focus** has a sculpted dragon on trial since 7 Nov (Leon: the shapes are flat): real depth, and a full-colour reveal. It comes first after every page load. Replacing the 32 flat shapes waits on his verdict.
+   - **Soft Focus** has seven sculpted subjects since 7 Nov (Leon: the shapes are flat), with real depth and a full-colour reveal, dealt before the 32 flat shapes. Removing the flat ones waits on his verdict.
    - **Near Miss** added 4 Nov: a road game on the Games page grid. Eight vehicles, each a different skill: motorbike, bus, skateboard, helicopter, go-kart, skates, spaceship, airplane.
    - **Lamplight**'s walker changed on 4 Nov (Leon: too hard once it sees you): always a little slower than the player when hunting, forgets when out of sight, and a flare (Space or START, earned at a lantern, none at the start of a maze) makes it flee and lets you banish it. The Qlaim cabinet keeps the old walker.
    - **House Call** has ONE RULE CHANGED from Qlaim: egg sacs hang at head height, because at the
