@@ -1,0 +1,14 @@
+{
+  "name": "Airbnb's journey",
+  "slug": "airbnb-journey",
+  "summary": "Seventeen years of Airbnb launches on one timeline, each tagged by the kind of innovation it was and by what triggered it. Filter by type or trigger and the pattern shows itself: the radical moves are rare and early, and the launches people remember came from responding to a need.",
+  "app": "/apps/airbnb-journey/",
+  "tags": ["innovation", "timeline", "case study"],
+  "updated": "2026-11-07",
+  "steps": [
+    "Open the timeline. It runs top to bottom from the first guests in 2007 to the 2024 winter release.",
+    "Tap an innovation type (radical, incremental, partnership and so on) to dim everything else. Tap several to combine.",
+    "Tap a trigger to see only the launches that followed a human need, a business opportunity, or neither.",
+    "The coloured dot on the line is the trigger; the pills on each card are the innovations. Show all resets it."
+  ]
+}

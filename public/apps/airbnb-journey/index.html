@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Airbnb's journey — an innovation timeline</title>
+<meta name="description" content="Seventeen years of Airbnb launches, tagged by the kind of innovation each was and what triggered it. Filter to see the pattern.">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Righteous&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #f6ecd8; --paper-2: #fbf5e8; --line: #e4d7be;
+    --ink: #2a241f; --ink-soft: #4a413a; --ink-muted: #6b6055; --ink-faint: #857a6e;
+    --navy: #1b3a5c; --teal: #3c8d9e; --teal-light: #7db9c1; --mustard: #f2c35b;
+    --orange: #f2994a; --red: #e8542f; --brown: #6b3b2e; --sage: #5d8a6e;
+    --font-display: 'Righteous', 'Trebuchet MS', sans-serif;
+    --font-body: 'Inter', system-ui, sans-serif;
+    /* tag colours */
+    --t-radical: #e8542f; --t-disruptive: #f2994a; --t-incremental: #3c8d9e;
+    --t-strategic: #1b3a5c; --t-growth: #2a241f; --t-partner: #5d8a6e;
+    --k-need: #6b3b2e; --k-opp: #a8791a;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--paper); color: var(--ink); font-family: var(--font-body); font-size: 16px; line-height: 1.5; }
+  a { color: #1e5a7a; text-decoration: none; } a:hover { color: #0f3b52; }
+  .wrap { max-width: 1040px; margin: 0 auto; padding: 0 16px; }
+  header.top { padding: 20px 0 0; }
+  .back { font-size: 14px; font-weight: 600; }
+  .rule { height: 6px; border-radius: 3px; margin: 14px 0 32px;
+    background: linear-gradient(90deg, var(--navy) 0 20%, var(--teal) 20% 40%, var(--mustard) 40% 60%, var(--orange) 60% 80%, var(--red) 80% 100%); }
+  h1 { font-family: var(--font-display); font-weight: 400; font-size: clamp(34px, 5vw, 48px); line-height: 1.05; margin: 0 0 12px; color: var(--navy); }
+  .lede { margin: 0 0 28px; max-width: 640px; font-size: 18px; color: var(--ink-soft); }
+
+  /* filters */
+  .filters { display: flex; flex-direction: column; gap: 12px; margin-bottom: 8px; }
+  .fgroup { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .fgroup .label { font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-muted); margin-right: 4px; min-width: 96px; }
+  .chip { display: inline-flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 12px 0 10px; border-radius: 999px;
+    border: 2px solid var(--line); background: var(--paper-2); color: var(--ink); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+  .chip .dot { width: 12px; height: 12px; border-radius: 50%; background: var(--c); flex: none; }
+  .chip .n { font-weight: 500; color: var(--ink-faint); font-size: 13px; }
+  .chip[aria-pressed="true"] { border-color: var(--c); background: color-mix(in srgb, var(--c) 14%, var(--paper-2)); }
+  .chip.hollow .dot { background: transparent; border: 2px solid var(--c); }
+  .chip.reset { border-style: dashed; }
+  .status { font-size: 14px; color: var(--ink-muted); margin: 10px 0 28px; }
+
+  /* timeline */
+  .tl { position: relative; list-style: none; margin: 0; padding: 0 0 40px; }
+  .tl::before { content: ''; position: absolute; left: 86px; top: 0; bottom: 0; width: 3px; background: var(--line); }
+  .ev { position: relative; display: grid; grid-template-columns: 70px 1fr; gap: 32px; padding: 0 0 22px; transition: opacity .15s; }
+  .ev.off { opacity: .22; }
+  .ev.hidden { display: none; }
+  .when { text-align: right; padding-top: 14px; font-size: 13px; font-weight: 700; color: var(--ink-muted); line-height: 1.2; }
+  .when b { display: block; font-size: 17px; color: var(--navy); }
+  .ev::after { content: ''; position: absolute; left: 80px; top: 18px; width: 15px; height: 15px; border-radius: 50%;
+    background: var(--paper); border: 3px solid var(--navy); }
+  .ev.need::after { border-color: var(--k-need); background: var(--k-need); }
+  .ev.opp::after { border-color: var(--k-opp); background: var(--k-opp); }
+  .card { background: var(--paper-2); border: 1px solid var(--line); border-radius: 14px; padding: 14px 18px 16px; }
+  .card .what { margin: 0; font-size: 17px; font-weight: 700; color: var(--navy); }
+  .card .note { margin: 2px 0 0; font-size: 13px; color: var(--ink-faint); }
+  .tags { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .tag { display: inline-flex; align-items: center; gap: 7px; padding: 4px 10px 4px 8px; border-radius: 999px; font-size: 13px; font-weight: 600;
+    background: var(--c); color: #fff; }
+  .tag.hollow { background: transparent; border: 2px solid var(--c); color: var(--c); padding: 2px 9px 2px 7px; }
+  .tag .k { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; opacity: .85; }
+  .trigger { display: inline-flex; align-items: center; gap: 7px; margin-top: 10px; padding: 4px 10px; border-radius: 6px; font-size: 13px; color: #fff; background: var(--c); }
+  .trigger .k { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; opacity: .85; }
+
+  /* summary */
+  .summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin: 0 0 32px; }
+  .stat { background: var(--paper-2); border: 1px solid var(--line); border-left: 6px solid var(--c); border-radius: 10px; padding: 10px 14px; }
+  .stat b { display: block; font-family: var(--font-display); font-weight: 400; font-size: 28px; color: var(--navy); line-height: 1; }
+  .stat span { font-size: 13px; color: var(--ink-muted); }
+
+  .reading { max-width: 680px; margin: 0 0 32px; padding: 18px 20px; border-radius: 14px; background: var(--paper-2); border: 1px solid var(--line); font-size: 15px; color: var(--ink-soft); }
+  .reading h2 { font-family: var(--font-display); font-weight: 400; font-size: 22px; color: var(--navy); margin: 0 0 8px; }
+  .reading p { margin: 0 0 8px; } .reading p:last-child { margin: 0; }
+
+  footer { border-top: 1px solid var(--line); padding: 24px 0 40px; font-size: 13px; color: var(--ink-muted); }
+  footer p { margin: 0 0 6px; max-width: 760px; }
+
+  @media (max-width: 640px) {
+    .tl::before { left: 14px; }
+    .ev { grid-template-columns: 1fr; gap: 6px; padding-left: 40px; }
+    .ev::after { left: 8px; }
+    .when { text-align: left; padding-top: 0; }
+    .when b { display: inline; margin-right: 8px; }
+    .fgroup .label { min-width: 0; width: 100%; }
+  }
+  @media (prefers-reduced-motion: reduce) { .ev { transition: none; } }
+</style>
+</head>
+<body>
+<header class="top wrap">
+  <a class="back" href="/tools/airbnb-journey/">← About this timeline</a>
+  <div class="rule" aria-hidden="true"></div>
+  <h1>Airbnb's journey</h1>
+  <p class="lede">Seventeen years of launches, each tagged by the kind of innovation it was and, where there was one, by what triggered it. Filter to see the pattern.</p>
+</header>
+
+<main class="wrap">
+  <section class="summary" id="summary" aria-label="Counts"></section>
+
+  <section class="filters" aria-label="Filters">
+    <div class="fgroup" id="f-type"><span class="label">Innovation</span></div>
+    <div class="fgroup" id="f-kind"><span class="label">Triggered by</span></div>
+  </section>
+  <p class="status" id="status" aria-live="polite"></p>
+
+  <ol class="tl" id="tl"></ol>
+
+  <aside class="reading">
+    <h2>How to read it</h2>
+    <p>The dot colour on the line marks the trigger: <strong style="color:var(--k-need)">dark brown</strong> for a human need (a disaster, a war, a pandemic), <strong style="color:var(--k-opp)">gold</strong> for a business opportunity (a conference, an Olympics, a cause to attach to), plain for releases that came from the roadmap.</p>
+    <p>Two things stand out. The radical moves are rare and early: the idea itself, and Experiences nine years later. Almost everything since is incremental, which is what a company that has found its model is supposed to do. And the launches people remember most warmly, housing displaced residents after Sandy, Frontline Stays, Ukraine housing, all came from responding to a need rather than from a plan.</p>
+  </aside>
+</main>
+
+<footer>
+  <div class="wrap">
+    <p>Dates and launches from Airbnb's newsroom and Malhotra (2024). The classification into innovation types and triggers is my own reading, made for a piece of coursework on innovation and design; disagree with it freely.</p>
+    <p>Part of <a href="/">leonkarsten.com</a>. Runs entirely in your browser.</p>
+  </div>
+</footer>
+
+<script>
+const TYPES = {
+  radical:     { name: 'Radical',       c: 'var(--t-radical)' },
+  disruptive:  { name: 'Disruptive',    c: 'var(--t-disruptive)' },
+  incremental: { name: 'Incremental',   c: 'var(--t-incremental)' },
+  strategic:   { name: 'Strategic',     c: 'var(--t-strategic)' },
+  growth:      { name: 'Growth hack',   c: 'var(--t-growth)', hollow: true },
+  partner:     { name: 'Partnership',   c: 'var(--t-partner)', hollow: true },
+};
+const KINDS = {
+  need: { name: 'Human need',           c: 'var(--k-need)' },
+  opp:  { name: 'Business opportunity', c: 'var(--k-opp)' },
+  none: { name: 'Roadmap (no trigger)', c: 'var(--navy)', hollow: true },
+};
+
+// i = innovations [label, type]; t = trigger [label, kind]; n = note
+const EVENTS = [
+  { d: 'Oct 2007', w: 'First guests', n: 'Three guests', i: [['What do we have? A room.', 'radical']], t: ['Founders cannot pay rent', 'need'] },
+  { d: 'Mar 2008', w: 'Official launch', n: 'Two bookings', t: ['SXSW, Austin', 'opp'] },
+  { d: 'Aug 2008', w: 'Website launch', n: '80 bookings', i: [['Own payment system', 'incremental']], t: ['Democratic National Convention', 'opp'] },
+  { d: 'Mar 2009', w: 'Changes name, expands offering', i: [['Craigslist cross-posting', 'growth'], ['Professional photos of listings', 'incremental']] },
+  { d: 'Nov 2010', w: 'App launch', i: [['Instant booking', 'incremental']] },
+  { d: 'Jun 2011', w: 'International (Germany)' },
+  { d: 'May 2012', w: '$1M host guarantee' },
+  { d: 'Nov 2012', w: 'Houses displaced residents', i: [['Partners with New York City', 'partner'], ['Disaster relief tool', 'incremental']], t: ['Hurricane Sandy', 'need'] },
+  { d: 'Jun 2013', w: 'New headquarters' },
+  { d: 'Jul 2014', w: 'New logo' },
+  { d: 'Mar 2015', w: 'Official alternative accommodation provider', t: ['Rio de Janeiro Olympics', 'opp'] },
+  { d: 'Apr 2015', w: 'International (Cuba)' },
+  { d: 'Nov 2016', w: 'Launches Experiences', i: [['Experiences', 'radical']] },
+  { d: 'Feb 2017', w: 'Super Bowl ad, #weaccept', t: ['US travel ban', 'opp'] },
+  { d: 'Mar 2017', w: 'Launches Chinese brand (Aibiying)' },
+  { d: 'Mar 2019', w: 'Acquires HotelTonight', i: [['HotelTonight', 'disruptive']] },
+  { d: 'Nov 2019', w: 'Olympic partnership', i: [['Partners with the IOC', 'partner']] },
+  { d: 'Mar 2020', w: 'Houses medical workers', i: [['Frontline Stays', 'incremental']], t: ['COVID-19', 'need'] },
+  { d: 'Apr 2020', w: 'Solidarity with hosts', i: [['Online Experiences', 'incremental']] },
+  { d: 'Jun 2020', w: 'Solidarity with hosts', i: [['Enhanced cleaning protocol', 'incremental']] },
+  { d: 'Jun 2020', w: 'Project Lighthouse', i: [['Partners with Color of Change', 'partner'], ['Project Lighthouse', 'incremental']], t: ['Fighting discrimination', 'opp'] },
+  { d: 'Sep 2020', w: 'City Portal', i: [['City Portal for local government', 'incremental']] },
+  { d: 'Dec 2020', w: 'Lists on Nasdaq' },
+  { d: 'Dec 2020', w: 'Launches non-profit', i: [['Airbnb.org', 'incremental']], t: ['Crisis times', 'need'] },
+  { d: 'May 2021', w: '2021 release', i: [['Service and product upgrades', 'incremental']] },
+  { d: 'Nov 2021', w: '2021 winter release', i: [['Translation engine', 'incremental'], ['AirCover for hosts', 'incremental']] },
+  { d: 'Feb 2022', w: 'Free temporary housing', t: ['War in Ukraine', 'need'] },
+  { d: 'Apr 2022', w: 'Live and work anywhere', i: [['Live & work anywhere policy', 'incremental']] },
+  { d: 'May 2022', w: '2022 summer release', i: [['Categories', 'incremental'], ['Split Stays', 'incremental'], ['AirCover for guests', 'incremental']] },
+  { d: 'Nov 2022', w: '2022 winter release', i: [['Airbnb Setup', 'incremental'], ['Airbnb-friendly apartments', 'incremental']] },
+  { d: 'Feb 2023', w: 'One million Superhosts' },
+  { d: 'Mar 2023', w: '2023 summer release', i: [['Airbnb Rooms', 'incremental']] },
+  { d: 'Nov 2023', w: 'Acquires GamePlanner.AI', i: [['AI start-up acquisition', 'strategic']] },
+  { d: 'Nov 2023', w: '2023 winter release', i: [['Guest Favourites', 'incremental']] },
+  { d: 'May 2024', w: '2024 summer release', i: [['Icons', 'incremental'], ['Group travel updates', 'incremental']] },
+  { d: 'Oct 2024', w: '2024 winter release', i: [['Co-host network', 'disruptive']] },
+];
+
+const state = { types: new Set(), kinds: new Set() };
+const $ = (s, el = document) => el.querySelector(s);
+const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; };
+
+function build() {
+  const tl = $('#tl');
+  EVENTS.forEach((ev, idx) => {
+    const kind = ev.t ? ev.t[1] : 'none';
+    const li = el('li', 'ev ' + kind); li.dataset.idx = idx;
+    const [mon, yr] = ev.d.split(' ');
+    li.append(el('div', 'when', `<b>${yr}</b>${mon}`));
+    const card = el('div', 'card');
+    card.append(el('p', 'what', ev.w));
+    if (ev.n) card.append(el('p', 'note', ev.n));
+    if (ev.i) {
+      const tags = el('div', 'tags');
+      ev.i.forEach(([label, type]) => {
+        const T = TYPES[type];
+        const t = el('span', 'tag' + (T.hollow ? ' hollow' : ''), `<span class="k">${T.name}</span>${label}`);
+        t.style.setProperty('--c', T.c); tags.append(t);
+      });
+      card.append(tags);
+    }
+    if (ev.t) {
+      const K = KINDS[ev.t[1]];
+      const tr = el('div', 'trigger', `<span class="k">${K.name}</span>${ev.t[0]}`);
+      tr.style.setProperty('--c', K.c); card.append(tr);
+    }
+    li.append(card); tl.append(li);
+  });
+
+  // counts
+  const typeCount = {}, kindCount = { need: 0, opp: 0, none: 0 };
+  EVENTS.forEach(ev => { (ev.i || []).forEach(([, t]) => typeCount[t] = (typeCount[t] || 0) + 1); kindCount[ev.t ? ev.t[1] : 'none']++; });
+
+  const sum = $('#summary');
+  Object.entries(TYPES).forEach(([k, T]) => { const s = el('div', 'stat', `<b>${typeCount[k] || 0}</b><span>${T.name}</span>`); s.style.setProperty('--c', T.c); sum.append(s); });
+
+  const ft = $('#f-type');
+  Object.entries(TYPES).forEach(([k, T]) => ft.append(chip(k, T, typeCount[k] || 0, 'types', T.hollow)));
+  const fk = $('#f-kind');
+  Object.entries(KINDS).forEach(([k, K]) => fk.append(chip(k, K, kindCount[k], 'kinds', K.hollow)));
+  const reset = el('button', 'chip reset', 'Show all'); reset.type = 'button';
+  reset.addEventListener('click', () => { state.types.clear(); state.kinds.clear(); document.querySelectorAll('.chip[aria-pressed]').forEach(c => c.setAttribute('aria-pressed', 'false')); apply(); });
+  fk.append(reset);
+  apply();
+}
+
+function chip(key, def, n, bucket, hollow) {
+  const b = el('button', 'chip' + (hollow ? ' hollow' : ''), `<span class="dot"></span>${def.name} <span class="n">${n}</span>`);
+  b.type = 'button'; b.setAttribute('aria-pressed', 'false'); b.style.setProperty('--c', def.c);
+  b.addEventListener('click', () => {
+    const on = b.getAttribute('aria-pressed') !== 'true';
+    b.setAttribute('aria-pressed', String(on));
+    state[bucket][on ? 'add' : 'delete'](key); apply();
+  });
+  return b;
+}
+
+function matches(ev) {
+  const tOK = state.types.size === 0 || (ev.i || []).some(([, t]) => state.types.has(t));
+  const kOK = state.kinds.size === 0 || state.kinds.has(ev.t ? ev.t[1] : 'none');
+  return tOK && kOK;
+}
+
+function apply() {
+  let shown = 0;
+  document.querySelectorAll('.ev').forEach(li => {
+    const ok = matches(EVENTS[li.dataset.idx]);
+    li.classList.toggle('off', !ok); if (ok) shown++;
+  });
+  const any = state.types.size || state.kinds.size;
+  $('#status').textContent = any ? `${shown} of ${EVENTS.length} milestones match. Others are dimmed.` : `${EVENTS.length} milestones, October 2007 to October 2024.`;
+}
+
+build();
+</script>
+</body>
+</html>
