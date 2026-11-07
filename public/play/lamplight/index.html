@@ -589,7 +589,7 @@ function isFloor(maze, x, y) {
 
 // Recursive backtracker: carves a perfect maze — exactly one route between any
 // two points. That matters here, because a maze with loops lets you escape the
-// walker by running in circles forever. A dead end is a real risk, and a flare
+// walker by running in circles forever. A dead end is a real risk, and a thrown lantern
 // is the way out of one.
 function carve(rand = Math.random) {
   const maze = new Uint8Array(MW * MH).fill(WALL);
@@ -678,6 +678,34 @@ function respawnSpot(maze, rand = Math.random) {
   return open[Math.floor(rand() * open.length)] || [MW - 2, MH - 2];
 }
 
+// Is the way clear from (ax, ay) to (bx, by)? Cells are centred on whole numbers.
+// The far end may itself be a wall: that is the face you see.
+function clearTo(maze, ax, ay, bx, by) {
+  const endX = Math.round(bx), endY = Math.round(by);
+  const n = Math.ceil(Math.hypot(bx - ax, by - ay) / 0.1);
+  for (let i = 1; i < n; i++) {
+    const x = Math.round(ax + ((bx - ax) * i) / n), y = Math.round(ay + ((by - ay) * i) / n);
+    if (x === endX && y === endY) return true;
+    if (!isFloor(maze, x, y)) return false;
+  }
+  return true;
+}
+
+// What a light at (px, py) reaches within `radius`: every cell it has a clear line
+// to. A wall is seen by any of its faces, and stops everything behind it.
+function litCells(maze, px, py, radius) {
+  const out = new Uint8Array(MW * MH), r = Math.ceil(radius);
+  const cx = Math.round(px), cy = Math.round(py), FACE = 0.45;
+  for (let y = Math.max(0, cy - r); y <= Math.min(MH - 1, cy + r); y++) for (let x = Math.max(0, cx - r); x <= Math.min(MW - 1, cx + r); x++) {
+    if (Math.hypot(x - px, y - py) > radius) continue;
+    const sees = isFloor(maze, x, y)
+      ? clearTo(maze, px, py, x, y)
+      : [[0, 0], [FACE, 0], [-FACE, 0], [0, FACE], [0, -FACE]].some(([dx, dy]) => clearTo(maze, px, py, x + dx, y + dy));
+    if (sees) out[y * MW + x] = 1;
+  }
+  return out;
+}
+
 // ---- games/lamplight/walker.js
 // The walker's rules, with no drawing and no DOM, so the tests can run them.
 // It hunts what it can see, and only that: out of sight it knows where you
@@ -685,8 +713,8 @@ function respawnSpot(maze, rand = Math.random) {
 
 const PLAYER_SPEED = 0.075;  // cells per tick, 60 ticks a second
 const SIGHT = 9;             // cells along a straight corridor
-const MAX_FLARES = 3;
-const BANISH_PTS = 500;
+const BANISH_PTS = 250;
+const LANTERN_PTS = 500; // a kept lantern, at the door: more than a banish, so a throw always costs
 const NEIGHBOURS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 
 // Hunting stays just under the player's pace at every level, so running
@@ -696,7 +724,7 @@ function walkerSpeeds(level) {
   return { roam, hunt: Math.min(roam * 1.35, PLAYER_SPEED * 0.95), flee: 0.045 };
 }
 const searchTicks = level => Math.min(360, 150 + level * 30);
-const flareTicks = level => Math.max(180, 360 - (level - 1) * 30);
+const blazeTicks = level => Math.max(180, 360 - (level - 1) * 30);
 
 function newWalker(x, y, level) {
   return { x, y, dir: null, last: null, state: 'roam', seen: null, search: 0, stun: 0, speeds: walkerSpeeds(level), searchFor: searchTicks(level) };
@@ -983,7 +1011,7 @@ function makeArt() {
 const CELL = 16, TOP = 20;
 const W = MW * CELL, H = TOP + MH * CELL + 20; // 336 x 280
 const LAMP_RADIUS = 3.1;        // in cells
-const FLARE_RADIUS = 5.1;       // the lamp while a flare burns
+const BLAZE_RADIUS = 5.1;       // your lamp while a thrown lantern blazes
 const TICK_MS = 1000 / 60;
 const DEMO_TICKS = 60 * 30;
 
@@ -1012,8 +1040,9 @@ const art = makeArt();
 
 let maze = carve();
 let seen = new Uint8Array(MW * MH);
+let lit = new Uint8Array(MW * MH); // what the lamp reaches right now
 const player = { x: 1, y: 1, dir: null, queued: null, face: 1, moving: false };
-let walker = null, lanterns = [], door = null, carried = 0, flares = 0, flare = 0, lamp = LAMP_RADIUS;
+let walker = null, lanterns = [], door = null, found = 0, held = 0, blaze = 0, lamp = LAMP_RADIUS, thrown = null;
 let mode = 'attract', page = 'title', pageT = 0;
 let level = 1, lives = 3, score = 0, ticks = 0, timer = 0, flash = 0, sparks = [];
 let demo = false, demoT = 0, pausedFrom = null, tally = null, entry = null, highlight = -1;
@@ -1031,8 +1060,8 @@ const SFX = {
   alert: () => sound.note(330, 0.45, { to: 110, vol: 0.05 }),
   caught: () => { sound.note(440, 0.9, { to: 55, vol: 0.055 }); sound.noise(0.5, { vol: 0.25, cutoff: 500 }); },
   clear: () => sound.tune([[784, 0.1], [988, 0.1], [1175, 0.1], [1568, 0.1], [0, 0.06], [1175, 0.1], [1568, 0.4]], { vol: 0.045 }),
-  flare: () => { sound.noise(0.25, { vol: 0.14, cutoff: 3500 }); sound.note(600, 0.4, { to: 1800, vol: 0.04 }); },
-  noFlare: () => sound.note(140, 0.12, { vol: 0.05 }),
+  throw: () => { sound.noise(0.25, { vol: 0.14, cutoff: 3500 }); sound.note(600, 0.4, { to: 1800, vol: 0.04 }); },
+  empty: () => sound.note(140, 0.12, { vol: 0.05 }),
   banish: () => sound.tune([[1568, 0.06], [1175, 0.06], [880, 0.06], [587, 0.2]], { vol: 0.045 }),
   tick: () => sound.note(1760, 0.03, { vol: 0.025 }),
   blip: () => sound.note(988, 0.05, { vol: 0.04 }),
@@ -1045,11 +1074,11 @@ function play(name) { if (!demo) SFX[name](); }
 
 function build(full) {
   if (full) { level = 1; lives = 3; score = 0; }
-  flares = 0; flare = 0; lamp = LAMP_RADIUS; // every maze starts with none: a flare is earned at a lantern
+  held = 0; blaze = 0; lamp = LAMP_RADIUS; thrown = null;
   maze = carve();
   seen = new Uint8Array(MW * MH);
   resetPlayer();
-  carried = 0; sparks = []; flash = 0; ticks = 0;
+  found = 0; sparks = []; flash = 0; ticks = 0;
   const placed = placeThings(maze);
   door = placed.door;
   lanterns = placed.lanterns;
@@ -1061,12 +1090,8 @@ function resetPlayer() {
 }
 
 function markSeen() {
-  const px = Math.round(player.x), py = Math.round(player.y);
-  const r = Math.ceil(lamp);
-  for (let y = py - r; y <= py + r; y++) for (let x = px - r; x <= px + r; x++) {
-    if (x < 0 || y < 0 || x >= MW || y >= MH) continue;
-    if (Math.hypot(x - px, y - py) <= lamp) seen[y * MW + x] = 1;
-  }
+  lit = litCells(maze, player.x, player.y, lamp);
+  for (let k = 0; k < lit.length; k++) if (lit[k]) seen[k] = 1;
 }
 
 function heldDir() {
@@ -1112,19 +1137,34 @@ function playerStep() {
   stepActor(player, PLAYER_SPEED);
 }
 
-// A flare turns the hunt round: for a few seconds the walker runs, and
-// touching it banishes it.
-function useFlare() {
-  if (flare > 0) return;
-  if (flares <= 0) { play('noFlare'); return; }
-  flares--;
-  flare = flareTicks(level);
+// A thrown lantern turns the hunt round: for a few seconds the walker runs, and
+// touching it banishes it. It is gone for good, and scores nothing at the door.
+function throwLantern() {
+  if (blaze > 0) return;
+  if (held <= 0) { play('empty'); return; }
+  held--;
+  blaze = blazeTicks(level);
   walker.state = 'flee'; walker.stun = 0;
-  play('flare');
+  const d = Math.hypot(walker.x - player.x, walker.y - player.y) || 1, reach = Math.min(d, 4);
+  thrown = { x: player.x, y: player.y, vx: ((walker.x - player.x) / d) * reach / 16, vy: ((walker.y - player.y) / d) * reach / 16, t: 16 };
+  play('throw');
 }
 
-function flareTick() {
-  if (flare <= 0 || --flare > 0) return;
+// The lantern in the air, until it breaks in a shower of sparks.
+function thrownTick() {
+  if (!thrown) return;
+  thrown.x += thrown.vx; thrown.y += thrown.vy;
+  if (--thrown.t > 0 && isFloor(maze, Math.round(thrown.x), Math.round(thrown.y))) return;
+  const cx = thrown.x * CELL + CELL / 2, cy = TOP + thrown.y * CELL + CELL / 2;
+  for (let i = 0; i < (reduceMotion ? 6 : 18); i++) {
+    const a = Math.random() * Math.PI * 2, s = 0.3 + Math.random() * 1.4;
+    sparks.push({ x: cx, y: cy, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 0.9 });
+  }
+  thrown = null;
+}
+
+function blazeTick() {
+  if (blaze <= 0 || --blaze > 0) return;
   if (walker.state === 'flee') walker.state = 'roam';
 }
 
@@ -1137,7 +1177,7 @@ function caught() {
     const a = Math.random() * Math.PI * 2, s = 0.3 + Math.random() * 1.6;
     sparks.push({ x: cx, y: cy, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 1 });
   }
-  flare = 0; lamp = LAMP_RADIUS;
+  blaze = 0; thrown = null; lamp = LAMP_RADIUS;
   mode = 'dying'; timer = 100;
 }
 
@@ -1153,29 +1193,29 @@ function afterDying() {
 function playTick() {
   ticks++;
   if (demo && ++demoT > DEMO_TICKS) { endDemo(); return; }
-  if (demo && flares > 0 && walker.state === 'hunt' && Math.hypot(player.x - walker.x, player.y - walker.y) < 5) useFlare();
+  if (demo && held > 0 && walker.state === 'hunt' && Math.hypot(player.x - walker.x, player.y - walker.y) < 5) throwLantern();
   playerStep();
   if (walkerStep(walker, maze, Math.round(player.x), Math.round(player.y))) play('alert');
-  flareTick();
-  lamp = flare > 0 ? FLARE_RADIUS : LAMP_RADIUS;
+  blazeTick();
+  thrownTick();
+  lamp = blaze > 0 ? BLAZE_RADIUS : LAMP_RADIUS;
   markSeen();
 
   const px = Math.round(player.x), py = Math.round(player.y);
   for (const l of lanterns) {
     if (!l.taken && l.x === px && l.y === py && Math.abs(player.x - px) < 0.3 && Math.abs(player.y - py) < 0.3) {
-      l.taken = true; carried++;
-      flares = Math.min(MAX_FLARES, flares + 1);
-      score += 250;
-      play(carried === LANTERNS ? 'doorOpen' : 'lantern');
+      l.taken = true; found++; held++;
+      play(found === LANTERNS ? 'doorOpen' : 'lantern');
     }
   }
 
-  if (carried === LANTERNS && px === door.x && py === door.y) {
+  // All three found opens the door; only the ones still in hand are scored.
+  if (found === LANTERNS && px === door.x && py === door.y) {
     if (demo) { endDemo(); return; }
     const bonus = Math.max(0, 4000 - ticks * 2);
-    const doorPts = 500 * level;
-    tally = { level, doorPts, bonus, shown: score, total: score + doorPts + bonus, t: 0 };
-    score += doorPts + bonus;
+    const doorPts = 500 * level, lanternPts = held * LANTERN_PTS;
+    tally = { level, held, lanternPts, doorPts, bonus, shown: score, total: score + lanternPts + doorPts + bonus, t: 0 };
+    score += lanternPts + doorPts + bonus;
     mode = 'tally';
     play('clear');
     return;
@@ -1184,15 +1224,16 @@ function playTick() {
   if (Math.hypot(player.x - walker.x, player.y - walker.y) < 0.6) {
     if (walker.state !== 'flee') { caught(); return; }
     banish(walker, maze, px, py);
-    flare = 0;
+    blaze = 0;
     score += BANISH_PTS;
     play('banish');
   }
 }
 
-// Lines appear one by one, then the door and the time bonus count into the score.
+// Lines appear one by one, then the lanterns, door and time bonus count into the score.
 function tallyTick() {
   const t = ++tally.t;
+  if (t === 40) tally.shown += tally.lanternPts;
   if (t === 70) tally.shown += tally.doorPts;
   if (t > 100 && t <= 160) {
     const before = tally.shown;
@@ -1270,7 +1311,7 @@ function onAction(action) {
   // start
   if (mode === 'attract' || demo) { newGame(); return; }
   if (mode === 'paused') { mode = pausedFrom; return; }
-  if (mode === 'playing') { useFlare(); return; }
+  if (mode === 'playing') { throwLantern(); return; }
   if (mode === 'tally' && tally.t >= 60) { tally.shown = tally.total; nextLevel(); return; }
   if (mode === 'over') { timer = 0; return; }
   if (mode === 'entry') confirmLetter();
@@ -1338,36 +1379,38 @@ function drawMaze() {
   const px = player.x, py = player.y;
   for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) {
     if (!seen[y * MW + x]) continue;
-    const b = band(Math.hypot(x - px, y - py), lamp);
+    const b = lit[y * MW + x] ? band(Math.hypot(x - px, y - py), lamp) : 0;
     const img = maze[y * MW + x] === WALL ? art.wall[b] : art.floor[b];
     ctx.drawImage(img, x * CELL, TOP + y * CELL);
   }
 
   // the door only reads as a door once you can actually use it
   if (seen[door.y * MW + door.x]) {
-    const lit = band(Math.hypot(door.x - px, door.y - py), lamp) > 0;
-    const img = carried === LANTERNS ? art.doorOpen[(clock >> 3) & 1] : lit ? art.door : art.doorMemory;
+    const near = lit[door.y * MW + door.x] && band(Math.hypot(door.x - px, door.y - py), lamp) > 0;
+    const img = found === LANTERNS ? art.doorOpen[(clock >> 3) & 1] : near ? art.door : art.doorMemory;
     ctx.drawImage(img, door.x * CELL, TOP + door.y * CELL);
   }
 
   const flick = reduceMotion ? 0 : (clock >> 3) & 1;
   for (const l of lanterns) {
     if (l.taken) continue;
-    const d = Math.hypot(l.x - px, l.y - py);
-    if (!seen[l.y * MW + l.x] && d > lamp) continue;
-    ctx.drawImage(d <= lamp + 1 ? art.lantern[flick] : art.lanternMemory, l.x * CELL, TOP + l.y * CELL);
+    if (!seen[l.y * MW + l.x]) continue;
+    ctx.drawImage(lit[l.y * MW + l.x] ? art.lantern[flick] : art.lanternMemory, l.x * CELL, TOP + l.y * CELL);
   }
 
   // The walker is drawn only when the lamp reaches it. Everywhere else it is
-  // a sound and a memory, which is the whole tension of the cabinet. A flare
-  // shows it wherever it runs, so it can be chased; it blinks as the flare dies.
+  // a sound and a memory, which is the whole tension of the cabinet. A thrown
+  // lantern shows it wherever it runs, so it can be chased; it blinks as the
+  // blaze dies.
   const fleeing = walker.state === 'flee';
-  if (fleeing || Math.hypot(walker.x - px, walker.y - py) <= lamp + 0.8) {
+  if (fleeing || lit[Math.round(walker.y) * MW + Math.round(walker.x)]) {
     const f = walker.dir ? (clock >> 3) & 1 : 0;
-    const set = fleeing && (flare > 60 || blinkOn(8)) ? art.walkerFlee : walker.state === 'hunt' || fleeing ? art.walkerAlert : art.walker;
+    const set = fleeing && (blaze > 60 || blinkOn(8)) ? art.walkerFlee : walker.state === 'hunt' || fleeing ? art.walkerAlert : art.walker;
     const img = set[f];
     ctx.drawImage(img, Math.round(walker.x * CELL), Math.round(TOP + walker.y * CELL));
   }
+
+  if (thrown && lit[Math.round(thrown.y) * MW + Math.round(thrown.x)]) ctx.drawImage(art.lantern[flick], Math.round(thrown.x * CELL), Math.round(TOP + thrown.y * CELL));
 
   const showPlayer = mode !== 'dying' || (timer > 60 && (timer >> 2) % 2 === 0);
   if (showPlayer) {
@@ -1384,16 +1427,16 @@ function drawMaze() {
 function drawBottom() {
   const y = TOP + MH * CELL + 2;
   for (let i = 0; i < lives - 1; i++) ctx.drawImage(art.player[1][0][0], 4 + i * 18, y);
+  // In hand, lit; found and thrown, spent; still out there, empty.
   for (let i = 0; i < LANTERNS; i++) {
-    ctx.drawImage(i < carried ? art.lantern[0] : art.lanternEmpty, W - 4 - (LANTERNS - i) * 14, y);
+    ctx.drawImage(i < held ? art.lantern[0] : i < found ? art.lanternMemory : art.lanternEmpty, W - 4 - (LANTERNS - i) * 14, y);
   }
-  text(ctx, 'FLARES ' + flares, 46, y + 5, flares ? INK.yellow : INK.dim);
   if (demo) {
     if (blinkOn()) text(ctx, 'DEMO PLAY', W / 2, y + 5, INK.cyan, { align: 'center' });
-  } else if (mode === 'playing' && flare > 0) {
+  } else if (mode === 'playing' && blaze > 0) {
     text(ctx, 'CHASE IT', W / 2, y + 5, INK.cyan, { align: 'center' });
   } else if (mode === 'playing' && walker.state === 'hunt' && blinkOn(12)) {
-    text(ctx, flares ? (input.touch ? 'SEEN! START FOR A FLARE' : 'SEEN! SPACE FOR A FLARE') : 'IT HAS SEEN YOU', W / 2, y + 5, INK.orange, { align: 'center' });
+    text(ctx, held ? (input.touch ? 'SEEN! START TO THROW A LANTERN' : 'SEEN! SPACE TO THROW A LANTERN') : 'IT HAS SEEN YOU', W / 2, y + 5, INK.orange, { align: 'center' });
   } else if (mode === 'playing' && walker.state === 'search') {
     text(ctx, 'IT IS SEARCHING', W / 2, y + 5, INK.grey, { align: 'center' });
   }
@@ -1414,7 +1457,7 @@ function drawTally() {
     text(ctx, label, x0 + 12, y, INK.grey);
     text(ctx, String(value), x0 + w - 12, y, INK.white, { align: 'right' });
   };
-  row(0, 'LANTERNS 3 X 250', LANTERNS * 250, 30);
+  row(0, 'LANTERNS ' + tally.held + ' X ' + LANTERN_PTS, tally.lanternPts, 30);
   row(1, 'DOOR 500 X ' + tally.level, tally.doorPts, 60);
   const counted = t <= 100 ? 0 : t >= 160 ? tally.bonus : Math.round(tally.bonus * (t - 100) / 60);
   row(2, 'TIME BONUS', counted, 90);
@@ -1448,11 +1491,11 @@ function drawHowTo() {
   text(ctx, 'HOW TO PLAY', W / 2, 30, INK.cyan, { align: 'center' });
   text(ctx, 'FIND 3 LANTERNS, THEN THE DOOR.', W / 2, 48, INK.white, { align: 'center' });
   const rows = [
-    [art.lantern[0], 'LANTERN: GIVES A FLARE', '250 PTS', INK.yellow],
+    [art.lantern[0], 'KEEP A LANTERN', LANTERN_PTS + ' AT DOOR', INK.yellow],
     [art.doorOpen[0], 'OPEN DOOR', '500 X MAZE', INK.yellow],
     [art.walker[0], 'OUT OF SIGHT, IT FORGETS.', '', INK.pink],
     [art.walkerAlert[0], 'CORNERS BREAK ITS SIGHT.', '', INK.orange],
-    [art.walkerFlee[0], (input.touch ? 'START' : 'SPACE') + ': A FLARE. CHASE IT.', BANISH_PTS + ' PTS', INK.cyan],
+    [art.walkerFlee[0], (input.touch ? 'START' : 'SPACE') + ': THROW ONE, CHASE IT', BANISH_PTS + ' PTS', INK.cyan],
   ];
   rows.forEach(([img, label, value, ink], i) => {
     const y = 64 + i * 22;
@@ -1462,6 +1505,7 @@ function drawHowTo() {
   });
   text(ctx, 'WHAT YOU HAVE SEEN STAYS ON YOUR MAP.', W / 2, 176, INK.grey, { align: 'center' });
   text(ctx, 'A QUICK EXIT EARNS A TIME BONUS.', W / 2, 190, INK.grey, { align: 'center' });
+  text(ctx, 'A LANTERN THROWN DOES NOT SCORE.', W / 2, 204, INK.orange, { align: 'center' });
   if (blinkOn()) text(ctx, prompt(), W / 2, 230, INK.yellow, { align: 'center' });
 }
 
@@ -1603,14 +1647,20 @@ window.__lamplight = {
   get demo() { return demo; },
   get score() { return score; },
   get player() { return { x: player.x, y: player.y }; },
-  get flares() { return flares; },
-  get flare() { return flare; },
+  get held() { return held; },
+  get found() { return found; },
+  get blaze() { return blaze; },
+  get tally() { return tally; },
   get walker() { return { x: walker.x, y: walker.y, state: walker.state }; },
-  // Put the walker on the player, to check a flare and a banish.
+  // Put the walker on the player, to check a thrown lantern and a banish.
   walkerOnPlayer() { Object.assign(walker, { x: player.x, y: player.y, dir: null }); },
-  // Put the player on a lantern, and start the next maze, to check where flares come from.
+  // Put the player on a lantern or the door, and start the next maze.
   playerOnLantern() { const l = lanterns.find(l => !l.taken); Object.assign(player, { x: l.x, y: l.y, dir: null, queued: null, moving: false }); },
   nextMaze() { build(false); },
+  playerOnDoor() { Object.assign(player, { x: door.x, y: door.y, dir: null, queued: null, moving: false }); },
+  // Anything lit that a straight line from the player could not reach.
+  litNow() { return lit.reduce((a, b) => a + b, 0); },
+  walkerHidden() { const k = Math.round(walker.y) * MW + Math.round(walker.x); return !lit[k]; },
   attract(p) { toAttract(p); },
   endGame(s) { demo = false; score = s; lives = 0; mode = 'over'; timer = 1; },
 };

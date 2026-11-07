@@ -130,7 +130,7 @@ the same path collide in Astro.
    - **Soft Focus** removed 7 Nov (Leon: it stands out, and is not something an 80s arcade would have). Its source, with the seven sculpted subjects, is at tag `soft-focus-final` in the arcade repo.
    - **Live cabinets** (7 Nov): a game with `"live": true` in its JSON runs itself on its cabinet on the Games page, through a tube effect, only while on screen and never under reduced motion. Near Miss only so far; a game needs a `?cabinet` mode first.
    - **Near Miss** added 4 Nov: a road game on the Games page grid. Eight vehicles, each a different skill: motorbike, bus, skateboard, helicopter, go-kart, skates, spaceship, airplane.
-   - **Lamplight**'s walker changed on 4 Nov (Leon: too hard once it sees you): always a little slower than the player when hunting, forgets when out of sight, and a flare (Space or START, earned at a lantern, none at the start of a maze) makes it flee and lets you banish it. The Qlaim cabinet keeps the old walker.
+   - **Lamplight**'s walker changed on 4 Nov (Leon: too hard once it sees you): always a little slower than the player when hunting, forgets when out of sight, and a thrown lantern (Space or START) makes it flee and lets you banish it. Only lanterns still in hand pay at the door. The light stops at walls. The Qlaim cabinet keeps the old walker.
    - **House Call** has ONE RULE CHANGED from Qlaim: egg sacs hang at head height, because at the
      Qlaim height no spray could reach them (proved in the arcade repo's `test-house.mjs`). The
      Qlaim cabinet still has the bug.
