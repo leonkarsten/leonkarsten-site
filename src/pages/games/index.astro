@@ -71,7 +71,8 @@ const games = (await getCollection('games')).sort((a, b) => a.data.name.localeCo
 </Base>
 
 <script>
-  // A live cabinet runs the game itself, but only while it is on screen, and never
+  // A live cabinet runs the game itself, but only while at least half of it is on
+  // screen (nine at once made the page itself stutter on a desktop), and never
   // for someone who has asked for less motion: they keep the still picture.
   const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
   if (!still && 'IntersectionObserver' in window) {
@@ -91,7 +92,7 @@ const games = (await getCollection('games')).sort((a, b) => a.data.name.localeCo
           target.classList.remove('on');
         }
       }
-    }, { rootMargin: '120px' });
+    }, { threshold: 0.5 });
     document.querySelectorAll('[data-live]').forEach(el => watch.observe(el));
   }
 </script>

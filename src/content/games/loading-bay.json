@@ -4,5 +4,6 @@
   "summary": "Push every crate onto a mark. You can push, and you can never pull. Eight bays, each scored against the fewest moves possible.",
   "app": "/play/loading-bay/",
   "image": "/play/loading-bay/card.png",
+  "live": true,
   "tags": ["puzzle", "keyboard or touch"]
 }

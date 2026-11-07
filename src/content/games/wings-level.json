@@ -4,5 +4,6 @@
   "summary": "A tilt maze. Hold the phone level and roll the ball home past the holes. On a computer, the arrow keys tilt the board.",
   "app": "/play/wings-level/",
   "image": "/play/wings-level/card.png",
+  "live": true,
   "tags": ["tilt maze", "phone or keyboard"]
 }

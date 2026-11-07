@@ -4,5 +4,6 @@
   "summary": "Bring the lander down slowly on a lit pad. The narrow pads pay more, and fuel is the only clock.",
   "app": "/play/dust-off/",
   "image": "/play/dust-off/card.png",
+  "live": true,
   "tags": ["lander", "keyboard or touch"]
 }

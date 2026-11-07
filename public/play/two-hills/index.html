@@ -396,7 +396,13 @@ function makeScreen({ canvas, stage, frame, w, h, crtKey }) {
 // fills its frame, with black at the sides if it is squarer than the cabinet.
 function cabinetMode() {
   const on = new URLSearchParams(location.search).has('cabinet');
-  if (on) document.body.classList.add('cabinet');
+  if (on) {
+    document.body.classList.add('cabinet');
+    // A page of cabinets runs several games at once. Each draws every other
+    // frame; its game still runs 60 ticks a second, from the time it is given.
+    const raf = window.requestAnimationFrame.bind(window);
+    window.requestAnimationFrame = cb => raf(() => raf(cb));
+  }
   return on;
 }
 

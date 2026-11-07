@@ -180,6 +180,13 @@ body.touch .pad { display: flex; }
   body.touch:not(.no-pad) .pad.loops { display: flex; flex-direction: column; gap: 12px; grid-area: start; align-self: center; margin-right: 12px; padding: 0; }
   body.touch:not(.no-pad) .pad.loops .start { margin: 0; }
 }
+
+/* ?cabinet: the game as the screen of a cabinet on the Games page. */
+body.cabinet { display: block; background: #000; overflow: hidden; }
+body.cabinet .bar, body.cabinet .pad { display: none !important; }
+body.cabinet .stage { padding: 0; width: 100vw; height: 100vh; }
+body.cabinet .screen { width: 100%; height: 100%; box-shadow: none; }
+body.cabinet .screen canvas { width: 100% !important; height: 100% !important; object-fit: contain; image-rendering: auto; }
 </style>
 </head>
 <body>
@@ -342,6 +349,44 @@ function makeScreen({ canvas, stage, frame, w, h, crtKey }) {
     ctx, w, h, fit,
     get crt() { return crt; },
     toggleCrt() { setCrt(!crt); return crt; },
+  };
+}
+
+// ?cabinet is a game running on the Games page as an unattended machine: only
+// its attract loop, no sound, nobody at the controls. The page goes; the screen
+// fills its frame, with black at the sides if it is squarer than the cabinet.
+function cabinetMode() {
+  const on = new URLSearchParams(location.search).has('cabinet');
+  if (on) {
+    document.body.classList.add('cabinet');
+    // A page of cabinets runs several games at once. Each draws every other
+    // frame; its game still runs 60 ticks a second, from the time it is given.
+    const raf = window.requestAnimationFrame.bind(window);
+    window.requestAnimationFrame = cb => raf(() => raf(cb));
+  }
+  return on;
+}
+
+// ---- engine/cabinet.js
+// What an unattended machine shows over its own screens (see cabinetMode in
+// screen.js): GAME OVER and INSERT COIN when a demo ends, and the credit it has,
+// none, in the corner. A game calls the result once a frame, after drawing.
+function cabinetDressing() {
+  let was = false, over = 0;
+  return (ctx, demo) => {
+    const w = ctx.canvas.width, h = ctx.canvas.height;
+    if (was && !demo) over = 150;
+    was = demo;
+    window.__cabinetOver = over; // for the page checks
+    if (over > 0) {
+      over--;
+      const x = Math.floor(w / 2 - 42), y = Math.floor(h / 2 - 15);
+      ctx.fillStyle = '#000'; ctx.fillRect(x, y, 84, 31);
+      text(ctx, 'GAME OVER', w / 2, y + 5, '#ff3b3b', { align: 'center' });
+      text(ctx, 'INSERT COIN', w / 2, y + 18, '#ffd23f', { align: 'center' });
+    }
+    ctx.fillStyle = '#000'; ctx.fillRect(w - 58, h - 12, 54, 10);
+    text(ctx, 'CREDIT 0', w - 6, h - 10, '#ffffff', { align: 'right' });
   };
 }
 
@@ -793,6 +838,7 @@ function placeOn(loop, f) {
 }
 const toPx = ([x, y]) => [Math.round(OX + x * UNIT), Math.round(OY + y * UNIT)];
 
+const cabinet = cabinetMode(), dress = cabinetDressing();
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const canvas = document.getElementById('c');
 const screen = makeScreen({ canvas, stage: document.getElementById('stage'), frame: document.getElementById('screen'), w: W, h: H, crtKey: 'lk.arcade.crt' });
@@ -1038,7 +1084,7 @@ function banner(lines, y) {
 function drawGame() {
   drawBoard(ctx, spin ? spin.from : board, spin ? Math.min(1, spin.t / 17) : 0);
   text(ctx, 'MIXED IN ' + mixedIn + ' MOVES', W / 2, TOP + 4, INK.grey, { align: 'center' });
-  if (demo) { if (blinkOn()) text(ctx, 'DEMO PLAY', W / 2, 222, INK.yellow, { align: 'center' }); }
+  if (demo) { if (blinkOn()) text(ctx, (cabinet ? 'INSERT COIN' : 'DEMO PLAY'), W / 2, 222, INK.yellow, { align: 'center' }); }
   else if (input.touch) {
     if (moves(board) === 0) text(ctx, 'THE BUTTONS TURN THE LOOPS', W / 2, 222, INK.grey, { align: 'center' });
   } else {
@@ -1072,7 +1118,7 @@ function drawTitle() {
     text(ctx, 'MIXED IN ' + LEVELS[lv], r.x + r.w - 8, r.y + 4, INK.grey, { align: 'right' });
     text(ctx, bestLine(lv), r.x + r.w - 8, r.y + 13, INK.dim, { align: 'right' });
   });
-  if (blinkOn()) text(ctx, input.touch ? 'TAP A LEVEL TO PLAY' : 'UP / DOWN, THEN SPACE', W / 2, 184, INK.yellow, { align: 'center' });
+  if (blinkOn()) text(ctx, cabinet ? 'INSERT COIN' : input.touch ? 'TAP A LEVEL TO PLAY' : 'UP / DOWN, THEN SPACE', W / 2, 184, INK.yellow, { align: 'center' });
   text(ctx, 'LEON KARSTEN 2026', W / 2, 226, INK.dim, { align: 'center' });
 }
 
@@ -1089,7 +1135,7 @@ function drawHowTo() {
   row(160, 'EASY, MEDIUM, HARD', '1000 2000 3000');
   row(172, 'EACH MOVE UNDER THE MIX', '200');
   row(184, 'EACH SECOND UNDER 5 MINUTES', '5');
-  if (blinkOn()) text(ctx, input.touch ? 'TAP TO PLAY' : 'PRESS SPACE', W / 2, 208, INK.yellow, { align: 'center' });
+  if (blinkOn()) text(ctx, cabinet ? 'INSERT COIN' : input.touch ? 'TAP TO PLAY' : 'PRESS SPACE', W / 2, 208, INK.yellow, { align: 'center' });
 }
 
 function drawScores() {
@@ -1105,7 +1151,7 @@ function drawScores() {
     text(ctx, String(r.s), 196, y, ink, { align: 'right' });
     text(ctx, r.n, 220, y, ink);
   });
-  if (blinkOn()) text(ctx, input.touch ? 'TAP TO PLAY' : 'PRESS SPACE', W / 2, 214, INK.yellow, { align: 'center' });
+  if (blinkOn()) text(ctx, cabinet ? 'INSERT COIN' : input.touch ? 'TAP TO PLAY' : 'PRESS SPACE', W / 2, 214, INK.yellow, { align: 'center' });
 }
 
 function drawEntry() {
@@ -1118,6 +1164,11 @@ function drawEntry() {
 }
 
 function draw() {
+  drawScreen();
+  if (cabinet) dress(ctx, demo);
+}
+
+function drawScreen() {
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, W, H);
   drawHud();
@@ -1153,7 +1204,7 @@ function drawCard() {
 
 // ---------------------------------------------------------------- loop
 
-const PAGES = { title: ['howto', 600], howto: ['demo', 600], scores: ['title', 420] };
+const PAGES = { title: [cabinet ? 'demo' : 'howto', cabinet ? 300 : 600], howto: ['demo', 600], scores: ['title', 420] };
 function attractTick() {
   pageT++;
   const [next, length] = PAGES[page];
@@ -1208,6 +1259,7 @@ function frame(now) {
 requestAnimationFrame(frame);
 
 window.__sortedgame = {
+  get cabinet() { return cabinet; },
   get mode() { return mode; },
   get page() { return page; },
   get demo() { return demo; },

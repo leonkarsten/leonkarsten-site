@@ -4,5 +4,6 @@
   "summary": "Nothing to shoot at, only something to protect. Open the sky ahead of each missile; the score is how long you held.",
   "app": "/play/six-cities/",
   "image": "/play/six-cities/card.png",
+  "live": true,
   "tags": ["defence", "tap or keyboard"]
 }

@@ -4,5 +4,6 @@
   "summary": "Two loops of beads and a turntable between them. Turn the loops, spin the middle, and get every bead home to its own colour.",
   "app": "/play/sorted/",
   "image": "/play/sorted/card.png",
+  "live": true,
   "tags": ["puzzle", "keyboard or touch"]
 }

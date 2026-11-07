@@ -180,6 +180,13 @@ body.touch .pad { display: flex; }
   body.touch:not(.no-pad) .pad.loops { display: flex; flex-direction: column; gap: 12px; grid-area: start; align-self: center; margin-right: 12px; padding: 0; }
   body.touch:not(.no-pad) .pad.loops .start { margin: 0; }
 }
+
+/* ?cabinet: the game as the screen of a cabinet on the Games page. */
+body.cabinet { display: block; background: #000; overflow: hidden; }
+body.cabinet .bar, body.cabinet .pad { display: none !important; }
+body.cabinet .stage { padding: 0; width: 100vw; height: 100vh; }
+body.cabinet .screen { width: 100%; height: 100%; box-shadow: none; }
+body.cabinet .screen canvas { width: 100% !important; height: 100% !important; object-fit: contain; image-rendering: auto; }
 </style>
 </head>
 <body class="no-pad">
@@ -328,6 +335,44 @@ function makeScreen({ canvas, stage, frame, w, h, crtKey }) {
     ctx, w, h, fit,
     get crt() { return crt; },
     toggleCrt() { setCrt(!crt); return crt; },
+  };
+}
+
+// ?cabinet is a game running on the Games page as an unattended machine: only
+// its attract loop, no sound, nobody at the controls. The page goes; the screen
+// fills its frame, with black at the sides if it is squarer than the cabinet.
+function cabinetMode() {
+  const on = new URLSearchParams(location.search).has('cabinet');
+  if (on) {
+    document.body.classList.add('cabinet');
+    // A page of cabinets runs several games at once. Each draws every other
+    // frame; its game still runs 60 ticks a second, from the time it is given.
+    const raf = window.requestAnimationFrame.bind(window);
+    window.requestAnimationFrame = cb => raf(() => raf(cb));
+  }
+  return on;
+}
+
+// ---- engine/cabinet.js
+// What an unattended machine shows over its own screens (see cabinetMode in
+// screen.js): GAME OVER and INSERT COIN when a demo ends, and the credit it has,
+// none, in the corner. A game calls the result once a frame, after drawing.
+function cabinetDressing() {
+  let was = false, over = 0;
+  return (ctx, demo) => {
+    const w = ctx.canvas.width, h = ctx.canvas.height;
+    if (was && !demo) over = 150;
+    was = demo;
+    window.__cabinetOver = over; // for the page checks
+    if (over > 0) {
+      over--;
+      const x = Math.floor(w / 2 - 42), y = Math.floor(h / 2 - 15);
+      ctx.fillStyle = '#000'; ctx.fillRect(x, y, 84, 31);
+      text(ctx, 'GAME OVER', w / 2, y + 5, '#ff3b3b', { align: 'center' });
+      text(ctx, 'INSERT COIN', w / 2, y + 18, '#ffd23f', { align: 'center' });
+    }
+    ctx.fillStyle = '#000'; ctx.fillRect(w - 58, h - 12, 54, 10);
+    text(ctx, 'CREDIT 0', w - 6, h - 10, '#ffffff', { align: 'right' });
   };
 }
 
@@ -630,6 +675,7 @@ const SIDE = [
 ];
 const LOGO_INK = ['#ffffff', '#d0f8ff', '#5eeaf5', '#5eeaf5', '#ff8a1e', '#ff8a1e', '#a3501e'];
 
+const cabinet = cabinetMode(), dress = cabinetDressing();
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const canvas = document.getElementById('c');
 const screen = makeScreen({ canvas, stage: document.getElementById('stage'), frame: document.getElementById('screen'), w: W, h: H, crtKey: 'lk.arcade.crt' });
@@ -777,7 +823,7 @@ syncToggles();
 // ---------------------------------------------------------------- drawing
 
 const blinkOn = (rate = 32) => reduceMotion || ((clock / rate) | 0) % 2 === 0;
-const prompt = () => (input.touch ? 'TAP START' : 'PRESS SPACE');
+const prompt = () => (cabinet ? 'INSERT COIN' : input.touch ? 'TAP START' : 'PRESS SPACE');
 const label = i => (demo ? (i ? 'ORANGE' : 'BLUE') : i === 0 ? 'ONE' : cpu[1] ? 'CPU' : 'TWO');
 
 function lineRect(e) {
@@ -837,7 +883,7 @@ function drawTitle() {
   });
   text(ctx, 'DOTS AND BOXES. CLOSE A BOX', W / 2, 176, INK.white, { align: 'center' });
   text(ctx, 'AND YOU GO AGAIN.', W / 2, 188, INK.white, { align: 'center' });
-  if (blinkOn()) text(ctx, input.touch ? 'TAP A GAME TO PLAY' : 'UP / DOWN, THEN SPACE', W / 2, 214, INK.yellow, { align: 'center' });
+  if (blinkOn()) text(ctx, cabinet ? 'INSERT COIN' : input.touch ? 'TAP A GAME TO PLAY' : 'UP / DOWN, THEN SPACE', W / 2, 214, INK.yellow, { align: 'center' });
   text(ctx, 'LEON KARSTEN 2026', W / 2, 254, INK.dim, { align: 'center' });
 }
 
@@ -855,6 +901,11 @@ function drawHowTo() {
 }
 
 function draw2() {
+  drawScreen();
+  if (cabinet) dress(ctx, demo);
+}
+
+function drawScreen() {
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, W, H);
   if (mode === 'attract') { if (page === 'title') drawTitle(); else drawHowTo(); return; }
@@ -866,7 +917,7 @@ function draw2() {
     text(ctx, ending, W / 2, 252, INK.yellow, { align: 'center' });
     if (t >= 40 && !demo && blinkOn()) text(ctx, prompt(), W / 2, 262, INK.cyan, { align: 'center' });
   } else if (demo) {
-    if (blinkOn()) text(ctx, 'DEMO PLAY', W / 2, 256, INK.yellow, { align: 'center' });
+    if (blinkOn()) text(ctx, (cabinet ? 'INSERT COIN' : 'DEMO PLAY'), W / 2, 256, INK.yellow, { align: 'center' });
   } else {
     const who = board.turn;
     text(ctx, (cpu[who] ? 'THE CPU IS THINKING' : (cpu[1] ? 'YOUR TURN' : 'PLAYER ' + (who ? 'TWO' : 'ONE') + ' TO DRAW')), W / 2, 256, SIDE[who].line, { align: 'center' });
@@ -897,7 +948,7 @@ function drawCard() {
 
 // ---------------------------------------------------------------- loop
 
-const PAGES = { title: ['howto', 600], howto: ['demo', 540] };
+const PAGES = { title: [cabinet ? 'demo' : 'howto', cabinet ? 300 : 600], howto: ['demo', 540] };
 function attractTick() {
   pageT++;
   const [next, length] = PAGES[page];
@@ -934,6 +985,7 @@ function frame(now) {
 requestAnimationFrame(frame);
 
 window.__lastline = {
+  get cabinet() { return cabinet; },
   get mode() { return mode; },
   get page() { return page; },
   get demo() { return demo; },

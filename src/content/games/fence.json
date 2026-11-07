@@ -4,5 +4,6 @@
   "summary": "Claim ground by drawing into open space and coming home. You can only be caught while the line is unfinished.",
   "app": "/play/fence/",
   "image": "/play/fence/card.png",
+  "live": true,
   "tags": ["territory", "keyboard or touch"]
 }

@@ -4,5 +4,6 @@
   "summary": "Two bases, three lanes. Send trucks for supply, then rifles, rockets and tanks, and break the CPU base. Same rules, same money.",
   "app": "/play/supply-line/",
   "image": "/play/supply-line/card.png",
+  "live": true,
   "tags": ["strategy", "1 player vs CPU"]
 }

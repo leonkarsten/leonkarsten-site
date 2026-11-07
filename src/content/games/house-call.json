@@ -4,5 +4,6 @@
   "summary": "A spray can, a house full of rooms, and spiders that come down on threads. Clear the room, then out by the door.",
   "app": "/play/house-call/",
   "image": "/play/house-call/card.png",
+  "live": true,
   "tags": ["action", "keyboard or touch"]
 }
