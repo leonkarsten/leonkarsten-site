@@ -4,5 +4,6 @@
   "summary": "Guess the word before the fuel runs out. Six wrong letters and the launch is scrubbed; three rockets a game.",
   "app": "/play/launch-window/",
   "image": "/play/launch-window/card.png",
+  "live": true,
   "tags": ["word", "keyboard or touch"]
 }
