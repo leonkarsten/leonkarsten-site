@@ -1446,9 +1446,16 @@ function drawLoco(g, x, turn, parts, clock) {
   return { stackX: x + 125, stackY: ROOF - 38 };
 }
 
-// A signal gantry's lattice girder, seen from the side, on posts behind the train.
-function drawGantryPosts(g, x) {
-  for (const px of [x + 2, x + K.BEAM_W - 6]) { rect(g, '#0c0a10', px - 1, ROOF - K.BEAM_TOP, 6, 120); rect(g, '#3e3a48', px, ROOF - K.BEAM_TOP, 4, 120); }
+// A signal gantry stands on both sides of the track: its far post behind the
+// train, its near post in front of it, down to the ground at the foot of the screen.
+function drawGantryPosts(g, x, near = false) {
+  if (!near) { rect(g, '#0c0a10', x + K.BEAM_W - 9, ROOF - K.BEAM_TOP, 6, 110); rect(g, '#34303e', x + K.BEAM_W - 8, ROOF - K.BEAM_TOP, 4, 110); return; }
+  const top = ROOF - K.BEAM_BOTTOM, foot = 226;
+  rect(g, '#0c0a10', x + 1, top, 8, foot - top);
+  rect(g, '#4e4a5a', x + 2, top, 6, foot - top);
+  rect(g, '#6a6478', x + 2, top, 1, foot - top);
+  for (let y = top + 6; y < foot; y += 12) rect(g, '#2a2632', x + 2, y, 6, 1);
+  rect(g, '#0c0a10', x - 2, foot - 5, 14, 5); rect(g, '#5a5466', x - 1, foot - 4, 12, 3);
 }
 function drawGantry(g, x, clock) {
   const top = ROOF - K.BEAM_TOP, bot = ROOF - K.BEAM_BOTTOM, w = K.BEAM_W;
@@ -1808,7 +1815,7 @@ function drawField() {
   for (const b of bodies) ctx.drawImage(SPR.bandit[b.kind].hit[b.face < 0 ? 'l' : 'r'], Math.round(b.x - cam) - 8, Math.round(b.y) - 24);
   drawPlayer(ctx, cam);
   drawFire(ctx, cam);
-  for (const gt of s.gantries) drawGantry(ctx, Math.round(gt.x - cam), clock);
+  for (const gt of s.gantries) { drawGantry(ctx, Math.round(gt.x - cam), clock); drawGantryPosts(ctx, Math.round(gt.x - cam), true); }
   for (const p of bits) rect(ctx, p.life > 0.5 ? p.ink : '#5a3a2a', p.x - cam, p.y, 1, 1);
   for (const p of pops) text(ctx, p.s, Math.round(p.x - cam), Math.round(p.y), p.t > 15 || blinkOn(4) ? p.ink : INK.dim, { align: 'center' });
   // sand blowing past
@@ -2071,7 +2078,7 @@ window.__sandstormexpress = {
   attract(p) { toAttract(p); },
   emptyGun() { s.p.cyl = 0; },
   quiet() { s.train.things = s.train.things.filter(t => !isBandit(t) || t.car > 2); s.gantryIn = 1e9; s.eshots = []; },
-  gantryHere() { s.gantries.push({ x: s.p.x + 6, hit: false }); },
+  gantryHere(at = 6) { s.gantries.push({ x: s.p.x + at, hit: false }); },
   toBoss() { const tr = s.train; s.train.things = s.train.things.filter(t => !isBandit(t)); s.p.x = tr.tender.x0 + 40; s.cam = lockCam(s); s.gantryIn = 1e9; },
   endGame(score) { demo = false; s.score = score; mode = 'over'; timer = 1; },
 };
