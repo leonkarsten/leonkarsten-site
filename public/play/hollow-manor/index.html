@@ -677,7 +677,9 @@ const BALL_R = 4.5;
 const G = 0.12;              // the table's tilt, in pixels per tick per tick
 const MAX_SPEED = 14;        // pixels per tick
 const SUBSTEPS = 10;         // 1.4 pixels a step at most, against a 4.5 pixel ball
-const FLIP_LEN = 33, FLIP_R = 3.5;
+// 35 leaves a 17 px gap between the flippers; at 33 (20 px) a player who reacts
+// like most people lost a ball every 12 seconds, down the middle.
+const FLIP_LEN = 35, FLIP_R = 3.5;
 const FLIP_DOWN = 0.5, FLIP_UP = -0.45; // radians below the horizontal, at rest and raised
 const FLIP_SPEED = 0.5;      // radians per tick going up: a flipper snaps
 const PLUNGE_AT = { x: 224, y: Y(396) - 7 };
@@ -729,8 +731,13 @@ function makeTable() {
   wall(6, 234, 20, 234);
   const targets = [180, 198, 216].map(y => ({ x: 20, y0: Y(y), y1: Y(y + 14), down: false }));
 
-  // The spinner's lane down the right side.
+  // The spinner's lane down the right side. Its foot is angled to turn the ball
+  // into the right inlane, back to a flipper: dropped straight down, the lane
+  // fed the right outlane, and three balls in four that came down it drained.
   wall(184, 180, 184, 250);
+  wall(212, 246, 186, 270);
+  // and the same on the left, where a ball running down the wall fell the same way
+  wall(6, 246, 32, 270);
 
   const bumpers = [{ x: 88, y: Y(128), r: 10 }, { x: 136, y: Y(124), r: 10 }, { x: 112, y: Y(166), r: 10 }];
   const crypt = { x: 50, y: Y(150), r: 7 };
