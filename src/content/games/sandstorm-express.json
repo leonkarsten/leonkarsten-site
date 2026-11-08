@@ -1,0 +1,12 @@
+{
+  "name": "Sandstorm Express",
+  "slug": "sandstorm-express",
+  "summary": "Fight along the roofs of a train crossing the desert to the locomotive. Six rounds in the gun, and you reload only by ducking. Free the driver and stop the train.",
+  "app": "/play/sandstorm-express/",
+  "image": "/play/sandstorm-express/card.png",
+  "live": true,
+  "tags": [
+    "run and gun",
+    "keyboard or touch"
+  ]
+}

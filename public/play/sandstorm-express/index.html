@@ -1,0 +1,2082 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sandstorm Express</title>
+<meta name="description" content="Fight along the roofs of a train crossing the desert to the locomotive. Six rounds in the gun, and you reload only by ducking.">
+<meta name="theme-color" content="#000000">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2016%2016'%20shape-rendering='crispEdges'%3E%3Crect%20width='16'%20height='16'%20fill='%23000'/%3E%3Crect%20x='1'%20y='7'%20width='14'%20height='5'%20fill='%236a2430'/%3E%3Crect%20x='1'%20y='6'%20width='14'%20height='1'%20fill='%239a4a48'/%3E%3Crect%20x='3'%20y='8'%20width='3'%20height='2'%20fill='%23ffcf7a'/%3E%3Crect%20x='9'%20y='8'%20width='3'%20height='2'%20fill='%23ffcf7a'/%3E%3Crect%20x='6'%20y='2'%20width='3'%20height='4'%20fill='%233a6ab8'/%3E%3Crect%20x='5'%20y='1'%20width='5'%20height='1'%20fill='%237a4a24'/%3E%3C/svg%3E">
+<style>
+:root {
+  --void: #000;
+  --chrome: #8f8fb0;
+  --chrome-hi: #5eeaf5;
+  --edge: #2a2a40;
+  --start: #e8302f;
+  --ui: ui-monospace, 'Cascadia Mono', Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; height: 100%; background: var(--void); color: var(--chrome); }
+body {
+  font-family: var(--ui);
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  height: 100dvh;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: 'bar' 'stage' 'pad';
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.bar {
+  grid-area: bar;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+}
+.bar a, .bar button {
+  font: 700 12px/1 var(--ui);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--chrome);
+  background: none;
+  border: 1px solid transparent;
+  padding: 9px 10px;
+  text-decoration: none;
+  cursor: pointer;
+  border-radius: 0;
+}
+.bar a:hover, .bar button:hover, .bar a:focus-visible, .bar button:focus-visible {
+  color: var(--chrome-hi);
+  border-color: var(--edge);
+  outline: none;
+}
+.bar button[aria-pressed='true'] { color: var(--chrome-hi); }
+.toggles { display: flex; gap: 2px; }
+
+.stage {
+  grid-area: stage;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  padding: 8px 16px;
+}
+/* A faint edge, so an unexplored black playfield still has a size. */
+.screen { position: relative; line-height: 0; touch-action: none; box-shadow: 0 0 0 1px #1c1c2c; }
+.screen canvas {
+  display: block;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+/* The CRT switch. Off by default: sharp pixels are the honest picture, the
+   tube is a costume. Scanlines are one per game pixel row (--px is set by
+   the screen fit), so they never beat against the art. */
+.screen.crt { border-radius: 3% / 4%; overflow: hidden; box-shadow: 0 0 0 4px #0b0b14, 0 0 36px rgba(94, 234, 245, 0.12); }
+.screen.crt canvas { filter: saturate(1.25) brightness(1.12) contrast(1.05) blur(calc(var(--px) * 0.18)); }
+.screen.crt::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background:
+    radial-gradient(ellipse at center, rgba(0, 0, 0, 0) 58%, rgba(0, 0, 0, 0.6) 100%),
+    repeating-linear-gradient(to bottom,
+      rgba(0, 0, 0, 0) 0, rgba(0, 0, 0, 0) calc(var(--px) * 0.55),
+      rgba(0, 0, 0, 0.38) calc(var(--px) * 0.55), rgba(0, 0, 0, 0.38) var(--px));
+  box-shadow: inset 0 0 48px rgba(0, 0, 0, 0.75);
+}
+
+/* Touch controls: shown on touch screens only. */
+.pad {
+  grid-area: pad;
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  max-width: 380px;
+  margin: 0 auto;
+  padding: 4px 20px 16px;
+}
+body.touch .pad { display: flex; }
+.dpad {
+  display: grid;
+  grid-template-columns: repeat(3, 54px);
+  grid-template-rows: repeat(3, 50px);
+  gap: 3px;
+}
+.dpad button, .start {
+  font: 700 18px/1 var(--ui);
+  color: var(--chrome);
+  background: #12121e;
+  border: 2px solid var(--edge);
+  border-radius: 6px;
+  padding: 0;
+  touch-action: none;
+  cursor: pointer;
+}
+.dpad button:active { background: #24243a; color: var(--chrome-hi); }
+.dpad .up { grid-area: 1 / 2; }
+.dpad .left { grid-area: 2 / 1; }
+.dpad .right { grid-area: 2 / 3; }
+.dpad .down { grid-area: 3 / 2; }
+.start {
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  background: var(--start);
+  border: 4px solid #7a1414;
+  color: #fff;
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  box-shadow: inset 0 -6px 0 rgba(0, 0, 0, 0.25);
+}
+.start:active { transform: translateY(2px); box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.25); }
+
+/* A phone on its side: d-pad left of the screen, START right of it. A game
+   with no d-pad (its keys are on the screen) moves the bar to a column
+   instead, so an upright screen gets the full height. */
+@media (orientation: landscape) and (max-height: 520px) {
+  body.no-pad {
+    grid-template-rows: minmax(0, 1fr);
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas: 'bar stage';
+  }
+  body.no-pad .bar { flex-direction: column; justify-content: flex-start; align-items: flex-start; }
+  body.no-pad .toggles { flex-direction: column; }
+  .stage { padding: 4px 8px; }
+  body.touch:not(.no-pad) {
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas: 'bar bar bar' 'dpad stage start';
+  }
+  body.touch:not(.no-pad) .pad { display: contents; }
+  body.touch .dpad { grid-area: dpad; align-self: center; margin-left: 12px; }
+  body.touch .start { grid-area: start; align-self: center; margin-right: 16px; }
+}
+
+/* Two-button pairs, for games with two things to turn (Sorted's loops). */
+.pair { display: grid; grid-template-columns: repeat(2, 54px); grid-template-rows: 54px auto; gap: 3px; justify-items: center; }
+.pair button {
+  width: 54px; height: 54px;
+  font: 700 18px/1 var(--ui); color: var(--chrome);
+  background: #12121e; border: 2px solid var(--edge); border-radius: 6px;
+  padding: 0; touch-action: none; cursor: pointer;
+}
+.pair button:active { background: #24243a; color: var(--chrome-hi); }
+.pair span { grid-column: 1 / 3; font: 700 10px/1 var(--ui); letter-spacing: 0.14em; color: var(--chrome); }
+@media (orientation: landscape) and (max-height: 520px) {
+  body.touch:not(.no-pad) .pad.loops { display: flex; flex-direction: column; gap: 12px; grid-area: start; align-self: center; margin-right: 12px; padding: 0; }
+  body.touch:not(.no-pad) .pad.loops .start { margin: 0; }
+}
+
+/* ?cabinet: the game as the screen of a cabinet on the Games page. */
+body.cabinet { display: block; background: #000; overflow: hidden; }
+body.cabinet .bar, body.cabinet .pad { display: none !important; }
+body.cabinet .stage { padding: 0; width: 100vw; height: 100vh; }
+body.cabinet .screen { width: 100%; height: 100%; box-shadow: none; }
+body.cabinet .screen canvas { width: 100% !important; height: 100% !important; object-fit: contain; image-rendering: auto; }
+/* Running, jumping, ducking and fire are each held on their own, so all can be at once. */
+.pad.steer { justify-content: space-between; }
+.pad.steer .group { display: flex; align-items: center; gap: 8px; }
+.pad.steer .hold { width: 58px; height: 58px; font: 700 12px/1 var(--ui); letter-spacing: 0.06em; color: var(--chrome); background: #14141f; border: 1px solid #2a2a3a; border-radius: 10px; touch-action: none; padding: 0; }
+.pad.steer .hold.small { width: 52px; font-size: 10px; }
+.pad.steer .hold:active { background: #24243a; color: var(--chrome-hi); }
+@media (orientation: landscape) and (max-height: 520px) {
+  body.touch .pad.steer .group:first-child { grid-area: dpad; flex-direction: column; align-self: center; margin-left: 12px; }
+  body.touch .pad.steer .right-side { grid-area: start; flex-direction: column; align-self: center; margin-right: 12px; }
+  body.touch .pad.steer .right-side .start { margin: 0; }
+}
+</style>
+</head>
+<body>
+
+<header class="bar">
+  <a href="/games/">&larr; Games</a>
+  <div class="toggles">
+    <button type="button" data-action="crt" aria-pressed="false">CRT off</button>
+    <button type="button" data-action="mute" aria-pressed="true">Sound on</button>
+    <button type="button" data-action="pause">Pause</button>
+  </div>
+</header>
+
+<main class="stage" id="stage">
+  <div class="screen" id="screen">
+    <canvas id="c" role="img" aria-label="Sandstorm Express game screen. Left and right run, up jumps, down ducks and reloads, Space fires, P pauses."></canvas>
+  </div>
+</main>
+
+<div class="pad steer">
+  <div class="group">
+    <button type="button" class="hold" data-hold="left" aria-label="Run left">&#9664;</button>
+    <button type="button" class="hold" data-hold="right" aria-label="Run right">&#9654;</button>
+  </div>
+  <div class="group right-side">
+    <button type="button" class="hold small" data-hold="duck">DUCK</button>
+    <button type="button" class="hold small" data-hold="jump">JUMP</button>
+    <button type="button" class="start" data-action="start">Fire</button>
+  </div>
+</div>
+
+<script>
+(() => {
+'use strict';
+// ---- engine/font.js
+// 5x7 bitmap font, one string per glyph, rows separated by spaces. Drawn with
+// fillRect so it stays on the pixel grid at any scale; there is no web font.
+const GLYPHS = {
+  A: '.###. #...# #...# ##### #...# #...# #...#',
+  B: '####. #...# #...# ####. #...# #...# ####.',
+  C: '.###. #...# #.... #.... #.... #...# .###.',
+  D: '####. #...# #...# #...# #...# #...# ####.',
+  E: '##### #.... #.... ####. #.... #.... #####',
+  F: '##### #.... #.... ####. #.... #.... #....',
+  G: '.###. #...# #.... #.### #...# #...# .####',
+  H: '#...# #...# #...# ##### #...# #...# #...#',
+  I: '.###. ..#.. ..#.. ..#.. ..#.. ..#.. .###.',
+  J: '..### ...#. ...#. ...#. ...#. #..#. .##..',
+  K: '#...# #..#. #.#.. ##... #.#.. #..#. #...#',
+  L: '#.... #.... #.... #.... #.... #.... #####',
+  M: '#...# ##.## #.#.# #.#.# #...# #...# #...#',
+  N: '#...# #...# ##..# #.#.# #..## #...# #...#',
+  O: '.###. #...# #...# #...# #...# #...# .###.',
+  P: '####. #...# #...# ####. #.... #.... #....',
+  Q: '.###. #...# #...# #...# #.#.# #..#. .##.#',
+  R: '####. #...# #...# ####. #.#.. #..#. #...#',
+  S: '.###. #...# #.... .###. ....# #...# .###.',
+  T: '##### ..#.. ..#.. ..#.. ..#.. ..#.. ..#..',
+  U: '#...# #...# #...# #...# #...# #...# .###.',
+  V: '#...# #...# #...# #...# #...# .#.#. ..#..',
+  W: '#...# #...# #...# #.#.# #.#.# #.#.# .#.#.',
+  X: '#...# #...# .#.#. ..#.. .#.#. #...# #...#',
+  Y: '#...# #...# .#.#. ..#.. ..#.. ..#.. ..#..',
+  Z: '##### ....# ...#. ..#.. .#... #.... #####',
+  0: '.###. #...# #..## #.#.# ##..# #...# .###.',
+  1: '..#.. .##.. ..#.. ..#.. ..#.. ..#.. .###.',
+  2: '.###. #...# ....# ...#. ..#.. .#... #####',
+  3: '##### ...#. ..#.. ...#. ....# #...# .###.',
+  4: '...#. ..##. .#.#. #..#. ##### ...#. ...#.',
+  5: '##### #.... ####. ....# ....# #...# .###.',
+  6: '..##. .#... #.... ####. #...# #...# .###.',
+  7: '##### ....# ...#. ..#.. .#... .#... .#...',
+  8: '.###. #...# #...# .###. #...# #...# .###.',
+  9: '.###. #...# #...# .#### ....# ...#. .##..',
+  ' ': '..... ..... ..... ..... ..... ..... .....',
+  '.': '..... ..... ..... ..... ..... .##.. .##..',
+  ',': '..... ..... ..... ..... .##.. ..#.. .#...',
+  '!': '..#.. ..#.. ..#.. ..#.. ..#.. ..... ..#..',
+  '?': '.###. #...# ....# ...#. ..#.. ..... ..#..',
+  '-': '..... ..... ..... .###. ..... ..... .....',
+  '+': '..... ..#.. ..#.. ##### ..#.. ..#.. .....',
+  '=': '..... ..... ##### ..... ##### ..... .....',
+  ':': '..... .##.. .##.. ..... .##.. .##.. .....',
+  '/': '....# ...#. ...#. ..#.. .#... .#... #....',
+  "'": '..#.. ..#.. .#... ..... ..... ..... .....',
+  '<': '...#. ..#.. .#... #.... .#... ..#.. ...#.',
+  '>': '.#... ..#.. ...#. ....# ...#. ..#.. .#...',
+  '*': '..... #...# .#.#. ..#.. .#.#. #...# .....',
+  '%': '##..# ##.#. ...#. ..#.. .#... .#.## #..##',
+};
+const FONT_CHARS = Object.keys(GLYPHS).join('');
+
+const FONT_BITS = {};
+for (const [ch, rows] of Object.entries(GLYPHS)) FONT_BITS[ch] = rows.split(' ');
+
+const GLYPH_W = 5, GLYPH_H = 7, ADVANCE = 6;
+
+function textWidth(str, scale = 1) {
+  return str.length ? (str.length * ADVANCE - 1) * scale : 0;
+}
+
+// `color` is one colour, or an array of seven (one per glyph row) for the
+// striped logos arcade title screens used.
+function text(ctx, str, x, y, color, opts = {}) {
+  const scale = opts.scale || 1;
+  const s = String(str).toUpperCase();
+  let left = x;
+  if (opts.align === 'center') left = x - Math.floor(textWidth(s, scale) / 2);
+  else if (opts.align === 'right') left = x - textWidth(s, scale);
+  for (let i = 0; i < s.length; i++) {
+    const rows = FONT_BITS[s[i]] || FONT_BITS['?'];
+    const gx = left + i * ADVANCE * scale;
+    for (let r = 0; r < GLYPH_H; r++) {
+      ctx.fillStyle = Array.isArray(color) ? color[r] : color;
+      const row = rows[r];
+      for (let c = 0; c < GLYPH_W; c++) {
+        if (row[c] === '#') ctx.fillRect(gx + c * scale, y + r * scale, scale, scale);
+      }
+    }
+  }
+}
+
+// ---- engine/screen.js
+// The arcade screen: a small fixed-resolution canvas, scaled up in whole
+// DEVICE pixels so every game pixel is the same size and stays sharp. A 336px
+// screen on a 3x phone is drawn at exactly 3 device pixels per game pixel,
+// never 3.35, which is what makes uneven, shimmering pixels.
+function makeScreen({ canvas, stage, frame, w, h, crtKey }) {
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+
+  function fit() {
+    const dpr = window.devicePixelRatio || 1;
+    // clientWidth/Height include the stage's padding; the screen gets only
+    // what is inside it.
+    const cs = getComputedStyle(stage);
+    const aw = stage.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    const ah = stage.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+    const s = Math.max(1, Math.floor(Math.min((aw * dpr) / w, (ah * dpr) / h)));
+    canvas.style.width = (s * w) / dpr + 'px';
+    canvas.style.height = (s * h) / dpr + 'px';
+    frame.style.setProperty('--px', s / dpr + 'px');
+  }
+  addEventListener('resize', fit);
+  if (window.visualViewport) visualViewport.addEventListener('resize', fit);
+  fit();
+
+  let crt = false;
+  try { crt = localStorage.getItem(crtKey) === '1'; } catch { crt = false; }
+  function setCrt(on) {
+    crt = on;
+    frame.classList.toggle('crt', on);
+    try { localStorage.setItem(crtKey, on ? '1' : '0'); } catch {}
+  }
+  setCrt(crt);
+
+  return {
+    ctx, w, h, fit,
+    get crt() { return crt; },
+    toggleCrt() { setCrt(!crt); return crt; },
+  };
+}
+
+// ?cabinet is a game running on the Games page as an unattended machine: only
+// its attract loop, no sound, nobody at the controls. The page goes; the screen
+// fills its frame, with black at the sides if it is squarer than the cabinet.
+function cabinetMode() {
+  const on = new URLSearchParams(location.search).has('cabinet');
+  if (on) {
+    document.body.classList.add('cabinet');
+    // A page of cabinets runs several games at once. Each draws every other
+    // frame; its game still runs 60 ticks a second, from the time it is given.
+    const raf = window.requestAnimationFrame.bind(window);
+    window.requestAnimationFrame = cb => raf(() => raf(cb));
+  }
+  return on;
+}
+
+// ---- engine/cabinet.js
+// What an unattended machine shows over its own screens (see cabinetMode in
+// screen.js): GAME OVER and INSERT COIN when a demo ends, and the credit it has,
+// none, in the corner. A game calls the result once a frame, after drawing.
+function cabinetDressing() {
+  let was = false, over = 0;
+  return (ctx, demo) => {
+    const w = ctx.canvas.width, h = ctx.canvas.height;
+    if (was && !demo) over = 150;
+    was = demo;
+    window.__cabinetOver = over; // for the page checks
+    if (over > 0) {
+      over--;
+      const x = Math.floor(w / 2 - 42), y = Math.floor(h / 2 - 15);
+      ctx.fillStyle = '#000'; ctx.fillRect(x, y, 84, 31);
+      text(ctx, 'GAME OVER', w / 2, y + 5, '#ff3b3b', { align: 'center' });
+      text(ctx, 'INSERT COIN', w / 2, y + 18, '#ffd23f', { align: 'center' });
+    }
+    ctx.fillStyle = '#000'; ctx.fillRect(w - 58, h - 12, 54, 10);
+    text(ctx, 'CREDIT 0', w - 6, h - 10, '#ffffff', { align: 'right' });
+  };
+}
+
+// ---- engine/sound.js
+// Chip sound: square, triangle and noise voices made in the browser. No audio
+// files. Browsers only allow sound after a tap or key, so `wake()` is called
+// from every input handler and does nothing until then.
+function makeSound(muteKey) {
+  let ac = null, out = null;
+  let muted = false;
+  try { muted = localStorage.getItem(muteKey) === '1'; } catch { muted = false; }
+
+  function wake() {
+    if (ac) { if (ac.state === 'suspended') ac.resume(); return; }
+    const Ctor = window.AudioContext || window.webkitAudioContext;
+    if (!Ctor) return;
+    ac = new Ctor();
+    out = ac.createGain();
+    out.gain.value = muted ? 0 : 1;
+    out.connect(ac.destination);
+  }
+
+  // One note. `at` is seconds from now, `to` slides the pitch.
+  function note(freq, dur, { type = 'square', vol = 0.05, at = 0, to = null } = {}) {
+    if (!ac) return;
+    const t = ac.currentTime + at;
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(freq, t);
+    if (to) o.frequency.exponentialRampToValueAtTime(to, t + dur);
+    g.gain.setValueAtTime(vol, t);
+    g.gain.setValueAtTime(vol, t + dur * 0.7);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(out);
+    o.start(t); o.stop(t + dur + 0.02);
+  }
+
+  // A run of notes: [[freq, dur], ...], each after the last; 0 is a rest.
+  function tune(notes, opts = {}) {
+    let at = opts.at || 0;
+    for (const [f, d] of notes) {
+      if (f) note(f, d * 0.92, { ...opts, at });
+      at += d;
+    }
+  }
+
+  function noise(dur, { vol = 0.2, cutoff = 900, at = 0 } = {}) {
+    if (!ac) return;
+    const len = Math.floor(ac.sampleRate * dur);
+    const buf = ac.createBuffer(1, len, ac.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len) ** 2;
+    const s = ac.createBufferSource(); s.buffer = buf;
+    const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = cutoff;
+    const g = ac.createGain(); g.gain.value = vol;
+    s.connect(f); f.connect(g); g.connect(out);
+    s.start(ac.currentTime + at);
+  }
+
+  // A held sound (an engine): filtered noise that runs for the whole session
+  // and is gated by its gain. Starting a source every frame is what makes
+  // engine sound crackle. Returns set(on); safe to call before wake().
+  function drone({ cutoff = 420, vol = 0.16 } = {}) {
+    let gain = null;
+    return on => {
+      if (!ac) return;
+      if (!gain) {
+        const len = ac.sampleRate * 2;
+        const buf = ac.createBuffer(1, len, ac.sampleRate);
+        const d = buf.getChannelData(0);
+        for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+        const s = ac.createBufferSource(); s.buffer = buf; s.loop = true;
+        const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = cutoff;
+        gain = ac.createGain(); gain.gain.value = 0;
+        s.connect(f); f.connect(gain); gain.connect(out);
+        s.start();
+      }
+      gain.gain.setTargetAtTime(on ? vol : 0, ac.currentTime, 0.03);
+    };
+  }
+
+  function setMuted(on) {
+    muted = on;
+    if (out) out.gain.value = on ? 0 : 1;
+    try { localStorage.setItem(muteKey, on ? '1' : '0'); } catch {}
+  }
+
+  return {
+    wake, note, tune, noise, drone,
+    get muted() { return muted; },
+    toggleMute() { setMuted(!muted); return muted; },
+  };
+}
+
+// ---- engine/input.js
+// Keyboard and touch in one place. `held` is what a game polls each tick;
+// `onDir` fires once per press (menus, initials); `onAction` carries the
+// buttons: start, pause, back, crt, mute.
+//
+// A word game passes `onLetter`: then every letter key is a letter (WASD stop
+// being directions, P/C/M stop being shortcuts; those stay on the buttons) and
+// only the arrows move. `onKey(code)` gets any other key and returns true if
+// it used it. `onPoint(x, y)` receives taps on the screen in GAME
+// pixels; returning true means the game used the tap, otherwise it is START.
+function makeInput({ screen, onAction, onDir, onAny, onLetter = null, onPoint = null, onKey = null }) {
+  // `fire` is Space, Enter or the START button while held, for games that
+  // hold a trigger down; every other game ignores it.
+  const held = { up: false, down: false, left: false, right: false, fire: false };
+  const KEYS = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
+  const ACTIONS = { Space: 'start', Enter: 'start', Escape: 'back' };
+  if (!onLetter) {
+    Object.assign(KEYS, { KeyW: 'up', KeyS: 'down', KeyA: 'left', KeyD: 'right' });
+    Object.assign(ACTIONS, { KeyP: 'pause', KeyC: 'crt', KeyM: 'mute' });
+  }
+
+  let touch = matchMedia('(pointer: coarse)').matches;
+  const markTouch = on => {
+    touch = on;
+    document.body.classList.toggle('touch', on);
+  };
+  markTouch(touch);
+  addEventListener('touchstart', () => { if (!touch) markTouch(true); }, { passive: true });
+
+  addEventListener('keydown', e => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const dir = KEYS[e.code];
+    if (dir) {
+      e.preventDefault();
+      onAny();
+      if (!e.repeat) onDir(dir);
+      held[dir] = true;
+      return;
+    }
+    const action = ACTIONS[e.code];
+    if (action) {
+      if (action === 'start') held.fire = true;
+      // Space and Enter on a focused button or link belong to that control.
+      if ((e.code === 'Space' || e.code === 'Enter') && e.target.closest && e.target.closest('button, a')) return;
+      e.preventDefault();
+      onAny();
+      if (!e.repeat) onAction(action);
+      return;
+    }
+    // e.key, not e.code: the letter printed on the key, whatever the layout.
+    // Digits come through the same door, for games that number their keys.
+    if (onLetter && /^[a-z0-9]$/i.test(e.key)) {
+      e.preventDefault();
+      onAny();
+      if (!e.repeat) onLetter(e.key.toUpperCase());
+    }
+    // Anything else a game asked for by code (Z for undo, R for restart).
+    else if (onKey && !e.repeat && onKey(e.code)) { e.preventDefault(); onAny(); }
+  });
+  addEventListener('keyup', e => {
+    const dir = KEYS[e.code];
+    if (dir) held[dir] = false;
+    if (ACTIONS[e.code] === 'start') held.fire = false;
+  });
+  addEventListener('blur', () => { held.up = held.down = held.left = held.right = held.fire = false; });
+
+  for (const b of document.querySelectorAll('[data-dir]')) {
+    const dir = b.dataset.dir;
+    const down = e => {
+      e.preventDefault();
+      onAny();
+      held.up = held.down = held.left = held.right = false;
+      held[dir] = true;
+      onDir(dir);
+    };
+    const up = () => { held[dir] = false; };
+    b.addEventListener('pointerdown', down);
+    b.addEventListener('pointerup', up);
+    b.addEventListener('pointerleave', up);
+    b.addEventListener('pointercancel', up);
+    b.addEventListener('contextmenu', e => e.preventDefault());
+  }
+  // Buttons that send a letter (Sorted's left loop is A and D).
+  for (const b of document.querySelectorAll('[data-letter]')) {
+    b.addEventListener('pointerdown', e => { e.preventDefault(); onAny(); if (onLetter) onLetter(b.dataset.letter); });
+    b.addEventListener('contextmenu', e => e.preventDefault());
+  }
+  for (const b of document.querySelectorAll('[data-action]')) {
+    const action = b.dataset.action;
+    // pointerdown for the START button, so it answers as fast as the d-pad;
+    // click for the toggles, so keyboard users can press them too.
+    if (b.classList.contains('start')) {
+      b.addEventListener('pointerdown', e => { e.preventDefault(); onAny(); held.fire = true; onAction(action); });
+      for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(ev, () => { held.fire = false; });
+    } else {
+      b.addEventListener('click', () => { onAny(); onAction(action); });
+    }
+  }
+  screen.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    onAny();
+    if (onPoint) {
+      const r = screen.getBoundingClientRect();
+      const x = ((e.clientX - r.left) * screen.width) / r.width;
+      const y = ((e.clientY - r.top) * screen.height) / r.height;
+      if (onPoint(x, y)) return;
+    }
+    onAction('start');
+  });
+
+  return { held, get touch() { return touch; } };
+}
+
+// ---- engine/scores.js
+// The top-ten table, kept on this device only. A new browser starts with a
+// table of invented initials so the attract mode has something to show.
+const ENTRY_LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ.';
+
+function makeScores(key, defaults) {
+  let table = defaults.map(r => ({ ...r }));
+  try {
+    const saved = JSON.parse(localStorage.getItem(key) || 'null');
+    if (Array.isArray(saved) && saved.length === 10 && saved.every(r => typeof r.s === 'number' && typeof r.n === 'string')) table = saved;
+  } catch {}
+
+  return {
+    get table() { return table; },
+    get top() { return table[0].s; },
+    qualifies(score) { return score > 0 && score > table[9].s; },
+    // Returns the rank (0-9) the new row landed on.
+    add(n, s) {
+      let rank = table.findIndex(r => s > r.s);
+      if (rank === -1) return -1;
+      table.splice(rank, 0, { n, s });
+      table.length = 10;
+      try { localStorage.setItem(key, JSON.stringify(table)); } catch {}
+      return rank;
+    },
+  };
+}
+
+// ---- engine/entry.js
+// Three initials, drawn large, with tap targets for games that have no d-pad:
+// on a touch screen a tap above a letter's middle steps it up, below steps it
+// down, and a tap anywhere else accepts it. (Without this a phone player in a
+// tap-only game could only ever enter AAA.)
+function initialsLayout(w, y) {
+  return { x0: Math.round(w / 2 - 39), y, step: 30 };
+}
+
+function arrow(ctx, cx, y, up, ink) {
+  ctx.fillStyle = ink;
+  for (let r = 0; r < 4; r++) ctx.fillRect(cx - r, up ? y + r : y + 3 - r, r * 2 + 1, 1);
+}
+
+function drawInitials(ctx, entry, L, { blinkOn, touch, ink }) {
+  for (let i = 0; i < 3; i++) {
+    const x = L.x0 + i * L.step;
+    const current = i === entry.pos;
+    if (!current || blinkOn) text(ctx, ENTRY_LETTERS[entry.letters[i]], x, L.y, current ? ink.yellow : ink.white, { scale: 3 });
+    ctx.fillStyle = current ? ink.yellow : ink.dim;
+    ctx.fillRect(x - 2, L.y + 26, 18, 2);
+    if (touch && current) {
+      arrow(ctx, x + 7, L.y - 9, true, ink.yellow);
+      arrow(ctx, x + 7, L.y + 32, false, ink.yellow);
+    }
+  }
+}
+
+// 'up', 'down' or 'next' for a tap at (x, y) in game pixels.
+function tapInitials(entry, L, x, y) {
+  const left = L.x0 + entry.pos * L.step - 8, right = left + 32;
+  if (x < left || x > right) return 'next';
+  if (y >= L.y - 16 && y < L.y + 11) return 'up';
+  if (y >= L.y + 11 && y <= L.y + 40) return 'down';
+  return 'next';
+}
+
+// ---- games/sandstorm-express/rules.js
+// Sandstorm Express: one long train crossing the desert, fought roof by roof
+// from the last carriage to the locomotive. Run, jump the gaps, duck the
+// signal gantries and the high shots, jump the low ones. Six rounds in the
+// gun and a limited reserve: you reload only while ducking, a round at a time.
+// No drawing here, so the tests can play it.
+const W = 320, H = 240, TOP = 16, BOTTOM = 226;
+const ROOF = 160;              // the carriage roofs: feet stand here
+
+// Everything tunable lives in K, so the tests can read it.
+const K = {
+  TS: 3.2,            // how fast the ground passes under the train, pixels a tick
+  G: 0.24, JUMP: 4.4, RUN: 1.35,
+  STAND_H: 24, DUCK_H: 14,
+  HIGH: 20, LOW: 6,   // enemy shots, this far above the roof: high misses a ducking player, low misses a jumping one
+  SHOT_STAND: 17, SHOT_DUCK: 9, SHOT_SPEED: 5, SHOT_RANGE: 260,
+  BEAM_TOP: 60, BEAM_BOTTOM: 17, BEAM_W: 40, // a signal gantry's lattice girder, above the roof: no jumping over it
+  CYL: 6, START_RESERVE: 18, MAX_RESERVE: 48,
+  RELOAD_TICKS: 16, FIRE_GAP: 16,
+  COYOTE: 6,          // a jump still works this many ticks after running off an edge
+  HEALTH: 100, SAFE_TICKS: 50,
+  RESUPPLY_GAP: 900,  // the driver throws rounds to a dry player at most once in 15 seconds
+};
+const HURT = { high: 8, low: 8, touch: 10, blast: 15, gantry: 18, fall: 25 };
+const HEAL = { canteen: 25, water: 15 };     // water: every fifth bandit you down drops some
+const AMMO = { box: 10, rounds: 2, resupply: 6 };
+const DROP_WATER_EVERY = 5;
+const BANDIT = {
+  gun: { hp: 2, pts: 100, h: 22 },   // stands, shoots high, and every third shot at your feet
+  low: { hp: 2, pts: 150, h: 13 },   // crouches, shoots low: only a ducking shot reaches him
+  dyn: { hp: 2, pts: 200, h: 22 },   // lobs dynamite
+  rush: { hp: 1, pts: 100, h: 22 },  // runs at you
+};
+const BOSS = { turret: 10, hatch: 8, boss: 12 };
+const PTS = { pickup: 50, turret: 1000, hatch: 1000, boss: 3000, rescue: 5000, health: 20, round: 10 };
+
+// The train, last carriage first. Positions are from each carriage's rear end.
+const CARS = [
+  { w: 200, gap: 16, things: [['gun', 150]] },
+  { w: 200, gap: 18, things: [['gun', 70], ['ammo', 110], ['gun', 165]] },
+  { w: 200, gap: 18, things: [['low', 100], ['gun', 170]] },
+  { w: 200, gap: 20, things: [['canteen', 40], ['gun', 90], ['low', 160]] },
+  { w: 200, gap: 20, things: [['ammo', 30], ['rush', 80], ['gun', 150]] },
+  { w: 200, gap: 22, things: [['low', 70], ['rush', 130], ['gun', 180]] },
+  { w: 200, gap: 22, things: [['canteen', 30], ['ammo', 70], ['dyn', 120], ['gun', 170]] },
+  { w: 200, gap: 24, things: [['rush', 60], ['low', 110], ['dyn', 175]] },
+  { w: 200, gap: 24, things: [['ammo', 30], ['gun', 70], ['gun', 120], ['low', 170]] },
+  { w: 200, gap: 26, things: [['canteen', 30], ['dyn', 100], ['rush', 140], ['gun', 185]] },
+  { w: 200, gap: 26, things: [['ammo', 30], ['low', 60], ['dyn', 120], ['rush', 160]] },
+  { w: 200, gap: 28, things: [['canteen', 40], ['ammo', 80], ['gun', 150], ['low', 185]] },
+];
+const TENDER_W = 140;
+
+function buildTrain() {
+  const roofs = [], things = [];
+  let x = 0;
+  CARS.forEach((c, i) => {
+    roofs.push({ x0: x, x1: x + c.w, car: i });
+    for (const [kind, at] of c.things) things.push(thing(kind, x + at, i));
+    x += c.w + c.gap;
+  });
+  const tender = { x0: x, x1: x + TENDER_W, car: CARS.length, tender: true };
+  roofs.push(tender);
+  things.push(thing('ammo', x + 24, CARS.length));
+  return { roofs, things, tender, loco: tender.x1 + 4 };
+}
+function thing(kind, x, car) {
+  const b = BANDIT[kind];
+  return b ? { kind, x, car, hp: b.hp, alive: true, cool: -1, face: -1 } : { kind, x, car, taken: false, n: kind === 'ammo' ? AMMO.box : 0 };
+}
+const isBandit = t => !!BANDIT[t.kind];
+
+function newGame(rand = Math.random) {
+  const train = buildTrain();
+  return {
+    rand, train, t: 0, score: 0, cam: 0, downs: 0,
+    p: { x: 40, y: ROOF, vy: 0, ground: true, duck: false, face: 1, cyl: K.CYL, reserve: K.START_RESERVE, hp: K.HEALTH, hurt: 0, cool: 0, reloadT: 0, upHeld: false, safeX: 40, air: 0, coyote: 0 },
+    shots: [], eshots: [], bombs: [], gantries: [], gantryIn: 420,
+    boss: null, done: null, // 'won' or 'lost'
+    stats: { fired: 0, picked: 0, healed: 0, hurt: {} },
+  };
+}
+
+// ---------------------------------------------------------------- geometry
+
+function roofAt(s, x) { return s.train.roofs.find(r => x >= r.x0 - 2 && x <= r.x1 + 2) || null; }
+function playerBox(p) { const h = p.duck ? K.DUCK_H : K.STAND_H; return { x0: p.x - 5, x1: p.x + 5, y0: p.y - h, y1: p.y }; }
+const overlap = (a, b) => a.x0 < b.x1 && a.x1 > b.x0 && a.y0 < b.y1 && a.y1 > b.y0;
+function banditBox(b) { const h = BANDIT[b.kind].h; return { x0: b.x - 5, x1: b.x + 5, y0: ROOF - h, y1: ROOF }; }
+function bossParts(s) {
+  const L = s.train.loco, b = s.boss;
+  if (!b) return [];
+  const parts = [];
+  if (b.turret > 0) parts.push({ id: 'turret', box: { x0: L + 8, x1: L + 28, y0: ROOF - 54, y1: ROOF - 34 } });
+  if (b.hatch > 0) parts.push({ id: 'hatch', box: { x0: L - 2, x1: L + 8, y0: ROOF - 14, y1: ROOF - 2 } });
+  if (b.turret <= 0 && b.hatch <= 0 && b.boss > 0 && b.out) parts.push({ id: 'boss', box: { x0: L - 4, x1: L + 8, y0: ROOF - 24, y1: ROOF } });
+  return parts;
+}
+const lockCam = s => s.train.loco + 120 - W;
+const carOf = (s, x) => { const r = roofAt(s, x); return r ? r.car : -1; };
+
+// ---------------------------------------------------------------- the tick
+
+function step(s, keys) {
+  const ev = [];
+  if (s.done) return ev;
+  s.t++;
+  const p = s.p, L = s.train.loco;
+  if (p.hurt > 0) p.hurt--;
+  if (p.cool > 0) p.cool--;
+
+  // Ducking: only on the roof, and it stops you.
+  p.duck = !!keys.down && p.ground;
+  let vx = 0;
+  if (!p.duck) {
+    vx = ((keys.right ? 1 : 0) - (keys.left ? 1 : 0)) * K.RUN;
+    if (vx) p.face = Math.sign(vx);
+  }
+  if (keys.up && !p.upHeld && (p.ground || p.coyote > 0) && !p.duck) { p.vy = -K.JUMP; p.ground = false; p.coyote = 0; ev.push({ type: 'jump' }); }
+  p.upHeld = !!keys.up;
+
+  // The gun: six rounds, then a click. Dry altogether, you can only kick.
+  if (keys.fire && p.cool <= 0) {
+    if (p.cyl > 0) {
+      p.cyl--; p.cool = K.FIRE_GAP; p.reloadT = 0; s.stats.fired++;
+      s.shots.push({ x: p.x + p.face * 7, y: p.y - (p.duck ? K.SHOT_DUCK : K.SHOT_STAND), vx: p.face * K.SHOT_SPEED, went: 0 });
+      ev.push({ type: 'fire' });
+    } else if (p.reserve > 0) { p.cool = 20; ev.push({ type: 'click' }); }
+    else { p.cool = 30; ev.push({ type: 'kick' }); kick(s, ev); }
+  }
+  // Reloading: ducked, not shooting, a round at a time from the reserve.
+  if (p.duck && !keys.fire && p.cyl < K.CYL && p.reserve > 0) {
+    if (++p.reloadT >= K.RELOAD_TICKS) { p.cyl++; p.reserve--; p.reloadT = 0; ev.push({ type: 'load' }); }
+  } else p.reloadT = 0;
+
+  // Moving, falling, landing.
+  p.x += vx;
+  const minX = s.cam + 8, maxX = L - 8;
+  if (p.x < minX) p.x = minX;
+  if (p.x > maxX) p.x = maxX;
+  if (p.ground) {
+    if (!roofAt(s, p.x)) { p.ground = false; p.vy = 0.5; p.coyote = K.COYOTE; }
+    else p.safeX = p.x;
+  }
+  if (!p.ground) {
+    const was = p.y;
+    p.vy += K.G; p.y += p.vy; p.air++;
+    if (p.coyote > 0) p.coyote--;
+    if (p.vy > 0 && was <= ROOF && p.y >= ROOF && roofAt(s, p.x)) { p.y = ROOF; p.vy = 0; p.ground = true; p.air = 0; ev.push({ type: 'land' }); }
+    else if (p.y > ROOF + 50) {
+      // Off the train: back on the roof you fell from, hurt.
+      const r = roofAt(s, p.safeX) || s.train.roofs[0];
+      p.x = Math.min(Math.max(p.safeX, r.x0 + 10), r.x1 - 10);
+      p.y = ROOF; p.vy = 0; p.ground = true; p.air = 0;
+      p.hurt = 0; hurt(s, 'fall', ev); p.hurt = 90;
+      ev.push({ type: 'fall', x: p.x });
+    }
+  }
+
+  // The camera only moves forward, and stops at the locomotive.
+  s.cam = Math.min(lockCam(s), Math.max(s.cam, p.x - 110));
+
+  gantries(s, ev);
+  bandits(s, ev);
+  if (!s.boss && p.x > s.train.tender.x0 - 40) { s.boss = { turret: BOSS.turret, hatch: BOSS.hatch, boss: BOSS.boss, tCool: 90, hCool: 140, burst: 0, out: false, phaseT: 0, bCool: 40, drop: 0, throws: 0 }; ev.push({ type: 'boss' }); }
+  if (s.boss) boss(s, ev);
+  shots(s, ev);
+  bombs(s, ev);
+  pickups(s, ev);
+  if (p.hp <= 0 && !s.done) { s.done = 'lost'; ev.push({ type: 'over' }); }
+  return ev;
+}
+
+function hurt(s, kind, ev) {
+  const p = s.p;
+  if (p.hurt > 0 || s.done) return false;
+  p.hp = Math.max(0, p.hp - HURT[kind]);
+  p.hurt = K.SAFE_TICKS;
+  s.stats.hurt[kind] = (s.stats.hurt[kind] || 0) + 1;
+  ev.push({ type: 'hurt', kind, x: p.x, y: p.y - 12 });
+  return true;
+}
+
+function kick(s, ev) {
+  const p = s.p, reach = { x0: p.x + (p.face > 0 ? 4 : -18), x1: p.x + (p.face > 0 ? 18 : -4), y0: p.y - 20, y1: p.y };
+  for (const b of s.train.things) if (isBandit(b) && b.alive && overlap(reach, banditBox(b))) { hitBandit(s, b, ev); return; }
+  for (const part of bossParts(s)) if (overlap(reach, part.box)) { hitBoss(s, part.id, ev); return; }
+}
+
+function gantries(s, ev) {
+  if (--s.gantryIn <= 0) {
+    // It comes in from the right, well off screen, so the warning shows first.
+    s.gantries.push({ x: s.cam + W + K.TS * 45, hit: false });
+    s.gantryIn = (s.boss ? 520 : 330) + Math.floor(s.rand() * 240);
+    ev.push({ type: 'signal' });
+  }
+  const p = s.p;
+  for (const g of s.gantries) {
+    g.x -= K.TS;
+    const beam = { x0: g.x, x1: g.x + K.BEAM_W, y0: ROOF - K.BEAM_TOP, y1: ROOF - K.BEAM_BOTTOM };
+    if (!g.hit && overlap(beam, playerBox(p)) && hurt(s, 'gantry', ev)) g.hit = true;
+  }
+  s.gantries = s.gantries.filter(g => g.x + K.BEAM_W > s.cam - 20);
+}
+
+function bandits(s, ev) {
+  const p = s.p;
+  for (const b of s.train.things) {
+    if (!isBandit(b) || !b.alive) continue;
+    const onScreen = b.x < s.cam + W - 4 && b.x > s.cam - 20;
+    if (!onScreen) continue;
+    b.face = p.x < b.x ? -1 : 1;
+    if (b.cool < 0) b.cool = 50 + Math.floor(s.rand() * 50);
+    if (b.kind === 'rush') {
+      const nx = b.x + b.face * 0.9;
+      if (roofAt(s, nx) && carOf(s, nx) === b.car && Math.abs(p.x - b.x) > 4) b.x = nx;
+    } else if (--b.cool <= 0 && Math.abs(p.x - b.x) < 240) {
+      if (b.kind === 'dyn') { throwBomb(s, b.x, ROOF - 18, p.x, 'dyn'); b.cool = 150 + Math.floor(s.rand() * 60); ev.push({ type: 'throw' }); }
+      else {
+        b.shots = (b.shots || 0) + 1;
+        const low = b.kind === 'low' || b.shots % 3 === 0;
+        s.eshots.push({ x: b.x + b.face * 6, y: ROOF - (low ? K.LOW : K.HIGH), vx: b.face * (low ? 2.2 : 2.4), low });
+        b.cool = (low ? 110 : 100) + Math.floor(s.rand() * 60);
+        ev.push({ type: 'efire' });
+      }
+    }
+    if (p.hurt <= 0 && overlap(playerBox(p), banditBox(b)) && hurt(s, 'touch', ev)) {
+      // knocked back, away from him
+      p.x += (p.x < b.x ? -14 : 14);
+      if (p.x < s.cam + 8) p.x = s.cam + 8;
+    }
+  }
+}
+
+// A lobbed bomb aimed to land at tx, about 48 ticks after the throw.
+function throwBomb(s, x, y, tx, from) {
+  const T = 48, g = 0.2;
+  const vx = Math.max(-3, Math.min(3, (tx - x) / T));
+  const vy = (ROOF - y - 0.5 * g * T * T) / T;
+  s.bombs.push({ x, y, vx, vy, g, tx: x + vx * T, from });
+}
+
+function bombs(s, ev) {
+  const p = s.p;
+  for (const d of s.bombs) {
+    d.vy += d.g; d.x += d.vx; d.y += d.vy;
+    if (d.y >= ROOF && d.vy > 0) {
+      if (roofAt(s, d.x)) {
+        d.gone = true;
+        ev.push({ type: 'boom', x: d.x });
+        if (Math.abs(p.x - d.x) < 18 && p.y > ROOF - 20) hurt(s, 'blast', ev);
+      } else if (d.y > ROOF + 60) d.gone = true;
+    }
+  }
+  s.bombs = s.bombs.filter(d => !d.gone);
+}
+
+function hitBandit(s, b, ev) {
+  b.hp--;
+  ev.push({ type: 'hit', x: b.x, y: ROOF - 12 });
+  if (b.hp > 0) return;
+  b.alive = false;
+  s.score += BANDIT[b.kind].pts;
+  s.downs++;
+  ev.push({ type: 'down', x: b.x, kind: b.kind, pts: BANDIT[b.kind].pts });
+  // What he leaves: two rounds, or every fifth bandit some water. Lost over a gap.
+  if (roofAt(s, b.x)) {
+    const water = s.downs % DROP_WATER_EVERY === 0;
+    s.train.things.push({ kind: water ? 'water' : 'rounds', x: b.x, car: b.car, taken: false, n: water ? 0 : AMMO.rounds });
+  }
+}
+
+function hitBoss(s, id, ev) {
+  const b = s.boss, L = s.train.loco;
+  b[id]--;
+  ev.push({ type: 'hit', x: L + (id === 'turret' ? 18 : 2), y: ROOF - (id === 'turret' ? 44 : 10) });
+  if (b[id] > 0) return;
+  s.score += PTS[id];
+  ev.push({ type: 'wreck', id, pts: PTS[id], x: L + (id === 'turret' ? 18 : 2) });
+  if (id === 'boss') {
+    s.score += PTS.rescue;
+    const p = s.p, bonus = p.hp * PTS.health + (p.cyl + p.reserve) * PTS.round;
+    s.score += bonus;
+    s.done = 'won';
+    ev.push({ type: 'rescue', pts: PTS.rescue, bonus, hp: p.hp, rounds: p.cyl + p.reserve });
+  }
+}
+
+function boss(s, ev) {
+  const b = s.boss, p = s.p, L = s.train.loco;
+  if (p.x < L - 200) return; // waits until you are in its reach
+  // The roof turret: bursts of three high shots, then a shell lobbed at you.
+  if (b.turret > 0 && --b.tCool <= 0) {
+    if (b.burst < 3) { s.eshots.push({ x: L + 6, y: ROOF - K.HIGH, vx: -2.6, low: false }); b.burst++; b.tCool = 14; ev.push({ type: 'efire' }); }
+    else { throwBomb(s, L + 18, ROOF - 46, p.x, 'shell'); b.burst = 0; b.tCool = 130 + Math.floor(s.rand() * 50); ev.push({ type: 'throw' }); }
+  }
+  // The firebox hatch: low shots, to be jumped.
+  if (b.hatch > 0 && --b.hCool <= 0) {
+    s.eshots.push({ x: L - 4, y: ROOF - K.LOW, vx: -2.2, low: true });
+    b.hCool = 100 + Math.floor(s.rand() * 50);
+    ev.push({ type: 'efire' });
+  }
+  // With both down, the gang boss leans out of the cab: out to fire, in to hide.
+  if (b.turret <= 0 && b.hatch <= 0 && b.boss > 0) {
+    b.phaseT++;
+    if (!b.out && b.phaseT > 70) { b.out = true; b.phaseT = 0; b.bCool = 30; ev.push({ type: 'bossOut' }); }
+    else if (b.out && b.phaseT > 130) { b.out = false; b.phaseT = 0; }
+    if (b.out && --b.bCool <= 0) {
+      if (b.throws++ % 3 === 2) { throwBomb(s, L, ROOF - 22, p.x, 'dyn'); ev.push({ type: 'throw' }); }
+      else { s.eshots.push({ x: L - 6, y: ROOF - K.HIGH, vx: -2.6, low: false }); ev.push({ type: 'efire' }); }
+      b.bCool = 45;
+    }
+  }
+  // A dry player gets rounds thrown from the cab: the driver is on your side.
+  if (b.drop > 0) b.drop--;
+  if (p.cyl + p.reserve === 0 && b.drop <= 0 && !s.train.things.some(t => t.kind === 'rounds' && !t.taken && t.x > s.train.tender.x0)) {
+    s.train.things.push({ kind: 'rounds', x: s.train.tender.x0 + 30, car: CARS.length, taken: false, n: AMMO.resupply });
+    b.drop = K.RESUPPLY_GAP;
+    ev.push({ type: 'resupply' });
+  }
+}
+
+function shots(s, ev) {
+  const p = s.p;
+  for (const b of s.shots) {
+    b.x += b.vx; b.went += Math.abs(b.vx);
+    if (b.went > K.SHOT_RANGE || b.x < s.cam - 10 || b.x > s.cam + W + 10) { b.gone = true; continue; }
+    const box = { x0: b.x - 2, x1: b.x + 2, y0: b.y, y1: b.y + 1 };
+    for (const t of s.train.things) {
+      if (!isBandit(t) || !t.alive || !overlap(box, banditBox(t))) continue;
+      hitBandit(s, t, ev); b.gone = true; break;
+    }
+    if (b.gone) continue;
+    for (const part of bossParts(s)) if (overlap(box, part.box)) { hitBoss(s, part.id, ev); b.gone = true; break; }
+    if (!b.gone && b.x > s.train.loco + 30) b.gone = true;
+  }
+  s.shots = s.shots.filter(b => !b.gone);
+  for (const b of s.eshots) {
+    b.x += b.vx;
+    if (b.x < s.cam - 10 || b.x > s.cam + W + 40) { b.gone = true; continue; }
+    if (overlap({ x0: b.x - 2, x1: b.x + 2, y0: b.y, y1: b.y + 1 }, playerBox(p))) { if (hurt(s, b.low ? 'low' : 'high', ev)) b.gone = true; }
+  }
+  s.eshots = s.eshots.filter(b => !b.gone);
+}
+
+function pickups(s, ev) {
+  const p = s.p;
+  for (const t of s.train.things) {
+    if (isBandit(t) || t.taken) continue;
+    if (Math.abs(p.x - t.x) > 9 || p.y < ROOF - 30) continue;
+    t.taken = true;
+    s.score += PTS.pickup;
+    if (t.kind === 'ammo' || t.kind === 'rounds') {
+      const before = p.reserve;
+      p.reserve = Math.min(K.MAX_RESERVE, p.reserve + t.n);
+      s.stats.picked += p.reserve - before;
+      ev.push({ type: 'ammo', n: t.n, x: t.x });
+    } else {
+      const n = t.kind === 'canteen' ? HEAL.canteen : HEAL.water, before = p.hp;
+      p.hp = Math.min(K.HEALTH, p.hp + n);
+      s.stats.healed += p.hp - before;
+      ev.push({ type: 'heal', n, x: t.x });
+    }
+  }
+}
+
+// ---------------------------------------------------------------- the pilot
+
+// The demo's player, and the tests' careful player. It reads the screen the
+// way a person would: what is coming at it, what is in front of it.
+// `lead` is how many ticks early it sees things coming: a person who reacts
+// late also looks ahead, so a slower pilot is given both.
+function pilot(s, { lead = 0 } = {}) {
+  const p = s.p, k = { left: false, right: false, up: false, down: false, fire: false };
+  if (s.done) return k;
+  const L = s.train.loco, B = s.boss;
+  const coming = b => Math.sign(p.x - b.x) === Math.sign(b.vx);
+  const lowIn = s.eshots.some(b => b.low && coming(b) && Math.abs(p.x - b.x) < 24 + lead * 2.2 && Math.abs(p.x - b.x) > 7);
+  const highIn = s.eshots.some(b => !b.low && coming(b) && Math.abs(p.x - b.x) < 40 + lead * 2.6);
+  const gantry = s.gantries.some(g => g.x - (p.x + 6) < K.TS * (16 + lead) + 2 && g.x + K.BEAM_W > p.x - 6);
+  const bomb = s.bombs.find(d => Math.abs(d.tx - p.x) < 26 && d.vy > -1);
+
+  // In the air: keep going for the far roof, and shoot what is in line.
+  if (!p.ground) {
+    k.right = !roofAt(s, p.x) || p.vy < 0;
+    // at the turret, fire when the shot will come out at its height
+    const y = p.y + p.vy * lead + 0.5 * K.G * lead * lead;
+    k.fire = B && B.turret > 0 && L - p.x < 230 ? y < ROOF - 19 && y > ROOF - 35 : s.t % 2 === 0 && p.cyl > 0;
+    return k;
+  }
+  if (lowIn && !gantry) { k.up = true; return k; }
+  if (gantry || highIn) {
+    k.down = true;
+    // and shoot from down there: a ducking shot reaches a standing bandit too
+    const target = s.train.things.some(t => isBandit(t) && t.alive && t.x > p.x && t.x - p.x < 200 && t.x < s.cam + W - 6) || (B && B.hatch > 0 && L - p.x < 220);
+    if (target && p.cyl > 0 && p.face > 0) k.fire = (s.t % 2) === 0;
+    return k;
+  }
+  if (bomb) { if (bomb.tx >= p.x) k.left = true; else k.right = true; return safe(k); }
+
+  // Jump the gap ahead.
+  const r = roofAt(s, p.x);
+  if (r && !r.tender && r.x1 - p.x < 11 + lead * K.RUN && r.x1 - p.x > -3) { k.right = true; k.up = true; return k; }
+
+  // Out of rounds in the gun: down to reload.
+  if (p.cyl === 0 && p.reserve > 0) { k.down = true; return k; }
+
+  // A pickup in view and wanted.
+  const want = s.train.things.find(t => !isBandit(t) && !t.taken && roofAt(s, t.x) === r && t.x > s.cam + 4 && t.x < s.cam + W - 10 && Math.abs(t.x - p.x) < 140 &&
+    ((t.kind === 'ammo' || t.kind === 'rounds') ? p.reserve < K.MAX_RESERVE - 6 : p.hp < K.HEALTH - 10));
+
+  // The nearest enemy ahead.
+  const ahead = s.train.things.filter(t => isBandit(t) && t.alive && t.x > p.x - 6 && t.x - p.x < 170 && t.x < s.cam + W - 6).sort((a, b) => a.x - b.x)[0];
+  if (ahead) {
+    if (Math.abs(ahead.x - p.x) < 26 && ahead.kind !== 'rush') { k.left = true; return safe(k); }
+    if (ahead.kind === 'low') { k.down = true; k.fire = s.t % 2 === 0; if (p.face < 0) { k.down = false; k.right = true; } return k; }
+    if (p.face < 0) { k.right = true; return k; }
+    k.fire = s.t % 2 === 0;
+    return k;
+  }
+  if (B && L - p.x < 230) {
+    // In the boss's reach: stand off at a good distance.
+    if (p.x < L - 120) { k.right = true; return k; }
+    if (p.x > L - 80) { k.left = true; return safe(k); }
+    if (p.face < 0) { k.right = true; return k; }
+    if (want) { k[want.x < p.x ? 'left' : 'right'] = true; return safe(k); }
+    if (B.hatch > 0) { k.down = true; k.fire = s.t % 2 === 0; return k; }
+    if (B.turret > 0) { k.up = !p.upHeld; return k; }
+    if (B.out) k.fire = s.t % 2 === 0;
+    else if (p.cyl < K.CYL && p.reserve > 0) k.down = true;
+    return k;
+  }
+  if (want) { k[want.x < p.x ? 'left' : 'right'] = true; return safe(k); }
+  // Nothing in front: top up the gun first if it is low, then run on.
+  if (p.cyl < 3 && p.reserve > 0) { k.down = true; return k; }
+  k.right = true;
+  return k;
+
+  // Never walk off the roof by accident: only a jump crosses a gap.
+  function safe(keys) {
+    const dir = keys.right ? 1 : keys.left ? -1 : 0;
+    if (dir && !roofAt(s, p.x + dir * K.RUN * 4)) { keys.left = keys.right = false; }
+    return keys;
+  }
+}
+
+// ---- engine/sprites.js
+// Sprites are drawn as text: one character per pixel, '.' is transparent and
+// every other character is looked up in a palette. Swapping the palette is how
+// a sprite changes state (lit, remembered, alerted) — the way the hardware did it.
+function sprite(rows, palette) {
+  const w = rows[0].length, h = rows.length;
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const g = c.getContext('2d');
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const ch = rows[y][x];
+    if (ch === '.' || !palette[ch]) continue;
+    g.fillStyle = palette[ch];
+    g.fillRect(x, y, 1, 1);
+  }
+  return c;
+}
+
+function mirrored(src) {
+  const c = document.createElement('canvas');
+  c.width = src.width; c.height = src.height;
+  const g = c.getContext('2d');
+  g.translate(src.width, 0);
+  g.scale(-1, 1);
+  g.drawImage(src, 0, 0);
+  return c;
+}
+
+// A 16x16 tile painted by a function of (x, y) -> colour or null.
+function tile(size, paint) {
+  const c = document.createElement('canvas');
+  c.width = size; c.height = size;
+  const g = c.getContext('2d');
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    const col = paint(x, y);
+    if (!col) continue;
+    g.fillStyle = col;
+    g.fillRect(x, y, 1, 1);
+  }
+  return c;
+}
+
+// ---- games/sandstorm-express/art.js
+// Sandstorm Express: the pictures. Sprites as text, one character a pixel,
+// with a dark outline added round each; the desert, the train and the
+// locomotive painted in solid colours (the sky is dithered, never faded).
+
+
+// ---------------------------------------------------------------- sprites
+
+const UPPER = [
+  '......hhhh......',
+  '.....hhhhhh.....',
+  '...hhhHHHHhhh...',
+  '.....ssss.......',
+  '.....sssse......',
+  '.....ssss.......',
+  '.....rrrr.......',
+  '....bbbbbb......',
+  '...bbbbbbbsgggg.',
+  '...bbbbbbb..g...',
+  '...bBbbbbb......',
+  '...bBbbbbb......',
+  '....bbbbb.......',
+  '....PPPPP.......',
+];
+const LEGS = {
+  stand: ['....ppppp.......', '....pp.pp.......', '....pp.pp.......', '....pp.pp.......', '....pp.pp.......', '....pp.pp.......', '....pp.pp.......', '....pp.pp.......', '....kk.kk.......', '....kkk.kkk.....'],
+  run1: ['....ppppp.......', '...ppp.ppp......', '...pp...pp......', '..pp.....pp.....', '..pp.....pp.....', '.pp.......pp....', '.pp.......pp....', '.pp........pp...', '.kk........kk...', 'kkk........kkk..'],
+  run2: ['....ppppp.......', '....ppppp.......', '.....ppp........', '.....pppp.......', '....pp.pp.......', '....pp..pp......', '...pp...pp......', '...pp....pp.....', '...kk....kk.....', '..kkk....kkk....'],
+  jump: ['....ppppp.......', '...pppppppp.....', '..pp.....pp.....', '..pp.....pp.....', '.kk.......kk....', '.kk......kkk....', '................', '................', '................', '................'],
+};
+const DUCK = [
+  '................', '................', '................', '................', '................', '................', '................', '................',
+  '......hhhh......',
+  '.....hhhhhh.....',
+  '...hhhHHHHhhh...',
+  '.....ssss.......',
+  '.....sssse......',
+  '.....rrrr.......',
+  '....bbbbbb......',
+  '...bbbbbbbsgggg.',
+  '...bbbbbbb..g...',
+  '...bBbbbbb......',
+  '...PPPPPP.......',
+  '..pppppppppp....',
+  '..pp......pp....',
+  '..pp......pp....',
+  '.kkk......kk....',
+  '.kkk......kkk...',
+];
+// Reloading: the gun tipped up, the cylinder open.
+const DUCK_LOAD = DUCK.map((r, i) => i === 15 ? '...bbbbbbbs.g...' : i === 16 ? '...bbbbbbbsgg...' : i === 14 ? '....bbbbbb..g...' : r);
+// The rusher has no gun: fists.
+const fists = rows => rows.map(r => r.replace(/g/g, '.'));
+const KICK = [...UPPER.slice(0, 8), '...bbbbbbb......', '...bbbbbbb......', ...UPPER.slice(10), '....ppppp.......', '....pp.pppp.....', '....pp...ppp....', '....pp.....ppkk.', '....pp......kkk.', '....pp..........', '....pp..........', '....pp..........', '....kk..........', '....kkk.........'];
+
+// A dark outline round every pixel that has a transparent neighbour.
+function outlined(rows) {
+  const h = rows.length, w = rows[0].length;
+  const grid = rows.map(r => r.split(''));
+  const out = rows.map(r => r.split(''));
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    if (grid[y][x] !== '.') continue;
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const c = grid[y + dy] && grid[y + dy][x + dx];
+      if (c && c !== '.') { out[y][x] = 'o'; break; }
+    }
+  }
+  return out.map(r => r.join(''));
+}
+
+const HERO_PAL = { o: '#1a0e0a', h: '#7a4a24', H: '#3a2212', s: '#f0b080', e: '#1a0e0a', r: '#d83a2a', b: '#3a6ab8', B: '#24477e', p: '#8a5a30', P: '#4a2e18', k: '#2a1a10', g: '#c8d0d8' };
+const FLASH = Object.fromEntries(Object.keys(HERO_PAL).map(k => [k, k === 'o' ? '#1a0e0a' : '#ffffff']));
+const BANDIT_PAL = {
+  gun: { o: '#140a0a', h: '#2a2228', H: '#8a2a2a', s: '#d8a070', e: '#140a0a', r: '#2a2228', b: '#a82a2a', B: '#6a1a1a', p: '#3a3238', P: '#c8a050', k: '#1a1012', g: '#a0a8b0' },
+  low: { o: '#140a0a', h: '#4a3a2a', H: '#2a1a10', s: '#d8a070', e: '#140a0a', r: '#2a2228', b: '#8a6a3a', B: '#5a4224', p: '#3a3238', P: '#c8a050', k: '#1a1012', g: '#a0a8b0' },
+  dyn: { o: '#140a0a', h: '#2a2228', H: '#c8a030', s: '#d8a070', e: '#140a0a', r: '#2a2228', b: '#c89a30', B: '#8a6a1a', p: '#3a3238', P: '#6a1a1a', k: '#1a1012', g: '#d83020' },
+  rush: { o: '#140a0a', h: '#5a4030', H: '#2a1a10', s: '#d8a070', e: '#140a0a', r: '#2a2228', b: '#4a7a3a', B: '#2e5224', p: '#3a3238', P: '#c8a050', k: '#1a1012', g: '#d8a070' },
+  boss: { o: '#0a0a0e', h: '#1a1a1a', H: '#e0b040', s: '#e0a878', e: '#0a0a0e', r: '#e8e8e8', b: '#5a2a7a', B: '#3a1a52', p: '#1a1a24', P: '#e0b040', k: '#0e0e12', g: '#e0e0e8' },
+};
+
+// Every frame, facing right and left, in each palette it is drawn in.
+function makeSprites() {
+  const frame = (legs, top = UPPER) => outlined([...top, ...legs]);
+  const F = {
+    stand: frame(LEGS.stand), run1: frame(LEGS.run1), run2: frame(LEGS.run2), jump: frame(LEGS.jump),
+    duck: outlined(DUCK), load: outlined(DUCK_LOAD), kick: outlined(KICK),
+  };
+  const both = (rows, pal) => { const r = sprite(rows, pal); return { r, l: mirrored(r) }; };
+  const hero = {}, flash = {};
+  for (const [k, rows] of Object.entries(F)) { hero[k] = both(rows, HERO_PAL); flash[k] = both(rows, FLASH); }
+  const bandit = {};
+  for (const [kind, pal] of Object.entries(BANDIT_PAL)) {
+    const f = kind === 'rush' ? Object.fromEntries(Object.entries(F).map(([k, r]) => [k, fists(r)])) : F;
+    bandit[kind] = { stand: both(f.stand, pal), run1: both(f.run1, pal), run2: both(f.run2, pal), duck: both(f.duck, pal), hit: both(f.stand, { ...pal, b: '#ffffff', B: '#ffffff', h: '#ffffff' }) };
+  }
+  return { hero, flash, bandit };
+}
+
+// ---------------------------------------------------------------- drawing helpers
+
+const rect = (g, c, x, y, w, h) => { g.fillStyle = c; g.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h)); };
+function disc(g, c, cx, cy, r) {
+  g.fillStyle = c;
+  for (let dy = -r; dy <= r; dy++) { const w = Math.round(Math.sqrt(r * r - dy * dy)); g.fillRect(Math.round(cx - w), Math.round(cy + dy), w * 2 + 1, 1); }
+}
+const hex = c => [parseInt(c.slice(1, 3), 16), parseInt(c.slice(3, 5), 16), parseInt(c.slice(5, 7), 16)];
+const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+const canvasOf = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
+
+// ---------------------------------------------------------------- the desert
+
+// The dusk sky, dithered band to band, with a striped setting sun.
+function paintSky(h) {
+  const stops = ['#24123a', '#4a1e50', '#86305a', '#c84a58', '#ee7c4a', '#ffb862'].map(hex);
+  const c = canvasOf(W, h), g = c.getContext('2d'), im = g.createImageData(W, h), d = im.data;
+  for (let y = 0; y < h; y++) {
+    const f = (y / (h - 1)) * (stops.length - 1), i = Math.min(stops.length - 2, Math.floor(f)), fr = f - i;
+    for (let x = 0; x < W; x++) {
+      const p = (BAYER[(y & 3) * 4 + (x & 3)] + 0.5) / 16 < fr ? stops[i + 1] : stops[i], o = (y * W + x) * 4;
+      d[o] = p[0]; d[o + 1] = p[1]; d[o + 2] = p[2]; d[o + 3] = 255;
+    }
+  }
+  g.putImageData(im, 0, 0);
+  // a few early stars
+  for (let i = 0; i < 26; i++) rect(g, i % 4 ? '#8a6aa8' : '#e8d8ff', (i * 97) % W, 6 + ((i * 53) % 40), 1, 1);
+  // the sun, its lower half cut by the heat haze into stripes
+  const sx = 214, sy = h - 34, r = 26;
+  for (let dy = -r; dy <= r; dy++) {
+    if (dy > 2 && (dy % 5 === 0 || dy % 5 === 1 && dy > 12)) continue;
+    const w = Math.round(Math.sqrt(r * r - dy * dy));
+    rect(g, dy < -10 ? '#fff0b0' : dy < 6 ? '#ffd880' : '#ffb85a', sx - w, sy + dy, w * 2 + 1, 1);
+  }
+  return c;
+}
+
+// A ridge of hills that repeats every W pixels, for the far layers.
+function ridge(g, col, base, amp, seed, step, cap) {
+  for (let x = 0; x < W; x++) {
+    const a = seed * 1.7, b = seed * 2.3, cc = seed * 3.1, T = Math.PI * 2;
+    const v = 0.5 * Math.sin(T * 2 * x / W + a) + 0.3 * Math.sin(T * 5 * x / W + b) + 0.2 * Math.sin(T * 11 * x / W + cc);
+    let y = base - amp * (0.5 + 0.5 * v);
+    if (step) y = Math.round(y / step) * step;
+    y = Math.round(y);
+    rect(g, col, x, y, 1, 400);
+    if (cap) rect(g, cap, x, y, 1, 1);
+  }
+}
+function paintMesas(h) {
+  const c = canvasOf(W, h), g = c.getContext('2d');
+  ridge(g, '#6a2a4c', h - 2, 44, 1, 6, '#8a3a5a');
+  ridge(g, '#7e3450', h + 4, 18, 4, 4, '#9a4a60');
+  return c;
+}
+function paintDunes(h) {
+  const c = canvasOf(W, h), g = c.getContext('2d');
+  ridge(g, '#a84c46', h - 4, 10, 7, 0, '#c86450');
+  ridge(g, '#c8644c', h + 2, 7, 9, 0, '#e08058');
+  return c;
+}
+function scrollLayer(g, layer, offset, y) {
+  const o = Math.floor(((offset % W) + W) % W);
+  g.drawImage(layer, -o, y); g.drawImage(layer, W - o, y);
+}
+
+// ---------------------------------------------------------------- the train
+
+const CAR_LOOKS = [
+  { body: '#6a2430', dark: '#4a1820', trim: '#d0a050', roof: '#3e1c24', hi: '#9a4a48', kind: 'coach' },
+  { body: '#2a5a3a', dark: '#1a3e28', trim: '#e0c060', roof: '#1a3424', hi: '#4a7a54', kind: 'mail' },
+  { body: '#7a4a2a', dark: '#5a3418', trim: '#3a2210', roof: '#4a2a18', hi: '#9a6a40', kind: 'box' },
+];
+
+function wheel(g, x, y, r, turn, rim = '#3a2226') {
+  disc(g, '#0e0608', x, y, r); disc(g, rim, x, y, r - 1); disc(g, '#140a0c', x, y, r - 2);
+  rect(g, '#a08060', x + Math.cos(turn) * (r - 2), y + Math.sin(turn) * (r - 2), 1, 1);
+  rect(g, '#a08060', x, y, 1, 1);
+}
+
+function drawCar(g, x, w, i, turn, text) {
+  const L = CAR_LOOKS[i % 3];
+  rect(g, '#120608', x - 3, ROOF - 1, w + 6, 41);
+  rect(g, L.roof, x - 2, ROOF, w + 4, 5);
+  rect(g, L.hi, x - 2, ROOF, w + 4, 1);
+  for (let k = 6; k < w; k += 12) rect(g, '#120608', x + k, ROOF + 3, 1, 1);
+  rect(g, L.body, x, ROOF + 5, w, 35);
+  rect(g, L.dark, x, ROOF + 37, w, 3);
+  if (L.kind === 'coach') {
+    for (let k = 10; k + 12 < w - 6; k += 20) {
+      rect(g, '#2a1014', x + k - 1, ROOF + 11, 14, 12);
+      rect(g, (k / 20 + i) % 4 === 1 ? '#5a2a30' : '#ffcf7a', x + k, ROOF + 12, 12, 10);
+      rect(g, '#fff0c0', x + k + 1, ROOF + 13, 3, 1);
+    }
+    rect(g, L.trim, x, ROOF + 31, w, 2);
+  } else if (L.kind === 'mail') {
+    for (let k = 14; k + 8 < w - 40; k += 24) { rect(g, '#0e2016', x + k - 1, ROOF + 11, 10, 8); rect(g, '#ffcf7a', x + k, ROOF + 12, 8, 6); }
+    rect(g, L.trim, x, ROOF + 26, w, 2);
+    rect(g, '#0e2016', x + w - 46, ROOF + 9, 36, 13); rect(g, L.trim, x + w - 45, ROOF + 10, 34, 11);
+    text(g, 'MAIL', x + w - 39, ROOF + 12, '#1a3424');
+  } else {
+    for (let k = 4; k < w; k += 6) rect(g, L.dark, x + k, ROOF + 5, 1, 32);
+    rect(g, '#3a2210', x + w / 2 - 20, ROOF + 8, 40, 29); rect(g, '#6a4024', x + w / 2 - 19, ROOF + 9, 38, 27);
+    for (let k = 0; k < 38; k += 8) rect(g, '#5a341c', x + w / 2 - 19 + k, ROOF + 9, 1, 27);
+    rect(g, '#2a1a10', x + w / 2 - 22, ROOF + 7, 44, 2);
+  }
+  rect(g, '#2a1418', x + 8, ROOF + 40, w - 16, 5);
+  for (const bx of [22, w - 22]) {
+    rect(g, '#1a0c10', x + bx - 12, ROOF + 42, 24, 4);
+    wheel(g, x + bx - 8, ROOF + 48, 5, turn);
+    wheel(g, x + bx + 8, ROOF + 48, 5, turn + 1);
+  }
+}
+function drawCoupler(g, x, gap) {
+  rect(g, '#1a0c10', x, ROOF + 27, gap, 4);
+  rect(g, '#4a3428', x, ROOF + 28, gap, 1);
+}
+
+function drawTender(g, x, w, turn) {
+  rect(g, '#0c0a0e', x - 1, ROOF - 1, w + 2, 46);
+  rect(g, '#24202a', x, ROOF, w, 40);
+  rect(g, '#3a3440', x, ROOF + 5, w, 1);
+  // the coal heap is the roof you stand on
+  for (let k = 0; k < w; k += 3) rect(g, (k * 7) % 5 ? '#1a1820' : '#4a4652', x + k, ROOF, 3, 1 + ((k * 13) % 3));
+  rect(g, '#c8a050', x, ROOF + 30, w, 2);
+  for (let k = 8; k < w; k += 16) rect(g, '#14121a', x + k, ROOF + 10, 1, 18);
+  rect(g, '#2a1418', x + 8, ROOF + 40, w - 16, 5);
+  for (const bx of [24, w - 24]) { wheel(g, x + bx - 8, ROOF + 48, 5, turn); wheel(g, x + bx + 8, ROOF + 48, 5, turn + 1); }
+}
+
+// The locomotive, from its cab (at x, the rear wall you face) forward. The
+// boss parts are drawn by the game from `parts` (hp left of each).
+function drawLoco(g, x, turn, parts, clock) {
+  const { turret, hatch, boss, out, flashT, flashH } = parts;
+  // boiler and smokebox
+  rect(g, '#0c0a0e', x + 43, ROOF - 9, 160, 50);
+  rect(g, '#2a2630', x + 44, ROOF - 8, 158, 48);
+  rect(g, '#4a4450', x + 44, ROOF - 8, 158, 2);
+  for (const bx of [64, 96, 128, 160]) { rect(g, '#c8a050', x + bx, ROOF - 8, 3, 48); rect(g, '#f0d080', x + bx, ROOF - 8, 1, 48); }
+  disc(g, '#0c0a0e', x + 90, ROOF - 12, 7); disc(g, '#c8a050', x + 90, ROOF - 12, 6); rect(g, '#f0d080', x + 86, ROOF - 16, 4, 1);
+  rect(g, '#0c0a0e', x + 117, ROOF - 34, 16, 27); rect(g, '#1e1a22', x + 118, ROOF - 33, 14, 26);
+  rect(g, '#0c0a0e', x + 114, ROOF - 38, 22, 6); rect(g, '#3a3440', x + 115, ROOF - 37, 20, 4);
+  // cab
+  rect(g, '#0c0a0e', x - 1, ROOF - 31, 46, 72);
+  rect(g, '#2e2836', x, ROOF - 30, 44, 70);
+  rect(g, '#0c0a0e', x - 4, ROOF - 34, 52, 5); rect(g, '#4a4450', x - 3, ROOF - 33, 50, 3); rect(g, '#6a6470', x - 3, ROOF - 33, 50, 1);
+  rect(g, '#a02a2a', x, ROOF + 24, 44, 3);
+  // the cab window, with the driver held inside
+  rect(g, '#0c0a0e', x + 15, ROOF - 25, 22, 16);
+  rect(g, '#ffcf7a', x + 16, ROOF - 24, 20, 14);
+  rect(g, '#2a4a8a', x + 22, ROOF - 22, 8, 3);       // cap
+  rect(g, '#f0b080', x + 22, ROOF - 19, 8, 4);       // face
+  rect(g, '#1a0e0a', x + 24, ROOF - 18, 1, 1); rect(g, '#1a0e0a', x + 27, ROOF - 18, 1, 1);
+  rect(g, '#e8e8e8', x + 22, ROOF - 15, 8, 4);       // beard
+  rect(g, '#8a5a30', x + 20, ROOF - 13, 12, 1);      // the rope
+  // the cab's rear door: dark when the gang boss is in it
+  rect(g, '#0c0a0e', x + 2, ROOF - 24, 12, 24);
+  rect(g, out ? '#0c0a0e' : '#3a3440', x + 3, ROOF - 23, 10, 23);
+  if (!out) rect(g, '#c8a050', x + 11, ROOF - 12, 1, 2);
+  // the firebox hatch, low on the rear wall
+  if (hatch > 0) {
+    rect(g, '#0c0a0e', x - 3, ROOF - 15, 12, 14);
+    rect(g, flashH ? '#ffffff' : '#5a4a40', x - 2, ROOF - 14, 10, 12);
+    const glow = clock % 20 < 10 ? '#ff8a1e' : '#ffd23f';
+    for (let k = 0; k < 3; k++) rect(g, glow, x, ROOF - 12 + k * 4, 6, 2);
+  } else {
+    rect(g, '#0c0a0e', x - 3, ROOF - 15, 12, 14);
+    for (let k = 0; k < 6; k++) rect(g, k % 2 ? '#3a2a2a' : '#1a1012', x - 2 + k, ROOF - 13 + (k * 3) % 9, 2, 2);
+  }
+  // the roof turret
+  if (turret > 0) {
+    const c = flashT ? '#ffffff' : '#5a5466';
+    rect(g, '#0c0a0e', x + 7, ROOF - 55, 22, 22);
+    rect(g, c, x + 8, ROOF - 46, 20, 12);
+    for (let k = 0; k < 6; k++) rect(g, c, x + 12 - Math.min(k, 3) + 0, ROOF - 54 + k + 2, 12 + Math.min(k, 3) * 2, 1);
+    rect(g, flashT ? '#ffffff' : '#7a7486', x + 8, ROOF - 46, 20, 1);
+    rect(g, '#2a2630', x + 12, ROOF - 42, 12, 3);
+    rect(g, '#0c0a0e', x - 6, ROOF - 41, 15, 4); rect(g, '#8a8490', x - 5, ROOF - 40, 14, 2);
+  } else {
+    rect(g, '#0c0a0e', x + 8, ROOF - 40, 20, 6);
+    for (let k = 0; k < 9; k++) rect(g, k % 2 ? '#3a2a2a' : '#1a1012', x + 9 + k * 2, ROOF - 41 - (k * 5) % 4, 2, 3);
+  }
+  // the driving wheels and their rod
+  rect(g, '#1a0c10', x, ROOF + 40, 200, 6);
+  for (const wx of [62, 90, 118]) wheel(g, x + wx, ROOF + 46, 9, turn, '#a02a2a');
+  const cx = Math.cos(turn) * 5, cy = Math.sin(turn) * 5;
+  rect(g, '#c8c8d0', x + 62 + cx, ROOF + 45 + cy, 57, 2);
+  for (const wx of [140, 160, 180]) wheel(g, x + wx, ROOF + 48, 6, turn * 1.4, '#a02a2a');
+  return { stackX: x + 125, stackY: ROOF - 38 };
+}
+
+// A signal gantry's lattice girder, seen from the side, on posts behind the train.
+function drawGantryPosts(g, x) {
+  for (const px of [x + 2, x + K.BEAM_W - 6]) { rect(g, '#0c0a10', px - 1, ROOF - K.BEAM_TOP, 6, 120); rect(g, '#3e3a48', px, ROOF - K.BEAM_TOP, 4, 120); }
+}
+function drawGantry(g, x, clock) {
+  const top = ROOF - K.BEAM_TOP, bot = ROOF - K.BEAM_BOTTOM, w = K.BEAM_W;
+  rect(g, '#0c0a10', x - 1, top - 1, w + 2, bot - top + 2);
+  rect(g, '#2a2632', x, top, w, bot - top);
+  rect(g, '#6a6478', x, top, w, 2); rect(g, '#6a6478', x, bot - 2, w, 2);
+  // the lattice: diagonals between the chords
+  for (let k = 0; k < w; k += 10) for (let j = 0; j < bot - top - 4; j++) {
+    const d = Math.floor((j * 10) / (bot - top - 4));
+    rect(g, '#4e4a5a', x + k + d, top + 2 + j, 1, 1);
+    rect(g, '#4e4a5a', x + k + 9 - d, top + 2 + j, 1, 1);
+  }
+  // the signal on top
+  rect(g, '#0c0a10', x + 15, top - 16, 10, 16); rect(g, '#1a1820', x + 16, top - 15, 8, 14);
+  disc(g, clock % 30 < 15 ? '#ff4040' : '#5a1010', x + 20, top - 11, 2);
+  disc(g, '#103010', x + 20, top - 5, 2);
+}
+
+// ---------------------------------------------------------------- small things
+
+function drawPickup(g, kind, x, y) {
+  if (kind === 'ammo') {
+    rect(g, '#0c0a06', x - 7, y - 9, 14, 9); rect(g, '#5a6a2a', x - 6, y - 8, 12, 8); rect(g, '#7a8a3a', x - 6, y - 8, 12, 1);
+    rect(g, '#e0b040', x - 4, y - 6, 2, 4); rect(g, '#e0b040', x - 1, y - 6, 2, 4); rect(g, '#e0b040', x + 2, y - 6, 2, 4);
+  } else if (kind === 'rounds') {
+    for (const dx of [-3, 0, 3]) { rect(g, '#0c0a06', x + dx - 1, y - 7, 3, 7); rect(g, '#e0b040', x + dx, y - 6, 1, 5); rect(g, '#c87a3a', x + dx, y - 6, 1, 1); }
+  } else {
+    const r = kind === 'canteen' ? 5 : 4;
+    disc(g, '#0c0a06', x, y - r - 1, r + 1); disc(g, '#6a8aa0', x, y - r - 1, r); disc(g, '#9abace', x - 1, y - r - 2, 1);
+    rect(g, '#8a5a30', x - r, y - r - 2, r * 2 + 1, 1);
+    rect(g, '#0c0a06', x - 1, y - r * 2 - 3, 3, 3); rect(g, '#c8c8d0', x, y - r * 2 - 2, 1, 2);
+  }
+}
+function drawDynamite(g, x, y, clock) {
+  rect(g, '#0c0a06', x - 3, y - 2, 6, 4); rect(g, '#d83020', x - 2, y - 1, 4, 2);
+  rect(g, clock % 6 < 3 ? '#ffd23f' : '#ffffff', x + 2, y - 3, 1, 1);
+}
+function drawShell(g, x, y) { rect(g, '#0c0a06', x - 2, y - 2, 5, 5); rect(g, '#6a6470', x - 1, y - 1, 3, 3); }
+const CAR_COUNT = CARS.length;
+
+// ---- games/sandstorm-express/game.js
+const TICK_MS = 1000 / 60;
+const DEMO_TICKS = 60 * 45;
+const ENTRY_AT = initialsLayout(W, 100);
+const BOSS_HP = 30;
+
+const INK = {
+  red: '#ff3b3b', white: '#ffffff', yellow: '#ffd23f', orange: '#ff8a1e', green: '#3fd46b',
+  cyan: '#5eeaf5', pink: '#ff5fb8', grey: '#8f8fb0', dim: '#4a4a6a', sand: '#ffd9a8',
+};
+const ROW_INKS = ['#ff3b3b', '#ff8a1e', '#ffd23f', '#3fd46b', '#5eeaf5', '#8f7bff', '#ff5fb8', '#ff8a1e', '#ffd23f', '#3fd46b'];
+const LOGO_INK = ['#fff3c0', '#ffe080', '#ffd23f', '#ffb02e', '#ff8a1e', '#e0602a', '#a83c2a'];
+const RANKS = ['1ST', '2ND', '3RD', '4TH', '5TH', '6TH', '7TH', '8TH', '9TH', '10TH'];
+
+// Invented initials, so a first visit has a table to beat.
+const DEFAULT_SCORES = [
+  ['DUN', 20000], ['MES', 16000], ['RAI', 13000], ['CAB', 10000], ['TIE', 8000],
+  ['BOX', 6000], ['GUL', 4500], ['SPK', 3000], ['DRY', 1500], ['ROD', 500],
+].map(([n, s]) => ({ n, s }));
+
+const cabinet = cabinetMode(), dress = cabinetDressing();
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const canvas = document.getElementById('c');
+const screen = makeScreen({ canvas, stage: document.getElementById('stage'), frame: document.getElementById('screen'), w: W, h: H, crtKey: 'lk.arcade.crt' });
+const ctx = screen.ctx;
+const sound = makeSound('lk.arcade.mute');
+const rumble = sound.drone({ cutoff: 220, vol: 0.05 });
+const scores = makeScores('lk.express.scores', DEFAULT_SCORES);
+
+const SPR = makeSprites();
+const SKY = paintSky(150 - TOP), MESAS = paintMesas(70), DUNES = paintDunes(40);
+const STREAKS = Array.from({ length: 36 }, (_, i) => ({ a: (i * 0.618) % 1, y: TOP + 6 + ((i * 47) % 190), len: 3 + (i % 5), speed: 1.2 + ((i * 7) % 5) * 0.15 }));
+const SPECKS = Array.from({ length: 50 }, (_, i) => ({ a: (i * 0.377) % 1, y: 198 + ((i * 13) % 26) }));
+
+let s = newGame();
+let mode = 'attract', page = 'title', pageT = 0, clock = 0, timer = 0;
+let demo = false, demoT = 0, entry = null, highlight = -1, pausedFrom = null;
+let bits = [], pops = [], bodies = [], puffs = [], note = null, shake = 0, muzzle = 0, kickT = 0;
+let travel = 0, speed = 1, lastX = 0, moving = false, tally = null;
+const flashT = new Map();
+
+const SFX = {
+  start: () => { sound.tune([[392, 0.1], [523, 0.1], [659, 0.1], [784, 0.25]], { vol: 0.045 }); sound.tune([[98, 0.3], [131, 0.4]], { type: 'triangle', vol: 0.12 }); },
+  fire: () => { sound.noise(0.08, { vol: 0.16, cutoff: 2400 }); sound.note(220, 0.06, { to: 110, vol: 0.03 }); },
+  click: () => sound.note(1800, 0.02, { vol: 0.03 }),
+  load: () => sound.note(1200, 0.03, { to: 900, vol: 0.025 }),
+  kick: () => sound.noise(0.06, { vol: 0.1, cutoff: 700 }),
+  jump: () => sound.note(330, 0.1, { to: 520, vol: 0.025 }),
+  hurt: () => { sound.noise(0.2, { vol: 0.18, cutoff: 600 }); sound.note(160, 0.2, { to: 80, type: 'triangle', vol: 0.1 }); },
+  fall: () => sound.note(600, 0.6, { to: 80, vol: 0.04 }),
+  hit: () => sound.note(880, 0.04, { to: 440, vol: 0.03 }),
+  down: () => sound.tune([[523, 0.05], [392, 0.08]], { vol: 0.035 }),
+  efire: () => sound.noise(0.06, { vol: 0.07, cutoff: 1600 }),
+  throw: () => sound.note(700, 0.25, { to: 300, vol: 0.02 }),
+  boom: () => { sound.noise(0.5, { vol: 0.28, cutoff: 500 }); sound.note(90, 0.4, { to: 40, type: 'triangle', vol: 0.12 }); },
+  ammo: () => sound.tune([[880, 0.05], [1175, 0.08]], { vol: 0.04 }),
+  heal: () => sound.tune([[523, 0.06], [659, 0.06], [784, 0.12]], { type: 'triangle', vol: 0.1 }),
+  signal: () => sound.tune([[1568, 0.08], [0, 0.06], [1568, 0.08], [0, 0.06], [1568, 0.08]], { vol: 0.025 }),
+  boss: () => sound.tune([[196, 0.2], [185, 0.2], [175, 0.2], [165, 0.5]], { type: 'triangle', vol: 0.14 }),
+  wreck: () => { sound.noise(0.9, { vol: 0.3, cutoff: 900 }); sound.tune([[392, 0.1], [523, 0.2]], { vol: 0.04, at: 0.4 }); },
+  resupply: () => sound.tune([[659, 0.06], [784, 0.06], [988, 0.1]], { vol: 0.04 }),
+  rescue: () => { sound.tune([[523, 0.12], [659, 0.12], [784, 0.12], [1047, 0.12], [784, 0.12], [1047, 0.4]], { vol: 0.05 }); sound.tune([[131, 0.48], [196, 0.6]], { type: 'triangle', vol: 0.14 }); },
+  over: () => sound.tune([[392, 0.22], [349, 0.22], [311, 0.22], [262, 0.7]], { type: 'triangle', vol: 0.12 }),
+  blip: () => sound.note(988, 0.05, { vol: 0.04 }),
+};
+// The demo plays silently: nobody asked for noise from a screen they are not using.
+function play(name) { if (!demo && SFX[name]) SFX[name](); }
+
+// ---------------------------------------------------------------- the game
+
+function newRun(isDemo) {
+  demo = isDemo; demoT = 0; highlight = -1;
+  s = newGame();
+  bits = []; pops = []; bodies = []; puffs = []; note = null; shake = 0; muzzle = 0; tally = null; speed = 1;
+  flashT.clear();
+  mode = 'ready'; timer = isDemo ? 60 : 120;
+  if (!isDemo) play('start');
+}
+
+function endDemo() { demo = false; rumble(false); toAttract('scores'); }
+function toAttract(p) { mode = 'attract'; page = p; pageT = 0; demo = false; entry = null; rumble(false); }
+
+function burst(x, y, n, inks) {
+  for (let i = 0; i < (reduceMotion ? Math.min(n, 6) : n); i++) {
+    const a = Math.random() * Math.PI * 2, sp = 0.4 + Math.random() * 2;
+    bits.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 0.6, life: 1, ink: inks[i % inks.length] });
+  }
+}
+function pop(x, y, str, ink) { pops.push({ x, y, s: str, ink, t: 60 }); }
+function say(str, ink, t = 100) { note = { s: str, ink, t }; }
+
+function playTick() {
+  if (demo && ++demoT > DEMO_TICKS) { endDemo(); return; }
+  const h = input.held;
+  const keys = demo ? pilot(s) : { left: h.left || touch.left, right: h.right || touch.right, up: h.up || touch.jump, down: h.down || touch.duck, fire: h.fire || touch.fire };
+  const was = s.p.x;
+  for (const e of step(s, keys)) {
+    play(e.type);
+    switch (e.type) {
+      case 'fire': muzzle = 4; break;
+      case 'click': if (!note || note.t < 20) say('EMPTY. DUCK TO RELOAD', INK.yellow, 70); break;
+      case 'kick': kickT = 12; break;
+      case 'hurt': burst(e.x, e.y, 10, [INK.red, INK.white]); shake = reduceMotion ? 0 : 5; break;
+      case 'fall': say('OFF THE TRAIN', INK.red, 90); break;
+      case 'hit': {
+        // whatever was hit shows white for a few frames
+        burst(e.x, e.y, 5, [INK.white, INK.yellow]);
+        const t = s.train.things.find(b => isBandit(b) && b.x === e.x);
+        if (t) flashT.set(t, 6);
+        else if (s.boss) flashT.set(e.y < ROOF - 30 ? 'turret' : s.boss.hatch > 0 || flashT.has('hatch') ? 'hatch' : 'boss', 6);
+        break;
+      }
+      case 'down': {
+        pop(e.x, ROOF - 30, String(e.pts), INK.white);
+        const t = s.train.things.find(b => isBandit(b) && !b.alive && b.x === e.x && !b.fell);
+        if (t) { t.fell = true; bodies.push({ kind: e.kind, x: e.x, y: ROOF, vx: (e.x > s.p.x ? 1.4 : -1.4), vy: -3, face: e.x > s.p.x ? -1 : 1 }); }
+        break;
+      }
+      case 'boom': burst(e.x, ROOF - 4, 16, [INK.yellow, INK.orange, INK.red, INK.white]); shake = reduceMotion ? 0 : 4; break;
+      case 'ammo': pop(e.x, ROOF - 26, '+' + e.n + ' ROUNDS', INK.yellow); break;
+      case 'heal': pop(e.x, ROOF - 26, '+' + e.n + ' HEALTH', INK.green); break;
+      case 'boss': say('THE LOCOMOTIVE', INK.orange, 150); break;
+      case 'wreck': burst(e.x, ROOF - 30, 30, [INK.yellow, INK.orange, INK.white]); shake = reduceMotion ? 0 : 8; say((e.id === 'turret' ? 'TURRET' : e.id === 'hatch' ? 'FIREBOX' : 'GANG BOSS') + ' DOWN  +' + e.pts, INK.yellow, 120); break;
+      case 'bossOut': if (s.boss.boss === 12 && !note) say('THE GANG BOSS', INK.pink, 90); break;
+      case 'resupply': say('THE DRIVER THROWS YOU ROUNDS', INK.cyan, 150); break;
+      case 'rescue':
+        rumble(false);
+        mode = 'won'; timer = 60 * 9;
+        tally = { hp: e.hp, rounds: e.rounds, bonus: e.bonus };
+        return;
+      case 'over': rumble(false); if (demo) { endDemo(); return; } mode = 'over'; timer = 200; play('over'); return;
+    }
+  }
+  moving = Math.abs(s.p.x - was) > 0.1;
+}
+
+function afterOver() {
+  if (scores.qualifies(s.score)) { entry = { letters: [0, 0, 0], pos: 0, timer: 60 * 30 }; mode = 'entry'; }
+  else toAttract('scores');
+}
+
+function saveEntry() {
+  const name = entry.letters.map(i => ENTRY_LETTERS[i]).join('');
+  highlight = scores.add(name, s.score);
+  toAttract('scores');
+}
+
+// ---------------------------------------------------------------- input
+
+// On a touch screen each control is held on its own, so you can run, jump
+// and shoot at once (the d-pad lets only one direction be held).
+const touch = { left: false, right: false, jump: false, duck: false, fire: false };
+for (const b of document.querySelectorAll('[data-hold]')) {
+  const what = b.dataset.hold;
+  b.addEventListener('pointerdown', e => {
+    e.preventDefault(); sound.wake(); touch[what] = true;
+    if (mode === 'attract' || demo) newRun(false);
+    else if (mode === 'entry') onDir({ left: 'left', right: 'right', jump: 'up', duck: 'down' }[what]);
+  });
+  for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(ev, () => { touch[what] = false; });
+  b.addEventListener('contextmenu', e => e.preventDefault());
+}
+
+function onAction(action) {
+  if (action === 'crt') { screen.toggleCrt(); syncToggles(); return; }
+  if (action === 'mute') { sound.toggleMute(); syncToggles(); return; }
+  if (action === 'back') { toAttract('title'); return; }
+  if (action === 'pause') {
+    if (mode === 'paused') { mode = pausedFrom; return; }
+    if (!demo && ['ready', 'play'].includes(mode)) { pausedFrom = mode; mode = 'paused'; rumble(false); }
+    return;
+  }
+  if (mode === 'attract' || demo) { newRun(false); return; }
+  if (mode === 'paused') { mode = pausedFrom; return; }
+  if (mode === 'over' || mode === 'won') { timer = Math.min(timer, 1); return; }
+  if (mode === 'entry') confirmLetter();
+  // in play, Space and the FIRE button are the gun, read from input.held
+}
+
+function confirmLetter() {
+  play('blip');
+  entry.pos++;
+  if (entry.pos >= 3) saveEntry();
+}
+
+function onDir(dir) {
+  if (mode !== 'entry') return;
+  const n = ENTRY_LETTERS.length, i = entry.pos;
+  if (dir === 'up') { entry.letters[i] = (entry.letters[i] + 1) % n; play('blip'); }
+  else if (dir === 'down') { entry.letters[i] = (entry.letters[i] + n - 1) % n; play('blip'); }
+  else if (dir === 'right') confirmLetter();
+  else if (dir === 'left' && entry.pos > 0) { entry.pos--; play('blip'); }
+}
+
+function onPoint(x, y) {
+  if (mode !== 'entry' || !input.touch) return false;
+  const a = tapInitials(entry, ENTRY_AT, x, y);
+  if (a === 'next') confirmLetter(); else onDir(a);
+  return true;
+}
+
+const input = makeInput({ screen: canvas, onAction, onDir, onPoint, onAny: () => sound.wake() });
+
+const crtBtn = document.querySelector('[data-action="crt"]');
+const muteBtn = document.querySelector('[data-action="mute"]');
+function syncToggles() {
+  crtBtn.textContent = 'CRT ' + (screen.crt ? 'on' : 'off');
+  crtBtn.setAttribute('aria-pressed', String(screen.crt));
+  muteBtn.textContent = 'Sound ' + (sound.muted ? 'off' : 'on');
+  muteBtn.setAttribute('aria-pressed', String(!sound.muted));
+}
+syncToggles();
+
+// A phone that locks or switches app mid-run comes back paused.
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && !demo && ['ready', 'play'].includes(mode)) { pausedFrom = mode; mode = 'paused'; rumble(false); }
+});
+
+// ---------------------------------------------------------------- drawing
+
+const blinkOn = (rate = 32) => reduceMotion || ((clock / rate) | 0) % 2 === 0;
+const prompt = () => (cabinet ? 'INSERT COIN' : input.touch ? 'TAP START' : 'PRESS SPACE');
+
+// The desert behind the train: far mesas barely move, the sand races.
+function drawDesert(g, cam, trav) {
+  g.drawImage(SKY, 0, TOP);
+  rect(g, '#8a3c50', 0, 150, W, 46); // the plain between the mesas and the dunes
+  scrollLayer(g, MESAS, (trav + cam) * 0.03, 150 - 70 + 12);
+  scrollLayer(g, DUNES, (trav + cam) * 0.25, 196 - 40 + 4);
+  rect(g, '#d88a52', 0, 196, W, BOTTOM - 196);
+  rect(g, '#e8a066', 0, 196, W, 1);
+  for (const p of SPECKS) rect(g, '#b8703e', (((p.a * W * 3 - (trav + cam)) % W) + W) % W, p.y, 5, 1);
+}
+function drawRails(g, cam, trav) {
+  rect(g, '#5a3424', 0, ROOF + 53, W, 2); rect(g, '#b0a090', 0, ROOF + 53, W, 1);
+  const o = (((trav + cam) % 12) + 12) % 12;
+  for (let x = -o; x < W; x += 12) rect(g, '#3a2018', x, ROOF + 55, 7, 3);
+}
+
+function drawTrain(g, st, cam, turn) {
+  const tr = st.train;
+  tr.roofs.forEach((r, i) => {
+    const x = r.x0 - cam, w = r.x1 - r.x0;
+    if (x > W + 4 || x + w < -60) return;
+    if (r.tender) drawTender(g, x, w, turn);
+    else drawCar(g, x, w, i, turn, text);
+    const next = tr.roofs[i + 1];
+    if (next) drawCoupler(g, r.x1 - cam, next.x0 - r.x1);
+  });
+  const L = tr.loco - cam;
+  if (L < W + 220) {
+    const b = st.boss;
+    const parts = b ? { turret: b.turret, hatch: b.hatch, boss: b.boss, out: b.out && b.boss > 0, flashT: (flashT.get('turret') || 0) > 0, flashH: (flashT.get('hatch') || 0) > 0 } : { turret: 1, hatch: 1, boss: 1, out: false };
+    const stack = drawLoco(g, L, turn, parts, clock);
+    if (clock % 6 === 0 && speed > 0.1) puffs.push({ x: stack.stackX + cam, y: stack.stackY, r: 3, age: 0 });
+    if (b && b.out && b.boss > 0) {
+      const sp = SPR.bandit.boss[(flashT.get('boss') || 0) > 0 ? 'hit' : 'stand'].l;
+      g.drawImage(sp, L - 6, ROOF - 24);
+    }
+  }
+}
+
+function drawFigure(g, sprites, frame, x, face) { g.drawImage(sprites[frame][face < 0 ? 'l' : 'r'], Math.round(x) - 8, ROOF - 24); }
+
+function drawPlayer(g, cam) {
+  const p = s.p;
+  const set = p.hurt > 0 && clock % 6 < 3 ? SPR.flash : SPR.hero;
+  let frame = 'stand';
+  if (!p.ground) frame = 'jump';
+  else if (p.duck) frame = p.reloadT > 0 ? 'load' : 'duck';
+  else if (kickT > 0) frame = 'kick';
+  else if (moving) frame = ((clock / 6) | 0) % 2 ? 'run1' : 'run2';
+  const x = Math.round(p.x - cam) - 8, y = Math.round(p.y) - 24;
+  g.drawImage(set[frame][p.face < 0 ? 'l' : 'r'], x, y);
+  if (muzzle > 0) {
+    const mx = Math.round(p.x - cam + p.face * 10), my = Math.round(p.y - (p.duck ? K.SHOT_DUCK : K.SHOT_STAND));
+    rect(g, '#fff3a0', mx - 1, my - 1, 3, 3); rect(g, '#ffb030', mx + p.face * 2, my, 1, 1);
+  }
+}
+
+function drawThings(g, cam) {
+  for (const t of s.train.things) {
+    const x = t.x - cam;
+    if (x < -20 || x > W + 20) continue;
+    if (isBandit(t)) {
+      if (!t.alive) continue;
+      const set = SPR.bandit[t.kind];
+      const f = (flashT.get(t) || 0) > 0 ? 'hit' : t.kind === 'low' ? 'duck' : t.kind === 'rush' ? (((clock / 7) | 0) % 2 ? 'run1' : 'run2') : 'stand';
+      drawFigure(g, set, f, x, t.face);
+      if (t.kind === 'dyn' && t.cool > 0 && t.cool < 20) drawDynamite(g, x + t.face * 6, ROOF - 26, clock);
+    } else if (!t.taken) {
+      drawPickup(g, t.kind, Math.round(x), ROOF - (((clock / 16) | 0) % 2));
+    }
+  }
+}
+
+function drawFire(g, cam) {
+  for (const b of s.shots) { rect(g, '#ffffff', b.x - cam - 2, b.y, 4, 1); rect(g, '#ffd23f', b.x - cam - 2 - Math.sign(b.vx) * 2, b.y, 2, 1); }
+  for (const b of s.eshots) { rect(g, '#ffb030', b.x - cam - 2, b.y, 4, 1); rect(g, '#ffffff', b.x - cam + (b.vx < 0 ? -2 : 1), b.y, 1, 1); }
+  for (const d of s.bombs) (d.from === 'shell' ? drawShell : drawDynamite)(g, Math.round(d.x - cam), Math.round(d.y), clock);
+}
+
+const PUFF_INK = ['#1e1a22', '#2e2834', '#4a4452', '#6a6470', '#8a8490'];
+function drawPuffs(g, cam) { for (const f of puffs) disc(g, PUFF_INK[Math.min(4, (f.age / 18) | 0)], Math.round(f.x - cam), Math.round(f.y), Math.round(f.r)); }
+
+function drawField() {
+  const cam = Math.round(s.cam);
+  const turn = travel / 5;
+  ctx.save();
+  if (shake > 0.5) ctx.translate(Math.round((Math.random() - 0.5) * shake), Math.round((Math.random() - 0.5) * shake));
+  drawDesert(ctx, cam, travel);
+  for (const gt of s.gantries) drawGantryPosts(ctx, Math.round(gt.x - cam));
+  drawRails(ctx, cam, travel);
+  drawTrain(ctx, s, cam, turn);
+  drawPuffs(ctx, cam);
+  drawThings(ctx, cam);
+  for (const b of bodies) ctx.drawImage(SPR.bandit[b.kind].hit[b.face < 0 ? 'l' : 'r'], Math.round(b.x - cam) - 8, Math.round(b.y) - 24);
+  drawPlayer(ctx, cam);
+  drawFire(ctx, cam);
+  for (const gt of s.gantries) drawGantry(ctx, Math.round(gt.x - cam), clock);
+  for (const p of bits) rect(ctx, p.life > 0.5 ? p.ink : '#5a3a2a', p.x - cam, p.y, 1, 1);
+  for (const p of pops) text(ctx, p.s, Math.round(p.x - cam), Math.round(p.y), p.t > 15 || blinkOn(4) ? p.ink : INK.dim, { align: 'center' });
+  // sand blowing past
+  if (speed > 0.2) for (const st of STREAKS) rect(ctx, INK.sand, ((st.a * W * 4 - travel * st.speed) % (W + 20) + W + 20) % (W + 20) - 10, st.y, st.len, 1);
+  // a gantry still off screen: the signal warns you to duck
+  const near = s.gantries.find(gt => gt.x - cam > W - 6 && gt.x - cam < W + K.TS * 45);
+  if (near && mode === 'play' && blinkOn(8)) {
+    rect(ctx, '#000', W - 46, ROOF - 52, 42, 22);
+    disc(ctx, '#ff4040', W - 37, ROOF - 41, 4);
+    text(ctx, 'DUCK', W - 30, ROOF - 44, INK.yellow);
+  }
+  ctx.restore();
+}
+
+function banner(lines, y) {
+  const wide = Math.max(...lines.map(([s0]) => s0.length)) * 6 + 10;
+  ctx.fillStyle = '#000';
+  ctx.fillRect(Math.floor((W - wide) / 2), y - 5, wide, lines.length * 12 + 7);
+  lines.forEach(([s0, ink], i) => text(ctx, s0, W / 2, y + i * 12, ink, { align: 'center' }));
+}
+
+function drawHud() {
+  rect(ctx, '#000', 0, 0, W, TOP);
+  rect(ctx, '#000', 0, BOTTOM, W, H - BOTTOM);
+  const hi = Math.max(scores.top, demo ? 0 : s.score);
+  text(ctx, String(mode === 'attract' ? 0 : s.score).padStart(6, '0'), 4, 5, INK.white);
+  text(ctx, 'HI ' + hi, 124, 5, INK.red, { align: 'center' });
+  if (mode === 'attract' || mode === 'entry') { if (mode === 'attract') text(ctx, 'LEON KARSTEN 2026', W / 2, BOTTOM + 4, INK.dim, { align: 'center' }); return; }
+  const p = s.p;
+  // health
+  text(ctx, 'HEALTH', 196, 5, INK.red);
+  rect(ctx, '#24243a', 236, 5, 80, 6);
+  const low = p.hp <= 25;
+  rect(ctx, low ? (blinkOn(8) ? INK.red : '#7a1a1a') : p.hp <= 50 ? INK.yellow : INK.green, 236, 5, Math.round((80 * p.hp) / K.HEALTH), 6);
+  // the gun: six chambers, and the rounds in your belt
+  for (let i = 0; i < K.CYL; i++) {
+    const on = i < p.cyl;
+    rect(ctx, on ? '#e0b040' : '#3a2a20', 4 + i * 5, BOTTOM + 4, 3, 7);
+    if (on) rect(ctx, '#c87a3a', 4 + i * 5, BOTTOM + 4, 3, 1);
+  }
+  text(ctx, '+' + p.reserve, 36, BOTTOM + 4, p.reserve ? INK.white : INK.red);
+  let status = '', ink = INK.yellow;
+  if (p.duck && p.reloadT > 0) status = 'RELOADING';
+  else if (p.cyl === 0 && p.reserve > 0) { if (blinkOn(10)) status = 'DUCK TO RELOAD'; }
+  else if (p.cyl === 0 && p.reserve === 0) { status = 'NO ROUNDS. KICK'; ink = INK.red; }
+  if (status) text(ctx, status, 150, BOTTOM + 4, ink, { align: 'center' });
+  // where you are
+  if (s.boss) {
+    const b = s.boss, left = Math.max(0, b.turret) + Math.max(0, b.hatch) + Math.max(0, b.boss);
+    text(ctx, 'ENGINE', 236, BOTTOM + 4, INK.orange, { align: 'right' });
+    rect(ctx, '#24243a', 240, BOTTOM + 4, 76, 6);
+    rect(ctx, INK.orange, 240, BOTTOM + 4, Math.round((76 * left) / BOSS_HP), 6);
+  } else {
+    const car = carOf(s, s.p.x);
+    text(ctx, car >= CARS.length ? 'TENDER' : 'CAR ' + Math.max(1, car + 1) + ' OF ' + CARS.length, W - 4, BOTTOM + 4, INK.cyan, { align: 'right' });
+  }
+}
+
+function drawTitle() {
+  drawDesert(ctx, 0, clock * K.TS);
+  // a train crossing behind the title
+  const turn = clock / 5, run = (clock * 0.8) % 1100;
+  for (let i = 0; i < 4; i++) drawCar(ctx, W + 20 + i * 216 - run, 200, i, turn, text);
+  drawLoco(ctx, W + 20 + 4 * 216 - run, turn, { turret: 1, hatch: 1, boss: 1, out: false }, clock);
+  drawRails(ctx, 0, clock * K.TS);
+  rect(ctx, '#000', 0, TOP + 8, W, 92);
+  text(ctx, 'SANDSTORM', W / 2 + 2, TOP + 16, '#3a1c10', { align: 'center', scale: 4 });
+  text(ctx, 'SANDSTORM', W / 2, TOP + 14, LOGO_INK, { align: 'center', scale: 4 });
+  text(ctx, 'EXPRESS', W / 2 + 2, TOP + 50, '#3a1c10', { align: 'center', scale: 4 });
+  text(ctx, 'EXPRESS', W / 2, TOP + 48, LOGO_INK, { align: 'center', scale: 4 });
+  text(ctx, 'FIGHT TO THE ENGINE. FREE THE DRIVER.', W / 2, TOP + 86, INK.sand, { align: 'center' });
+  if (blinkOn()) banner([[prompt(), INK.yellow]], 122);
+  if (!cabinet) banner([[input.touch ? 'BUTTONS RUN, JUMP AND DUCK' : 'ARROWS RUN, JUMP, DUCK. SPACE FIRES', INK.grey]], 140);
+}
+
+function drawHowTo() {
+  text(ctx, 'HOW TO PLAY', W / 2, 24, INK.cyan, { align: 'center' });
+  const keys = input.touch
+    ? [['RUN', 'LEFT / RIGHT'], ['JUMP', 'JUMP'], ['DUCK', 'HOLD DUCK'], ['FIRE', 'FIRE']]
+    : [['RUN', 'LEFT / RIGHT'], ['JUMP', 'UP'], ['DUCK', 'HOLD DOWN'], ['FIRE', 'SPACE']];
+  keys.forEach(([k, v], i) => { text(ctx, k, 92, 40 + i * 10, INK.yellow); text(ctx, v, 152, 40 + i * 10, INK.white); });
+  const rows = [
+    ['SIX ROUNDS IN THE GUN. TO RELOAD, DUCK:', INK.yellow],
+    ['ONE ROUND AT A TIME, FROM YOUR BELT.', INK.yellow],
+    ['', ''],
+    ['DUCK THE HIGH SHOTS. JUMP THE LOW ONES.', INK.white],
+    ['DUCK UNDER EVERY SIGNAL GANTRY.', INK.white],
+    ['A CROUCHING BANDIT: SHOOT FROM A DUCK.', INK.white],
+    ['', ''],
+    ['CANTEENS HEAL ' + HEAL.canteen + '. EVERY 5TH BANDIT LEAVES ' + HEAL.water + '.', INK.green],
+    ['BOXES HOLD ' + AMMO.box + ' ROUNDS. BANDITS DROP ' + AMMO.rounds + '.', INK.green],
+    ['', ''],
+    ['AT THE ENGINE: JUMP TO HIT THE TURRET,', INK.orange],
+    ['DUCK TO HIT THE FIREBOX. FREE THE DRIVER.', INK.orange],
+  ];
+  rows.forEach(([l, ink], i) => text(ctx, l, W / 2, 86 + i * 10, ink, { align: 'center' }));
+  if (blinkOn()) text(ctx, prompt(), W / 2, 214, INK.yellow, { align: 'center' });
+}
+
+function drawScores() {
+  text(ctx, 'HIGH SCORES', W / 2, 26, INK.yellow, { align: 'center' });
+  text(ctx, 'RANK', 80, 42, INK.grey);
+  text(ctx, 'SCORE', 196, 42, INK.grey, { align: 'right' });
+  text(ctx, 'NAME', 220, 42, INK.grey);
+  scores.table.forEach((r, i) => {
+    if (i === highlight && !blinkOn(16)) return;
+    const y = 56 + i * 15, ink = i === highlight ? INK.white : ROW_INKS[i];
+    text(ctx, RANKS[i], 80, y, ink);
+    text(ctx, String(r.s), 196, y, ink, { align: 'right' });
+    text(ctx, r.n, 220, y, ink);
+  });
+  if (blinkOn()) text(ctx, prompt(), W / 2, 214, INK.yellow, { align: 'center' });
+}
+
+function drawEntry() {
+  text(ctx, 'YOU MADE THE TOP TEN', W / 2, 32, INK.cyan, { align: 'center' });
+  text(ctx, String(s.score), W / 2, 48, INK.yellow, { align: 'center', scale: 2 });
+  text(ctx, 'ENTER YOUR INITIALS', W / 2, 74, INK.white, { align: 'center' });
+  drawInitials(ctx, entry, ENTRY_AT, { blinkOn: blinkOn(16), touch: input.touch, ink: INK });
+  text(ctx, input.touch ? 'TAP ABOVE OR BELOW A LETTER' : 'UP / DOWN   CHANGE LETTER', W / 2, 160, INK.grey, { align: 'center' });
+  text(ctx, input.touch ? 'TAP ELSEWHERE FOR THE NEXT' : 'RIGHT OR SPACE   NEXT', W / 2, 172, INK.grey, { align: 'center' });
+  text(ctx, 'TIME ' + Math.ceil(entry.timer / 60), W / 2, 198, INK.orange, { align: 'center' });
+}
+
+function drawWon() {
+  const t = 60 * 9 - timer;
+  const lines = [['THE DRIVER IS FREE', INK.cyan], ['THE TRAIN IS STOPPING', INK.yellow]];
+  if (t > 120) lines.push(['', INK.white], ['RESCUE  ' + PTS.rescue, INK.white]);
+  if (t > 170) lines.push(['HEALTH ' + tally.hp + ' X ' + PTS.health + '  ' + tally.hp * PTS.health, INK.green]);
+  if (t > 220) lines.push(['ROUNDS ' + tally.rounds + ' X ' + PTS.round + '  ' + tally.rounds * PTS.round, INK.yellow]);
+  if (t > 270) lines.push(['THANK YOU FOR RIDING', INK.orange]);
+  banner(lines, 40);
+}
+
+function drawScreen() {
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, W, H);
+  if (mode === 'attract') {
+    if (page === 'title') drawTitle();
+    else if (page === 'howto') drawHowTo();
+    else drawScores();
+    drawHud();
+    return;
+  }
+  if (mode === 'entry') { drawHud(); drawEntry(); return; }
+  drawField();
+  drawHud();
+  const mid = 64;
+  if (mode === 'ready') banner(demo ? [[cabinet ? 'INSERT COIN' : 'DEMO PLAY', INK.yellow]] : [['THE LAST CARRIAGE', INK.cyan], ['FIGHT YOUR WAY TO THE ENGINE', INK.yellow]], mid);
+  else if (mode === 'paused') banner([['PAUSED', INK.white], [input.touch ? 'TAP START' : 'PRESS P', INK.grey]], mid);
+  else if (mode === 'over') banner([['GAME OVER', INK.red], ['THE TRAIN RUNS ON', INK.grey]], mid);
+  else if (mode === 'won') drawWon();
+  else if (note && note.t > 0 && (note.t > 30 || blinkOn(6))) banner([[note.s, note.ink]], 30);
+  if (demo && mode === 'play' && blinkOn()) text(ctx, cabinet ? 'INSERT COIN' : 'DEMO PLAY', W / 2, TOP + 6, INK.yellow, { align: 'center' });
+}
+
+function draw() {
+  drawScreen();
+  if (cabinet) dress(ctx, demo);
+}
+
+// ---------------------------------------------------------------- card art
+
+// The picture on the site's Games page, 320x240: jumping the gap between two
+// carriages, a bandit ahead, the locomotive and a gantry coming, under the title.
+function drawCard() {
+  const c = document.createElement('canvas');
+  c.width = 320; c.height = 240;
+  const g = c.getContext('2d');
+  drawDesert(g, 0, 0);
+  rect(g, '#000', 0, 0, W, TOP);
+  drawRails(g, 0, 0);
+  drawCar(g, -120, 200, 0, 0.4, text);
+  drawCoupler(g, 80, 26);
+  drawCar(g, 106, 200, 1, 1.4, text);
+  const keep = clock; clock = 4;
+  drawLoco(g, 296, 0.8, { turret: 1, hatch: 1, boss: 1, out: false }, 4);
+  clock = keep;
+  g.drawImage(SPR.hero.jump.r, 84, ROOF - 24 - 30);
+  rect(g, '#fff3a0', 103, ROOF - 47, 3, 3);
+  rect(g, '#ffffff', 130, ROOF - 46, 4, 1); rect(g, '#ffffff', 160, ROOF - 46, 4, 1);
+  g.drawImage(SPR.bandit.gun.stand.l, 230, ROOF - 24);
+  rect(g, '#ffb030', 200, ROOF - K.HIGH, 4, 1);
+  drawPickup(g, 'canteen', 150, ROOF);
+  for (const st of STREAKS) rect(g, INK.sand, (st.a * W * 4) % W, st.y, st.len, 1);
+  rect(g, '#000', 0, 6, W, 72);
+  text(g, 'SANDSTORM', 162, 12, '#3a1c10', { align: 'center', scale: 4 });
+  text(g, 'SANDSTORM', 160, 10, LOGO_INK, { align: 'center', scale: 4 });
+  text(g, 'EXPRESS', 162, 46, '#3a1c10', { align: 'center', scale: 4 });
+  text(g, 'EXPRESS', 160, 44, LOGO_INK, { align: 'center', scale: 4 });
+  rect(g, '#000', 0, BOTTOM, W, H - BOTTOM);
+  return c;
+}
+
+// ---------------------------------------------------------------- loop
+
+const PAGES = { title: [cabinet ? 'demo' : 'howto', cabinet ? 300 : 420], howto: ['demo', 600], scores: ['title', 420] };
+function attractTick() {
+  pageT++;
+  const [next, length] = PAGES[page];
+  if (pageT < length) return;
+  if (next === 'demo') { newRun(true); return; }
+  if (next === 'title') highlight = -1;
+  toAttract(next);
+}
+
+function tick() {
+  clock++;
+  for (const p of bits) { p.x += p.vx; p.y += p.vy; p.vy += 0.08; p.life -= 0.03; }
+  bits = bits.filter(p => p.life > 0);
+  for (const p of pops) { p.t--; p.y -= 0.3; }
+  pops = pops.filter(p => p.t > 0);
+  for (const b of bodies) { b.x += b.vx; b.y += b.vy; b.vy += 0.25; }
+  bodies = bodies.filter(b => b.y < H + 30);
+  for (const f of puffs) { f.age++; f.x -= K.TS * 0.5 * speed + 0.2; f.y -= 0.35; f.r += 0.08; }
+  puffs = puffs.filter(f => f.age < 90);
+  for (const [k, v] of flashT) { if (v <= 1) flashT.delete(k); else flashT.set(k, v - 1); }
+  if (shake > 0) shake *= 0.85;
+  if (note) note.t--;
+  if (muzzle > 0) muzzle--;
+  if (kickT > 0) kickT--;
+  if (mode === 'won') speed = Math.max(0, speed - 1 / 240);
+  if (mode !== 'attract' && mode !== 'entry' && mode !== 'paused') travel += K.TS * speed;
+  switch (mode) {
+    case 'attract': attractTick(); break;
+    case 'ready': if (--timer <= 0) { mode = 'play'; if (!demo) rumble(true); } break;
+    case 'play': playTick(); break;
+    case 'won': if (--timer <= 0) afterOver(); break;
+    case 'over': if (--timer <= 0) afterOver(); break;
+    case 'entry': if (--entry.timer <= 0) saveEntry(); break;
+  }
+}
+
+// A fixed 60 ticks a second whatever the display's refresh rate.
+let acc = 0, lastT = 0;
+function frame(now) {
+  requestAnimationFrame(frame);
+  if (!lastT) lastT = now;
+  acc += Math.min(100, now - lastT);
+  lastT = now;
+  while (acc >= TICK_MS) { tick(); acc -= TICK_MS; }
+  draw();
+}
+requestAnimationFrame(frame);
+
+// Read-only view for the page checks, plus shortcuts so a check can reach the
+// later screens without playing a whole game.
+window.__sandstormexpress = {
+  get cabinet() { return cabinet; },
+  get mode() { return mode; },
+  get page() { return page; },
+  get demo() { return demo; },
+  get score() { return s.score; },
+  get hp() { return s.p.hp; },
+  get cyl() { return s.p.cyl; },
+  get reserve() { return s.p.reserve; },
+  get x() { return s.p.x; },
+  get shots() { return s.shots.length; },
+  get boss() { return !!s.boss; },
+  attract(p) { toAttract(p); },
+  emptyGun() { s.p.cyl = 0; },
+  quiet() { s.train.things = s.train.things.filter(t => !isBandit(t) || t.car > 2); s.gantryIn = 1e9; s.eshots = []; },
+  gantryHere() { s.gantries.push({ x: s.p.x + 6, hit: false }); },
+  toBoss() { const tr = s.train; s.train.things = s.train.things.filter(t => !isBandit(t)); s.p.x = tr.tender.x0 + 40; s.cam = lockCam(s); s.gantryIn = 1e9; },
+  endGame(score) { demo = false; s.score = score; mode = 'over'; timer = 1; },
+};
+window.__arcade = { card: drawCard };
+})();
+</script>
+</body>
+</html>
