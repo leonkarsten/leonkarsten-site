@@ -969,6 +969,310 @@ function autopilot(s) {
   return out;
 }
 
+// ---- games/hollow-manor/art.js
+// Hollow Manor's look. The table's painted surface is drawn once; its lamps,
+// bumpers, targets, flippers and ball are drawn over it every frame. Solid
+// pixels only: shading is done with a few tones and an ordered dither, the way
+// the hardware did it, never with blending.
+
+const BAYER = [[0, 8, 2, 10], [12, 4, 14, 6], [3, 11, 1, 9], [15, 7, 13, 5]];
+const dith = (x, y, t) => BAYER[y & 3][x & 3] / 16 < t;
+const at = y => Math.round(Y(y));
+
+function px(g, x, y, ink) { g.fillStyle = ink; g.fillRect(Math.round(x), Math.round(y), 1, 1); }
+function line(g, ax, ay, bx, by, ink, wide = 1) {
+  g.fillStyle = ink;
+  const n = Math.max(1, Math.ceil(Math.max(Math.abs(bx - ax), Math.abs(by - ay))));
+  for (let i = 0; i <= n; i++) g.fillRect(Math.round(ax + ((bx - ax) * i) / n - wide / 2), Math.round(ay + ((by - ay) * i) / n - wide / 2), wide, wide);
+}
+function disc(g, cx, cy, r, ink) {
+  g.fillStyle = ink;
+  for (let y = -r; y <= r; y++) { const w = Math.round(Math.sqrt(r * r - y * y)); g.fillRect(Math.round(cx - w), Math.round(cy + y), w * 2 + 1, 1); }
+}
+function insidePoly(poly, x, y) {
+  let c = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [ax, ay] = poly[i], [bx, by] = poly[j];
+    if ((ay > y) !== (by > y) && x < ((bx - ax) * (y - ay)) / (by - ay) + ax) c = !c;
+  }
+  return c;
+}
+function fillPoly(g, poly, ink) {
+  const xs = poly.map(p => p[0]), ys = poly.map(p => p[1]);
+  for (let y = Math.floor(Math.min(...ys)); y <= Math.ceil(Math.max(...ys)); y++) for (let x = Math.floor(Math.min(...xs)); x <= Math.ceil(Math.max(...xs)); x++) {
+    if (!insidePoly(poly, x + 0.5, y + 0.5)) continue;
+    const c = typeof ink === 'function' ? ink(x, y) : ink;
+    if (c) { g.fillStyle = c; g.fillRect(x, y, 1, 1); }
+  }
+}
+// A small sprite from text rows; each character is looked up in `ink`.
+function sprite(g, rows, x, y, ink) {
+  rows.forEach((r, j) => { for (let i = 0; i < r.length; i++) if (ink[r[i]]) px(g, x + i, y + j, ink[r[i]]); });
+}
+
+const SKULL = ['.#####.', '#######', '#..#..#', '#######', '.##.##.', '.#.#.#.'];
+const BAT = [['#.....#', '##.#.##', '.#####.', '..#.#..'], ['.......', '...#...', '#######', '#.#.#.#']];
+
+// Is (x, y) on the playfield, inside the rounded top and the side walls?
+const onField = (x, y) => {
+  if (x < 7 || x > 211 || y < TOP) return false;
+  const ex = (x - 121) / 114, ey = (y - Y(110)) / (Y(110) - Y(24) - 1);
+  return y >= Y(110) || ex * ex + ey * ey <= 1;
+};
+const hillY = x => at(262) + Math.round(Math.sin(x / 23) * 3 + Math.sin(x / 7.3) * 1.2);
+
+// ---------------------------------------------------------------- the painted table
+
+function paintTable(t) {
+  const c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  const g = c.getContext('2d');
+  g.fillStyle = '#05030a'; g.fillRect(0, 0, W, H);
+
+  // The sky, darkest at the top, in dithered steps; fog lying low over the ground.
+  const SKY = ['#0b0620', '#120a2c', '#1a0f3a', '#231448'];
+  for (let y = TOP; y < H; y++) for (let x = 7; x < 236; x++) {
+    if (!onField(x, y) && !(x > 212 && y >= Y(140))) continue;
+    if (x > 211 && x < 213) continue;
+    const k = Math.min(0.999, (y - TOP) / (hillY(x) - TOP)) * 3, i = Math.floor(k);
+    let ink = y > hillY(x) ? '#140a26' : dith(x, y, k - i) ? SKY[Math.min(3, i + 1)] : SKY[i];
+    if (y > hillY(x) + 1 && y < at(300)) { const f = (Math.sin(x / 19 + y / 6) + 1) / 2; if (dith(x, y, f * 0.35)) ink = '#2a1a48'; }
+    g.fillStyle = ink; g.fillRect(x, y, 1, 1);
+  }
+  // Stars, some brighter.
+  for (let i = 0; i < 70; i++) {
+    const x = 10 + ((i * 97) % 198), y = Math.round(Y(36 + ((i * 53) % 150)));
+    if (!onField(x, y) || y > hillY(x) - 6) continue;
+    px(g, x, y, i % 7 === 0 ? '#e8e0ff' : i % 3 ? '#4a4070' : '#8f86c0');
+  }
+  // The moon: a halo in dither, craters, a darker limb.
+  const mx = 176, my = at(92);
+  for (let y = -16; y <= 16; y++) for (let x = -16; x <= 16; x++) {
+    const d = Math.hypot(x, y);
+    if (d > 9 && d < 16 && dith(mx + x, my + y, (16 - d) / 14)) px(g, mx + x, my + y, '#3a2e68');
+  }
+  disc(g, mx, my, 9, '#d8d0b0');
+  disc(g, mx - 1, my - 1, 8, '#f0e8c8');
+  for (const [x, y, r] of [[-3, -2, 2], [3, 2, 1], [1, -4, 1], [-2, 4, 1]]) disc(g, mx + x, my + y, r, '#c8bea0');
+  for (let y = -9; y <= 9; y++) { const w = Math.round(Math.sqrt(81 - y * y)); px(g, mx + w, my + y, '#a89e80'); }
+
+  // The hill, dead trees, a broken fence, and graves.
+  for (let x = 7; x < 212; x++) { const y = hillY(x); px(g, x, y, '#3a2860'); px(g, x, y + 1, '#24163e'); }
+  for (const [tx, h, lean] of [[30, 34, 1], [172, 30, -1]]) {
+    const base = hillY(tx);
+    line(g, tx, base, tx + lean * 2, base - h, '#0a0612', 2);
+    for (const [fy, len, dir] of [[0.45, 10, -1], [0.6, 8, 1], [0.75, 7, -1], [0.85, 6, 1], [0.3, 6, 1]]) {
+      const y0 = base - h * fy, x0 = tx + lean * 2 * fy;
+      line(g, x0, y0, x0 + dir * len, y0 - len * 0.6, '#0a0612');
+      line(g, x0 + dir * len * 0.6, y0 - len * 0.36, x0 + dir * len * 0.9, y0 - len * 0.9, '#0a0612');
+    }
+  }
+  for (let x = 44; x < 60; x += 4) { const b = hillY(x); line(g, x, b, x, b - 5, '#1c1030'); }
+  for (let x = 160; x < 168; x += 4) { const b = hillY(x); line(g, x, b, x, b - 5, '#1c1030'); }
+  line(g, 44, hillY(44) - 3, 58, hillY(58) - 3, '#1c1030');
+  for (const [x, h] of [[18, 6], [66, 5], [154, 6], [196, 5]]) { const b = hillY(x); g.fillStyle = '#3a3050'; g.fillRect(x, b - h, 5, h); g.fillRect(x + 1, b - h - 1, 3, 1); px(g, x + 1, b - h + 1, '#5a5070'); }
+
+  // The manor: wings and towers, a roof line, chimneys, framed windows, a door.
+  const M = '#2a1a48', ML = '#3a2860', MD = '#1a0e30';
+  const base = at(266);
+  g.fillStyle = M; g.fillRect(62, at(222), 96, base - at(222));
+  const tower = (x, w, top) => {
+    g.fillStyle = M; g.fillRect(x, at(top), w, base - at(top));
+    // a pointed roof: each row up is a pixel narrower at both ends
+    for (let i = 0; i < w / 2; i++) { g.fillStyle = i === 0 ? ML : M; g.fillRect(x + i, at(top) - 1 - i, w - i * 2, 1); }
+    px(g, x + w / 2 - 0.5, at(top) - 1 - w / 2, '#5a4a8a');
+    g.fillStyle = ML; g.fillRect(x, at(top), 1, base - at(top));
+  };
+  tower(62, 20, 196); tower(138, 20, 192); tower(98, 24, 204);
+  g.fillStyle = MD; g.fillRect(84, at(214), 3, 10); g.fillRect(132, at(212), 3, 12);
+  g.fillStyle = ML; g.fillRect(62, at(222), 96, 1);
+  for (let x = 62; x < 158; x += 4) px(g, x, at(222) + 1, MD);
+  g.fillStyle = MD; g.fillRect(104, at(248), 12, base - at(248)); g.fillRect(105, at(246), 10, 2);
+  px(g, 113, at(256), '#8f7bff');
+  for (let y = base; y < base + 3; y++) { g.fillStyle = '#3a3050'; g.fillRect(100 - (y - base) * 2, y, 20 + (y - base) * 4, 1); }
+  for (const [x, y] of MANOR_WINDOWS) { g.fillStyle = MD; g.fillRect(x - 1, at(y) - 1, 6, 7); }
+
+  // The shooter lane.
+  g.fillStyle = '#0c0818'; g.fillRect(213, Math.round(Y(141)), 22, H - Math.round(Y(141)));
+
+  // Apron plates under the inlane guides, with a skull on each.
+  for (const m of [x => x, x => 218 - x]) {
+    const poly = [[m(28), Y(329)], [m(60), Y(349.5)], [m(60), H], [m(28), H]];
+    fillPoly(g, poly, (x, y) => (dith(x, y, 0.25) ? '#3a3a52' : '#2a2a3c'));
+    sprite(g, SKULL, Math.min(m(44), m(44)) - 3, at(368), { '#': '#5a5a70' });
+    for (const [x, y] of [[m(33), at(372)], [m(55), at(372)]]) px(g, x, y, '#8f8fb0');
+  }
+
+  // Slingshots: moulded plastic, banded, a bat on each.
+  for (const m of [x => x, x => 218 - x]) {
+    const poly = [[m(40), Y(290)], [m(40), Y(322)], [m(60), Y(336)]];
+    fillPoly(g, poly, (x, y) => (dith(x, y, ((y - Y(290)) / (Y(336) - Y(290))) * 0.8) ? '#5a1a7a' : '#7a2aa0'));
+    sprite(g, BAT[0], Math.round((m(40) + m(46)) / 2) - 3, at(312), { '#': '#1a0a26' });
+  }
+
+  // Rails: chrome, with a shadow under and a highlight over.
+  for (const w of t.walls) {
+    if (w.tag === 'gate') continue;
+    if (w.tag === 'sling') {
+      line(g, w.ax, w.ay, w.bx, w.by, '#e8e8f0', 2);
+      line(g, w.ax + 1, w.ay + 1, w.bx + 1, w.by + 1, '#c83030');
+      continue;
+    }
+    if (w.tag === 'plunger') { line(g, w.ax, w.ay, w.bx, w.by, '#5a5a70', 2); continue; }
+    line(g, w.ax + 1, w.ay + 1, w.bx + 1, w.by + 1, '#1a1030', 2);
+    line(g, w.ax, w.ay, w.bx, w.by, '#8f86c0', 2);
+    line(g, w.ax - 0.5, w.ay - 0.5, w.bx - 0.5, w.by - 0.5, '#d8d0ff');
+  }
+  // Rubber posts at the joints.
+  for (const [x, y] of [[28, 280], [190, 280], [40, 290], [178, 290], [40, 322], [178, 322], [60, 336], [158, 336], [66, 48], [96, 48], [126, 48], [156, 48]]) {
+    disc(g, x, at(y), 2, '#c83030'); px(g, x - 1, at(y) - 1, '#ff9a9a');
+  }
+  // Lane rollovers: little silver buttons in the lanes.
+  for (const x of t.lanes) { g.fillStyle = '#5a5a70'; g.fillRect(x - 2, at(60), 5, 2); px(g, x - 1, at(60), '#c8c8d8'); }
+
+  // The crypt: a stone arch, a skull keystone.
+  const cx = t.crypt.x, cy = Math.round(t.crypt.y);
+  for (let a = Math.PI; a <= Math.PI * 2 + 0.01; a += 0.12) for (let r = 8; r <= 11; r++) px(g, cx + Math.cos(a) * r, cy + Math.sin(a) * r, r === 8 ? '#3a3050' : (Math.round(a * 6) % 2 ? '#6a6080' : '#8a80a0'));
+  g.fillStyle = '#6a6080'; g.fillRect(cx - 11, cy, 3, 6); g.fillRect(cx + 9, cy, 3, 6);
+  disc(g, cx, cy, 7, '#05030a');
+  sprite(g, SKULL, cx - 3, cy - 15, { '#': '#c8c0a8' });
+
+  // Spinner posts.
+  g.fillStyle = '#8f8fb0'; g.fillRect(186, at(215) - 2, 2, 5); g.fillRect(208, at(215) - 2, 2, 5);
+  return c;
+}
+
+const MANOR_WINDOWS = [[67, 200], [146, 196], [107, 208], [70, 232], [92, 232], [124, 232], [146, 232], [70, 246], [146, 246]];
+
+// ---------------------------------------------------------------- the moving parts
+
+function lamp(g, x, y, label, lit, ink, w = 9, h = 9) {
+  const x0 = Math.round(x - w / 2), y0 = Math.round(y - h / 2);
+  if (lit) for (let j = -2; j < h + 2; j++) for (let i = -2; i < w + 2; i++) if ((i < 0 || j < 0 || i >= w || j >= h) && dith(x0 + i, y0 + j, 0.35)) px(g, x0 + i, y0 + j, ink);
+  g.fillStyle = lit ? ink : '#24183c'; g.fillRect(x0 + 1, y0, w - 2, h); g.fillRect(x0, y0 + 1, w, h - 2);
+  if (lit) { g.fillStyle = '#ffffff'; g.fillRect(x0 + 2, y0 + 1, 2, 1); }
+  text(g, label, x + 0.5, y0 + 1, lit ? '#05030a' : '#4a3a6a', { align: 'center' });
+}
+
+function drawBumper(g, b, hot, clock) {
+  const x = Math.round(b.x), y = Math.round(b.y);
+  if (hot) for (let j = -b.r - 4; j <= b.r + 4; j++) for (let i = -b.r - 4; i <= b.r + 4; i++) { const d = Math.hypot(i, j); if (d > b.r + 1 && d < b.r + 4 && dith(x + i, y + j, 0.5)) px(g, x + i, y + j, '#ffd23f'); }
+  disc(g, x, y, b.r + 1, hot ? '#ffd23f' : '#3a2a5a');
+  disc(g, x, y, b.r, '#e8e8f0');
+  disc(g, x, y, b.r - 2, hot ? '#fff8d0' : '#b8b8d0');
+  disc(g, x - 1, y - 1, b.r - 3, hot ? '#ffffff' : '#d8d8ec');
+  px(g, x - 4, y - 5, '#ffffff'); px(g, x - 5, y - 4, '#ffffff');
+  const blink = (clock + x * 7) % 200 < 6;
+  g.fillStyle = '#140c24';
+  if (blink) { g.fillRect(x - 4, y - 1, 3, 1); g.fillRect(x + 1, y - 1, 3, 1); }
+  else { g.fillRect(x - 4, y - 3, 3, 4); g.fillRect(x + 1, y - 3, 3, 4); px(g, x - 3, y - 3, '#5a5a8a'); px(g, x + 2, y - 3, '#5a5a8a'); }
+  g.fillRect(x - 1, y + 3, 3, hot ? 3 : 2);
+}
+
+function drawFlipper(g, f) {
+  const [tx, ty] = flipperTip(f);
+  const n = Math.ceil(Math.hypot(tx - f.px, ty - f.py));
+  // rubber edge, then the bat, then its lit top edge
+  for (const [grow, ink] of [[1, '#a81e2a'], [0, '#e8b020'], [-1.6, '#ffe070']]) {
+    g.fillStyle = ink;
+    for (let i = 0; i <= n; i++) {
+      const k = i / n, x = f.px + (tx - f.px) * k, y = f.py + (ty - f.py) * k, r = FLIP_R * (1 - k * 0.35) + grow;
+      if (r <= 0) continue;
+      const oy = grow < 0 ? -1 : 0;
+      g.fillRect(Math.round(x - r), Math.round(y - r + oy), Math.max(1, Math.round(r * 2)), Math.max(1, Math.round(grow < 0 ? 1 : r * 2)));
+    }
+  }
+  disc(g, f.px, f.py, 1, '#8f8fb0');
+}
+
+function drawBall(g, b) {
+  const cx = b.x, cy = b.y, r = BALL_R;
+  for (let y = Math.floor(cy - r); y <= Math.ceil(cy + r); y++) for (let x = Math.floor(cx - r); x <= Math.ceil(cx + r); x++) {
+    const dx = (x + 0.5 - cx) / r, dy = (y + 0.5 - cy) / r, d = dx * dx + dy * dy;
+    if (d > 1) continue;
+    const lit = -dx * 0.6 - dy * 0.7 + Math.sqrt(1 - d) * 0.4;
+    px(g, x, y, lit > 0.75 ? '#ffffff' : lit > 0.4 ? '#d8d8e8' : lit > 0.05 ? '#9a9ab0' : lit > -0.35 ? '#6a6a80' : '#3a3a50');
+  }
+}
+
+function drawTombstone(g, x, y0, y1, down) {
+  const h = Math.round(y1 - y0), top = Math.round(y0);
+  if (down) { g.fillStyle = '#1a1028'; g.fillRect(x - 3, top + h - 3, 7, 2); g.fillStyle = '#3a3050'; g.fillRect(x - 3, top + h - 1, 7, 1); return; }
+  g.fillStyle = '#b8b0a0'; g.fillRect(x - 3, top + 1, 7, h - 1); g.fillRect(x - 2, top, 5, 1);
+  g.fillStyle = '#e8e0c8'; g.fillRect(x - 3, top + 1, 2, h - 1);
+  g.fillStyle = '#7a7060'; g.fillRect(x + 3, top + 1, 1, h - 1);
+  px(g, x, top + 3, '#5a5040'); px(g, x - 1, top + 4, '#5a5040'); px(g, x, top + 5, '#5a5040');
+  px(g, x + 1, top + 7, '#5a5040'); px(g, x + 1, top + 8, '#5a5040');
+}
+
+// Bats, crossing the sky on their own paths.
+function drawBats(g, clock) {
+  for (let i = 0; i < 3; i++) {
+    const t = ((clock * (0.35 + i * 0.12)) / 60 + i * 2.1) % 10;
+    if (t > 6) continue;
+    const x = 12 + t * 33 + Math.sin(t * 3 + i) * 6, y = Y(44 + i * 14) + Math.sin(t * 5 + i) * 5;
+    if (!onField(x, y) || !onField(x + 6, y)) continue;
+    sprite(g, BAT[(clock >> 3) & 1], Math.round(x), Math.round(y), { '#': '#05030a' });
+  }
+}
+
+// fx: { bumper: [glow ticks], sling: [left, right ticks], spin: angle }
+function drawTable(g, s, fx, clock, layer, reduce) {
+  g.drawImage(layer, 0, 0);
+  const t = s.table, blink = r => reduce || ((clock / r) | 0) % 2 === 0;
+  if (!reduce) drawBats(g, clock);
+  // the manor's windows: lit, with now and then one going out
+  MANOR_WINDOWS.forEach(([x, y], i) => {
+    const out = !reduce && ((clock >> 5) * 31 + i * 17) % 23 === 0;
+    g.fillStyle = out ? '#1a0e30' : i % 3 ? '#ffd23f' : '#ff9a3a';
+    g.fillRect(x, at(y), 4, 5);
+    if (!out) { g.fillStyle = '#8a5a10'; g.fillRect(x + 1, at(y) + 2, 2, 1); }
+  });
+  // slingshots light up as they kick
+  for (const [k, m] of [[0, x => x], [1, x => 218 - x]]) if (fx.sling[k] > 0) {
+    fillPoly(g, [[m(40), Y(290)], [m(40), Y(322)], [m(60), Y(336)]], (x, y) => (dith(x, y, 0.5) ? '#e060ff' : '#b040d8'));
+    line(g, m(40), Y(290), m(60), Y(336), '#ffffff', 2);
+  }
+  // lamps: B O O, the multipliers, R I P, and the arrows to the crypt
+  t.lanes.forEach((x, i) => lamp(g, x, Y(78), 'BOO'[i], s.lanes[i], '#3fd46b'));
+  [2, 3, 4, 5].forEach((m, i) => lamp(g, 82 + i * 18, Y(292), m + 'X', s.mult >= m, '#5eeaf5', 15, 9));
+  const open = t.targets.every(x => x.down);
+  t.targets.forEach((tg, i) => {
+    lamp(g, 32, (tg.y0 + tg.y1) / 2, 'RIP'[i], tg.down, '#ffd23f');
+    drawTombstone(g, tg.x, tg.y0, tg.y1, tg.down);
+  });
+  for (let k = 0; k < 3; k++) {
+    const lit = open && (reduce || ((clock >> 3) + 2 - k) % 3 === 0 || blink(20));
+    const x = 76 - k * 8, y = Y(196) - k * 9;
+    const ink = lit ? '#3fd46b' : '#24183c';
+    line(g, x, y, x + 4, y + 2, ink, 2); line(g, x, y, x + 1, y + 5, ink, 2);
+  }
+  // the crypt glows when it is open, and while it holds a ball
+  if (open || s.held) {
+    const pulse = reduce ? 1 : (Math.sin(clock / 6) + 1) / 2;
+    for (let r = 2; r <= 6; r++) for (let a = 0; a < 6.3; a += 0.4) if (dith(Math.round(t.crypt.x + Math.cos(a) * r), Math.round(t.crypt.y + Math.sin(a) * r), pulse * (1 - r / 7))) px(g, t.crypt.x + Math.cos(a) * r, t.crypt.y + Math.sin(a) * r, s.held ? '#ff5fb8' : '#8f7bff');
+    if (open && blink(10)) text(g, 'OPEN', t.crypt.x, t.crypt.y + 12, '#3fd46b', { align: 'center' });
+  }
+  // the spinner's plate, turning
+  const sp = Math.abs(Math.cos(fx.spin)), sy = at(215);
+  g.fillStyle = '#c8c8d8'; g.fillRect(188, sy - Math.round(sp * 2), 20, Math.max(1, Math.round(sp * 4)));
+  g.fillStyle = '#ffffff'; g.fillRect(188, sy - Math.round(sp * 2), 20, 1);
+  t.bumpers.forEach((b, i) => drawBumper(g, b, fx.bumper[i] > 0, clock));
+  for (const f of s.flippers) drawFlipper(g, f);
+  // the plunger: a spring and a knob, pulled back
+  const pull = Math.round(s.plunge * 10), rest = at(396);
+  for (let y = rest + pull + 2; y < H; y += 2) { g.fillStyle = (y >> 1) % 2 ? '#8f8fb0' : '#5a5a70'; g.fillRect(219, y, 10, 1); }
+  g.fillStyle = '#c83030'; g.fillRect(218, rest + pull - 1, 12, 3); g.fillStyle = '#ff7070'; g.fillRect(218, rest + pull - 1, 12, 1);
+  // the shooter lane's lights, chasing up while a ball waits
+  const waiting = s.balls.some(b => b.x > 212 && b.y > Y(300));
+  for (let k = 0; k < 5; k++) {
+    const y = at(360) - k * 30, on = waiting && ((clock >> 3) % 5 === k);
+    g.fillStyle = on ? '#ffd23f' : '#2a2040';
+    g.fillRect(221, y, 6, 1); g.fillRect(222, y - 1, 4, 1); g.fillRect(223, y - 2, 2, 1);
+  }
+  for (const b of s.balls) drawBall(g, b);
+}
+
 // ---- games/hollow-manor/game.js
 const TICK_MS = 1000 / 60;
 const DEMO_TICKS = 60 * 40;
@@ -999,7 +1303,7 @@ const scores = makeScores('lk.hollowmanor.scores', DEFAULT_SCORES);
 let s = newState();
 let mode = 'attract', page = 'title', pageT = 0, clock = 0, timer = 0;
 let ball = 1, demo = false, demoT = 0, entry = null, highlight = -1, pausedFrom = null;
-let tally = null, note = null, flashes = [], glow = { bumper: [0, 0, 0] };
+let tally = null, note = null, flashes = [];
 // The press that starts a game must not also pull the plunger: it only counts
 // once it has been let go.
 let plungeArmed = false;
@@ -1065,7 +1369,9 @@ function playTick() {
   const keys = demo ? autopilot(s) : { left: h.left || touch.left, right: h.right || touch.right, plunge: plungeArmed && h.fire };
   for (const e of step(s, keys)) {
     play(e.type);
-    if (e.type === 'bumper') glow.bumper[nearestBumper(e.x, e.y)] = 8;
+    if (e.type === 'bumper') fx.bumper[nearestBumper(e.x, e.y)] = 8;
+    if (e.type === 'sling') fx.sling[e.x < 109 ? 0 : 1] = 6;
+    if (e.type === 'spin') fx.spinV = Math.min(0.9, fx.spinV + 0.35);
     if (e.pts >= 100) flashes.push({ x: e.x, y: e.y, s: String(e.pts), t: 30 });
     if (NOTES[e.type]) note = { s: e.type === 'multiplier' ? 'BONUS X' + s.mult : NOTES[e.type][0], ink: NOTES[e.type][1], t: 120 };
     if (e.type === 'drain') { endOfBall(); return; }
@@ -1182,128 +1488,12 @@ document.addEventListener('visibilitychange', () => {
 const blinkOn = (rate = 32) => reduceMotion || ((clock / rate) | 0) % 2 === 0;
 const prompt = () => (cabinet ? 'INSERT COIN' : input.touch ? 'TAP START' : 'PRESS SPACE');
 
-// Lines a pixel at a time: canvas lines are anti-aliased, and the arcade's are not.
-function line(g, ax, ay, bx, by, ink, wide = 1) {
-  g.fillStyle = ink;
-  const n = Math.max(1, Math.ceil(Math.max(Math.abs(bx - ax), Math.abs(by - ay))));
-  for (let i = 0; i <= n; i++) g.fillRect(Math.round(ax + ((bx - ax) * i) / n - wide / 2), Math.round(ay + ((by - ay) * i) / n - wide / 2), wide, wide);
-}
-function disc(g, cx, cy, r, ink) {
-  g.fillStyle = ink;
-  for (let y = -r; y <= r; y++) { const w = Math.round(Math.sqrt(r * r - y * y)); g.fillRect(Math.round(cx - w), Math.round(cy + y), w * 2 + 1, 1); }
-}
-
-// The table's painted surface and its fixed parts, drawn once.
+// The painted table is drawn once; everything else every frame (art.js).
 let tableLayer = null;
-function paintTable(t) {
-  const c = document.createElement('canvas');
-  c.width = W; c.height = H;
-  const g = c.getContext('2d');
-  g.fillStyle = '#05030a'; g.fillRect(0, 0, W, H);
-  // the playfield: night falling down the table, in bands
-  for (let y = TOP; y < H; y++) {
-    const k = (y - TOP) / (H - TOP);
-    g.fillStyle = k < 0.33 ? '#140c2a' : k < 0.66 ? '#1a1034' : '#20123c';
-    for (let x = 0; x < W; x++) {
-      const ex = (x - 121) / 115, ey = (y - Y(110)) / (Y(110) - Y(24));
-      if (x < 6 || x > 236 || (y < Y(110) && ex * ex + ey * ey > 1)) continue;
-      g.fillRect(x, y, 1, 1);
-    }
-  }
-  // stars, and a moon over the manor
-  for (let i = 0; i < 40; i++) { const x = 14 + ((i * 97) % 190), y = Y(40 + ((i * 53) % 120)); g.fillStyle = i % 3 ? '#4a4070' : '#a098c8'; g.fillRect(x, y, 1, 1); }
-  disc(g, 168, Y(64), 9, '#e8e0c8'); disc(g, 172, Y(61), 7, '#140c2a');
-  // the manor, painted on the playfield under the bumpers
-  const manor = '#2c1c4c', lit = '#ffd23f';
-  g.fillStyle = manor;
-  // (painted at the 400-high layout's heights, through Y, like everything else)
-  const at = y => Math.round(Y(y));
-  g.fillRect(60, at(216), 100, at(266) - at(216));
-  for (const [x0, w, h] of [[60, 22, 30], [138, 22, 34], [96, 28, 22]]) g.fillRect(x0, at(216 - h), w, at(216) - at(216 - h));
-  for (let i = 0; i < 12; i++) { g.fillRect(60 + i, at(186) - i, 22 - i * 2 > 0 ? 22 - i * 2 : 1, 1); g.fillRect(138 + i, at(182) - i, 22 - i * 2 > 0 ? 22 - i * 2 : 1, 1); g.fillRect(96 + i, at(194) - i, 28 - i * 2 > 0 ? 28 - i * 2 : 1, 1); }
-  g.fillStyle = lit;
-  for (const [x, y] of [[66, 196], [146, 192], [70, 232], [92, 232], [124, 232], [146, 232], [106, 200]]) g.fillRect(x, at(y), 4, 5);
-  g.fillStyle = '#140c24'; g.fillRect(104, at(246), 12, at(266) - at(246));
-  // gravestones between the flippers, and the word for what happens there
-  for (const [x, h] of [[96, 10], [106, 13], [118, 9]]) { g.fillStyle = '#3a3050'; g.fillRect(x, H - 6 - h, 8, h); g.fillRect(x + 1, H - 7 - h, 6, 1); }
-  // the walls
-  for (const w of t.walls) {
-    if (w.tag === 'gate') continue;
-    line(g, w.ax, w.ay, w.bx, w.by, w.tag === 'sling' ? INK.white : w.tag === 'plunger' ? '#5a5a70' : '#9f8fd0', w.tag === 'sling' ? 2 : 2);
-  }
-  // the slingshots, filled
-  for (const m of [x => x, x => 218 - x]) for (let y = Math.ceil(Y(292)); y < Y(334); y++) {
-    const xa = 41, xb = 41 + ((y - Y(290)) / (Y(336) - Y(290))) * 19;
-    const a = Math.min(m(xa), m(xb)), b = Math.max(m(xa), m(xb));
-    g.fillStyle = '#6a2a7a'; g.fillRect(Math.round(a), y, Math.max(0, Math.round(b - a)), 1);
-  }
-  // lane letters' sockets and the crypt's mouth
-  disc(g, t.crypt.x, t.crypt.y, 7, '#000');
-  line(g, t.crypt.x - 8, t.crypt.y - 9, t.crypt.x + 8, t.crypt.y - 9, '#5a5a70', 2);
-  text(g, 'CRYPT', t.crypt.x, t.crypt.y + 11, '#5a4a7a', { align: 'center' });
-  // shooter lane
-  g.fillStyle = '#0c0818'; g.fillRect(213, Math.round(Y(141)), 22, Math.round(Y(395) - Y(141)));
-  return c;
-}
-
-function drawFlipper(g, f) {
-  const [tx, ty] = flipperTip(f);
-  for (let r = FLIP_R; r >= 0; r -= 1) {
-    const ink = r > FLIP_R - 1 ? '#c8a020' : '#ffd23f';
-    g.fillStyle = ink;
-    const n = Math.ceil(Math.hypot(tx - f.px, ty - f.py));
-    for (let i = 0; i <= n; i++) {
-      const k = i / n, x = f.px + (tx - f.px) * k, y = f.py + (ty - f.py) * k, rr = FLIP_R * (1 - k * 0.35);
-      if (r > rr) continue;
-      g.fillRect(Math.round(x - r), Math.round(y - r), Math.round(r * 2), Math.round(r * 2));
-    }
-  }
-}
-
-// A ghost for a bumper: a white dome with eyes, lit up when struck.
-function drawBumper(g, b, hot) {
-  disc(g, b.x, b.y, b.r, hot ? INK.yellow : '#3a2a5a');
-  disc(g, b.x, b.y, b.r - 2, hot ? '#fff8d0' : '#e8e8f0');
-  g.fillStyle = '#140c24';
-  g.fillRect(b.x - 4, b.y - 3, 3, 4); g.fillRect(b.x + 1, b.y - 3, 3, 4);
-  g.fillRect(b.x - 2, b.y + 3, 4, 2);
-}
-
-function drawTable() {
+const fx = { bumper: [0, 0, 0], sling: [0, 0], spin: 0, spinV: 0 };
+function drawPlayfield() {
   if (!tableLayer) tableLayer = paintTable(s.table);
-  ctx.drawImage(tableLayer, 0, 0);
-  const t = s.table;
-  // B O O over the lanes, lit as they are rolled
-  t.lanes.forEach((x, i) => text(ctx, 'BOO'[i], x, Math.round(Y(76)), s.lanes[i] ? INK.green : '#3a3050', { align: 'center' }));
-  // the bonus multiplier lights
-  [2, 3, 4, 5].forEach((m, i) => text(ctx, m + 'X', 82 + i * 18, Math.round(Y(290)), s.mult >= m ? INK.cyan : '#2c2448'));
-  // tombstones: standing, or flat
-  t.targets.forEach((tg, i) => {
-    if (tg.down) { ctx.fillStyle = '#2c2448'; ctx.fillRect(tg.x - 2, tg.y0 + 2, 3, 10); return; }
-    ctx.fillStyle = INK.bone; ctx.fillRect(tg.x - 3, tg.y0, 6, 14);
-    ctx.fillStyle = '#8a8070'; ctx.fillRect(tg.x - 3, tg.y0, 1, 14);
-    text(ctx, 'RIP'[i], tg.x + 6, tg.y0 + 4, '#5a4a7a');
-  });
-  // the crypt, its arrow flashing when it is open
-  const lit = t.targets.every(x => x.down);
-  if (lit && blinkOn(10)) { text(ctx, 'OPEN', t.crypt.x, t.crypt.y - 18, INK.green, { align: 'center' }); }
-  if (s.held && blinkOn(6)) disc(ctx, t.crypt.x, t.crypt.y, 5, INK.purple);
-  // the spinner, turning as it is passed
-  const spin = (clock >> 1) % 4;
-  ctx.fillStyle = INK.white; ctx.fillRect(188, 214, 20, 1 + (spin === 1 || spin === 3 ? 2 : 0));
-  t.bumpers.forEach((b, i) => drawBumper(ctx, b, glow.bumper[i] > 0));
-  for (const f of s.flippers) drawFlipper(ctx, f);
-  // the plunger, pulled back
-  const pull = Math.round(s.plunge * 10), rest = Math.round(Y(396));
-  ctx.fillStyle = '#8f8fb0';
-  for (let y = rest + pull; y < H; y += 3) ctx.fillRect(218, y, 12, 1);
-  ctx.fillStyle = INK.red; ctx.fillRect(218, rest + pull - 1, 12, 3);
-  // the balls
-  for (const b of s.balls) {
-    disc(ctx, b.x, b.y, BALL_R, '#c8c8d8');
-    ctx.fillStyle = '#ffffff'; ctx.fillRect(Math.round(b.x - 2), Math.round(b.y - 3), 2, 2);
-    ctx.fillStyle = '#5a5a70'; ctx.fillRect(Math.round(b.x + 1), Math.round(b.y + 2), 2, 1);
-  }
+  drawTable(ctx, s, fx, clock, tableLayer, reduceMotion);
   for (const f of flashes) text(ctx, f.s, f.x, f.y - 10 - (30 - f.t) / 3, f.t > 10 || blinkOn(4) ? INK.yellow : INK.orange, { align: 'center' });
 }
 
@@ -1324,7 +1514,7 @@ function drawHud() {
 }
 
 function drawTitle() {
-  drawTable();
+  drawPlayfield();
   ctx.fillStyle = '#000'; ctx.fillRect(18, 90, 204, 70);
   text(ctx, 'HOLLOW', W / 2 + 2, 98, '#1c1430', { align: 'center', scale: 3 });
   text(ctx, 'HOLLOW', W / 2, 96, LOGO_INK, { align: 'center', scale: 3 });
@@ -1398,7 +1588,7 @@ function drawScreen() {
     return;
   }
   if (mode === 'entry') { drawHud(); drawEntry(); return; }
-  drawTable();
+  drawPlayfield();
   drawHud();
   if (mode === 'bonus') drawBonus();
   else if (mode === 'over') banner([['GAME OVER', INK.red]], 170);
@@ -1424,8 +1614,8 @@ function drawCard() {
   g.fillStyle = '#05030a'; g.fillRect(0, 0, 320, 240);
   const t = newState().table, layer = paintTable(t);
   g.drawImage(layer, 0, 20, W, 220, 40, 20, W, 220);
-  t.bumpers.forEach((b, i) => drawBumper(g, { x: b.x + 40, y: b.y, r: b.r }, i === 1));
-  disc(g, 150, 100, BALL_R, '#c8c8d8');
+  t.bumpers.forEach((b, i) => drawBumper(g, { x: b.x + 40, y: b.y, r: b.r }, i === 1, 30));
+  drawBall(g, { x: 152, y: 96 });
   text(g, 'HOLLOW MANOR', 162, 6, '#1c1430', { align: 'center', scale: 2 });
   text(g, 'HOLLOW MANOR', 160, 4, LOGO_INK, { align: 'center', scale: 2 });
   return c;
@@ -1447,7 +1637,9 @@ function tick() {
   clock++;
   for (const f of flashes) f.t--;
   flashes = flashes.filter(f => f.t > 0);
-  glow.bumper = glow.bumper.map(v => Math.max(0, v - 1));
+  fx.bumper = fx.bumper.map(v => Math.max(0, v - 1));
+  fx.sling = fx.sling.map(v => Math.max(0, v - 1));
+  fx.spin += fx.spinV; fx.spinV *= 0.96;
   if (note) note.t--;
   switch (mode) {
     case 'attract': attractTick(); break;
@@ -1492,7 +1684,6 @@ window.__hollowmanor = {
   endGame(score) { demo = false; s.score = score; mode = 'over'; timer = 1; },
 };
 window.__arcade = { card: drawCard };
-void PLUNGE_AT;
 })();
 </script>
 </body>
