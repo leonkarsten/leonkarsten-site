@@ -1,0 +1,1383 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tow Line</title>
+<meta name="description" content="Shoot the junk, haul the scrap. Defend a salvage station and tow its living home, three pieces on a line.">
+<meta name="theme-color" content="#000000">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2016%2016'%20shape-rendering='crispEdges'%3E%3Crect%20width='16'%20height='16'%20fill='%23000'/%3E%3Crect%20x='2'%20y='6'%20width='5'%20height='4'%20fill='%23fff'/%3E%3Crect%20x='7'%20y='7'%20width='2'%20height='2'%20fill='%235eeaf5'/%3E%3Crect%20x='10'%20y='7'%20width='3'%20height='3'%20fill='%23ffd23f'/%3E%3C/svg%3E">
+<style>
+:root {
+  --void: #000;
+  --chrome: #8f8fb0;
+  --chrome-hi: #5eeaf5;
+  --edge: #2a2a40;
+  --start: #e8302f;
+  --ui: ui-monospace, 'Cascadia Mono', Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; height: 100%; background: var(--void); color: var(--chrome); }
+body {
+  font-family: var(--ui);
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  height: 100dvh;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: 'bar' 'stage' 'pad';
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.bar {
+  grid-area: bar;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+}
+.bar a, .bar button {
+  font: 700 12px/1 var(--ui);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--chrome);
+  background: none;
+  border: 1px solid transparent;
+  padding: 9px 10px;
+  text-decoration: none;
+  cursor: pointer;
+  border-radius: 0;
+}
+.bar a:hover, .bar button:hover, .bar a:focus-visible, .bar button:focus-visible {
+  color: var(--chrome-hi);
+  border-color: var(--edge);
+  outline: none;
+}
+.bar button[aria-pressed='true'] { color: var(--chrome-hi); }
+.toggles { display: flex; gap: 2px; }
+
+.stage {
+  grid-area: stage;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  padding: 8px 16px;
+}
+/* A faint edge, so an unexplored black playfield still has a size. */
+.screen { position: relative; line-height: 0; touch-action: none; box-shadow: 0 0 0 1px #1c1c2c; }
+.screen canvas {
+  display: block;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+/* The CRT switch. Off by default: sharp pixels are the honest picture, the
+   tube is a costume. Scanlines are one per game pixel row (--px is set by
+   the screen fit), so they never beat against the art. */
+.screen.crt { border-radius: 3% / 4%; overflow: hidden; box-shadow: 0 0 0 4px #0b0b14, 0 0 36px rgba(94, 234, 245, 0.12); }
+.screen.crt canvas { filter: saturate(1.25) brightness(1.12) contrast(1.05) blur(calc(var(--px) * 0.18)); }
+.screen.crt::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background:
+    radial-gradient(ellipse at center, rgba(0, 0, 0, 0) 58%, rgba(0, 0, 0, 0.6) 100%),
+    repeating-linear-gradient(to bottom,
+      rgba(0, 0, 0, 0) 0, rgba(0, 0, 0, 0) calc(var(--px) * 0.55),
+      rgba(0, 0, 0, 0.38) calc(var(--px) * 0.55), rgba(0, 0, 0, 0.38) var(--px));
+  box-shadow: inset 0 0 48px rgba(0, 0, 0, 0.75);
+}
+
+/* Touch controls: shown on touch screens only. */
+.pad {
+  grid-area: pad;
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  max-width: 380px;
+  margin: 0 auto;
+  padding: 4px 20px 16px;
+}
+body.touch .pad { display: flex; }
+.dpad {
+  display: grid;
+  grid-template-columns: repeat(3, 54px);
+  grid-template-rows: repeat(3, 50px);
+  gap: 3px;
+}
+.dpad button, .start {
+  font: 700 18px/1 var(--ui);
+  color: var(--chrome);
+  background: #12121e;
+  border: 2px solid var(--edge);
+  border-radius: 6px;
+  padding: 0;
+  touch-action: none;
+  cursor: pointer;
+}
+.dpad button:active { background: #24243a; color: var(--chrome-hi); }
+.dpad .up { grid-area: 1 / 2; }
+.dpad .left { grid-area: 2 / 1; }
+.dpad .right { grid-area: 2 / 3; }
+.dpad .down { grid-area: 3 / 2; }
+.start {
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  background: var(--start);
+  border: 4px solid #7a1414;
+  color: #fff;
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  box-shadow: inset 0 -6px 0 rgba(0, 0, 0, 0.25);
+}
+.start:active { transform: translateY(2px); box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.25); }
+
+/* A phone on its side: d-pad left of the screen, START right of it. A game
+   with no d-pad (its keys are on the screen) moves the bar to a column
+   instead, so an upright screen gets the full height. */
+@media (orientation: landscape) and (max-height: 520px) {
+  body.no-pad {
+    grid-template-rows: minmax(0, 1fr);
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas: 'bar stage';
+  }
+  body.no-pad .bar { flex-direction: column; justify-content: flex-start; align-items: flex-start; }
+  body.no-pad .toggles { flex-direction: column; }
+  .stage { padding: 4px 8px; }
+  body.touch:not(.no-pad) {
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas: 'bar bar bar' 'dpad stage start';
+  }
+  body.touch:not(.no-pad) .pad { display: contents; }
+  body.touch .dpad { grid-area: dpad; align-self: center; margin-left: 12px; }
+  body.touch .start { grid-area: start; align-self: center; margin-right: 16px; }
+}
+
+/* Two-button pairs, for games with two things to turn (Sorted's loops). */
+.pair { display: grid; grid-template-columns: repeat(2, 54px); grid-template-rows: 54px auto; gap: 3px; justify-items: center; }
+.pair button {
+  width: 54px; height: 54px;
+  font: 700 18px/1 var(--ui); color: var(--chrome);
+  background: #12121e; border: 2px solid var(--edge); border-radius: 6px;
+  padding: 0; touch-action: none; cursor: pointer;
+}
+.pair button:active { background: #24243a; color: var(--chrome-hi); }
+.pair span { grid-column: 1 / 3; font: 700 10px/1 var(--ui); letter-spacing: 0.14em; color: var(--chrome); }
+@media (orientation: landscape) and (max-height: 520px) {
+  body.touch:not(.no-pad) .pad.loops { display: flex; flex-direction: column; gap: 12px; grid-area: start; align-self: center; margin-right: 12px; padding: 0; }
+  body.touch:not(.no-pad) .pad.loops .start { margin: 0; }
+}
+
+/* ?cabinet: the game as the screen of a cabinet on the Games page. */
+body.cabinet { display: block; background: #000; overflow: hidden; }
+body.cabinet .bar, body.cabinet .pad { display: none !important; }
+body.cabinet .stage { padding: 0; width: 100vw; height: 100vh; }
+body.cabinet .screen { width: 100%; height: 100%; box-shadow: none; }
+body.cabinet .screen canvas { width: 100% !important; height: 100% !important; object-fit: contain; image-rendering: auto; }
+/* Turning, thrust and fire are each held on their own, so all can be at once. */
+.pad.steer { justify-content: space-between; }
+.pad.steer .group { display: flex; align-items: center; gap: 8px; }
+.pad.steer .hold { width: 58px; height: 58px; font: 700 12px/1 var(--ui); letter-spacing: 0.06em; color: var(--chrome); background: #14141f; border: 1px solid #2a2a3a; border-radius: 10px; touch-action: none; padding: 0; }
+.pad.steer .hold.small { width: 52px; font-size: 10px; }
+.pad.steer .hold:active { background: #24243a; color: var(--chrome-hi); }
+@media (orientation: landscape) and (max-height: 520px) {
+  body.touch .pad.steer .group:first-child { grid-area: dpad; flex-direction: column; align-self: center; margin-left: 12px; }
+  body.touch .pad.steer .right-side { grid-area: start; flex-direction: column; align-self: center; margin-right: 12px; }
+  body.touch .pad.steer .right-side .start { margin: 0; }
+}
+</style>
+</head>
+<body>
+
+<header class="bar">
+  <a href="/games/">&larr; Games</a>
+  <div class="toggles">
+    <button type="button" data-action="crt" aria-pressed="false">CRT off</button>
+    <button type="button" data-action="mute" aria-pressed="true">Sound on</button>
+    <button type="button" data-action="pause">Pause</button>
+  </div>
+</header>
+
+<main class="stage" id="stage">
+  <div class="screen" id="screen">
+    <canvas id="c" role="img" aria-label="Tow Line game screen. Left and right turn, up thrusts, down brakes, Space fires, P pauses."></canvas>
+  </div>
+</main>
+
+<div class="pad steer">
+  <div class="group">
+    <button type="button" class="hold" data-hold="left" aria-label="Turn left">&#9664;</button>
+    <button type="button" class="hold" data-hold="right" aria-label="Turn right">&#9654;</button>
+  </div>
+  <div class="group right-side">
+    <button type="button" class="hold small" data-hold="brake">BRAKE</button>
+    <button type="button" class="hold" data-hold="thrust">THRUST</button>
+    <button type="button" class="start" data-action="start">Fire</button>
+  </div>
+</div>
+
+<script>
+(() => {
+'use strict';
+// ---- engine/font.js
+// 5x7 bitmap font, one string per glyph, rows separated by spaces. Drawn with
+// fillRect so it stays on the pixel grid at any scale; there is no web font.
+const GLYPHS = {
+  A: '.###. #...# #...# ##### #...# #...# #...#',
+  B: '####. #...# #...# ####. #...# #...# ####.',
+  C: '.###. #...# #.... #.... #.... #...# .###.',
+  D: '####. #...# #...# #...# #...# #...# ####.',
+  E: '##### #.... #.... ####. #.... #.... #####',
+  F: '##### #.... #.... ####. #.... #.... #....',
+  G: '.###. #...# #.... #.### #...# #...# .####',
+  H: '#...# #...# #...# ##### #...# #...# #...#',
+  I: '.###. ..#.. ..#.. ..#.. ..#.. ..#.. .###.',
+  J: '..### ...#. ...#. ...#. ...#. #..#. .##..',
+  K: '#...# #..#. #.#.. ##... #.#.. #..#. #...#',
+  L: '#.... #.... #.... #.... #.... #.... #####',
+  M: '#...# ##.## #.#.# #.#.# #...# #...# #...#',
+  N: '#...# #...# ##..# #.#.# #..## #...# #...#',
+  O: '.###. #...# #...# #...# #...# #...# .###.',
+  P: '####. #...# #...# ####. #.... #.... #....',
+  Q: '.###. #...# #...# #...# #.#.# #..#. .##.#',
+  R: '####. #...# #...# ####. #.#.. #..#. #...#',
+  S: '.###. #...# #.... .###. ....# #...# .###.',
+  T: '##### ..#.. ..#.. ..#.. ..#.. ..#.. ..#..',
+  U: '#...# #...# #...# #...# #...# #...# .###.',
+  V: '#...# #...# #...# #...# #...# .#.#. ..#..',
+  W: '#...# #...# #...# #.#.# #.#.# #.#.# .#.#.',
+  X: '#...# #...# .#.#. ..#.. .#.#. #...# #...#',
+  Y: '#...# #...# .#.#. ..#.. ..#.. ..#.. ..#..',
+  Z: '##### ....# ...#. ..#.. .#... #.... #####',
+  0: '.###. #...# #..## #.#.# ##..# #...# .###.',
+  1: '..#.. .##.. ..#.. ..#.. ..#.. ..#.. .###.',
+  2: '.###. #...# ....# ...#. ..#.. .#... #####',
+  3: '##### ...#. ..#.. ...#. ....# #...# .###.',
+  4: '...#. ..##. .#.#. #..#. ##### ...#. ...#.',
+  5: '##### #.... ####. ....# ....# #...# .###.',
+  6: '..##. .#... #.... ####. #...# #...# .###.',
+  7: '##### ....# ...#. ..#.. .#... .#... .#...',
+  8: '.###. #...# #...# .###. #...# #...# .###.',
+  9: '.###. #...# #...# .#### ....# ...#. .##..',
+  ' ': '..... ..... ..... ..... ..... ..... .....',
+  '.': '..... ..... ..... ..... ..... .##.. .##..',
+  ',': '..... ..... ..... ..... .##.. ..#.. .#...',
+  '!': '..#.. ..#.. ..#.. ..#.. ..#.. ..... ..#..',
+  '?': '.###. #...# ....# ...#. ..#.. ..... ..#..',
+  '-': '..... ..... ..... .###. ..... ..... .....',
+  '+': '..... ..#.. ..#.. ##### ..#.. ..#.. .....',
+  '=': '..... ..... ##### ..... ##### ..... .....',
+  ':': '..... .##.. .##.. ..... .##.. .##.. .....',
+  '/': '....# ...#. ...#. ..#.. .#... .#... #....',
+  "'": '..#.. ..#.. .#... ..... ..... ..... .....',
+  '<': '...#. ..#.. .#... #.... .#... ..#.. ...#.',
+  '>': '.#... ..#.. ...#. ....# ...#. ..#.. .#...',
+  '*': '..... #...# .#.#. ..#.. .#.#. #...# .....',
+  '%': '##..# ##.#. ...#. ..#.. .#... .#.## #..##',
+};
+const FONT_CHARS = Object.keys(GLYPHS).join('');
+
+const FONT_BITS = {};
+for (const [ch, rows] of Object.entries(GLYPHS)) FONT_BITS[ch] = rows.split(' ');
+
+const GLYPH_W = 5, GLYPH_H = 7, ADVANCE = 6;
+
+function textWidth(str, scale = 1) {
+  return str.length ? (str.length * ADVANCE - 1) * scale : 0;
+}
+
+// `color` is one colour, or an array of seven (one per glyph row) for the
+// striped logos arcade title screens used.
+function text(ctx, str, x, y, color, opts = {}) {
+  const scale = opts.scale || 1;
+  const s = String(str).toUpperCase();
+  let left = x;
+  if (opts.align === 'center') left = x - Math.floor(textWidth(s, scale) / 2);
+  else if (opts.align === 'right') left = x - textWidth(s, scale);
+  for (let i = 0; i < s.length; i++) {
+    const rows = FONT_BITS[s[i]] || FONT_BITS['?'];
+    const gx = left + i * ADVANCE * scale;
+    for (let r = 0; r < GLYPH_H; r++) {
+      ctx.fillStyle = Array.isArray(color) ? color[r] : color;
+      const row = rows[r];
+      for (let c = 0; c < GLYPH_W; c++) {
+        if (row[c] === '#') ctx.fillRect(gx + c * scale, y + r * scale, scale, scale);
+      }
+    }
+  }
+}
+
+// ---- engine/screen.js
+// The arcade screen: a small fixed-resolution canvas, scaled up in whole
+// DEVICE pixels so every game pixel is the same size and stays sharp. A 336px
+// screen on a 3x phone is drawn at exactly 3 device pixels per game pixel,
+// never 3.35, which is what makes uneven, shimmering pixels.
+function makeScreen({ canvas, stage, frame, w, h, crtKey }) {
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+
+  function fit() {
+    const dpr = window.devicePixelRatio || 1;
+    // clientWidth/Height include the stage's padding; the screen gets only
+    // what is inside it.
+    const cs = getComputedStyle(stage);
+    const aw = stage.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    const ah = stage.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+    const s = Math.max(1, Math.floor(Math.min((aw * dpr) / w, (ah * dpr) / h)));
+    canvas.style.width = (s * w) / dpr + 'px';
+    canvas.style.height = (s * h) / dpr + 'px';
+    frame.style.setProperty('--px', s / dpr + 'px');
+  }
+  addEventListener('resize', fit);
+  if (window.visualViewport) visualViewport.addEventListener('resize', fit);
+  fit();
+
+  let crt = false;
+  try { crt = localStorage.getItem(crtKey) === '1'; } catch { crt = false; }
+  function setCrt(on) {
+    crt = on;
+    frame.classList.toggle('crt', on);
+    try { localStorage.setItem(crtKey, on ? '1' : '0'); } catch {}
+  }
+  setCrt(crt);
+
+  return {
+    ctx, w, h, fit,
+    get crt() { return crt; },
+    toggleCrt() { setCrt(!crt); return crt; },
+  };
+}
+
+// ?cabinet is a game running on the Games page as an unattended machine: only
+// its attract loop, no sound, nobody at the controls. The page goes; the screen
+// fills its frame, with black at the sides if it is squarer than the cabinet.
+function cabinetMode() {
+  const on = new URLSearchParams(location.search).has('cabinet');
+  if (on) {
+    document.body.classList.add('cabinet');
+    // A page of cabinets runs several games at once. Each draws every other
+    // frame; its game still runs 60 ticks a second, from the time it is given.
+    const raf = window.requestAnimationFrame.bind(window);
+    window.requestAnimationFrame = cb => raf(() => raf(cb));
+  }
+  return on;
+}
+
+// ---- engine/cabinet.js
+// What an unattended machine shows over its own screens (see cabinetMode in
+// screen.js): GAME OVER and INSERT COIN when a demo ends, and the credit it has,
+// none, in the corner. A game calls the result once a frame, after drawing.
+function cabinetDressing() {
+  let was = false, over = 0;
+  return (ctx, demo) => {
+    const w = ctx.canvas.width, h = ctx.canvas.height;
+    if (was && !demo) over = 150;
+    was = demo;
+    window.__cabinetOver = over; // for the page checks
+    if (over > 0) {
+      over--;
+      const x = Math.floor(w / 2 - 42), y = Math.floor(h / 2 - 15);
+      ctx.fillStyle = '#000'; ctx.fillRect(x, y, 84, 31);
+      text(ctx, 'GAME OVER', w / 2, y + 5, '#ff3b3b', { align: 'center' });
+      text(ctx, 'INSERT COIN', w / 2, y + 18, '#ffd23f', { align: 'center' });
+    }
+    ctx.fillStyle = '#000'; ctx.fillRect(w - 58, h - 12, 54, 10);
+    text(ctx, 'CREDIT 0', w - 6, h - 10, '#ffffff', { align: 'right' });
+  };
+}
+
+// ---- engine/sound.js
+// Chip sound: square, triangle and noise voices made in the browser. No audio
+// files. Browsers only allow sound after a tap or key, so `wake()` is called
+// from every input handler and does nothing until then.
+function makeSound(muteKey) {
+  let ac = null, out = null;
+  let muted = false;
+  try { muted = localStorage.getItem(muteKey) === '1'; } catch { muted = false; }
+
+  function wake() {
+    if (ac) { if (ac.state === 'suspended') ac.resume(); return; }
+    const Ctor = window.AudioContext || window.webkitAudioContext;
+    if (!Ctor) return;
+    ac = new Ctor();
+    out = ac.createGain();
+    out.gain.value = muted ? 0 : 1;
+    out.connect(ac.destination);
+  }
+
+  // One note. `at` is seconds from now, `to` slides the pitch.
+  function note(freq, dur, { type = 'square', vol = 0.05, at = 0, to = null } = {}) {
+    if (!ac) return;
+    const t = ac.currentTime + at;
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(freq, t);
+    if (to) o.frequency.exponentialRampToValueAtTime(to, t + dur);
+    g.gain.setValueAtTime(vol, t);
+    g.gain.setValueAtTime(vol, t + dur * 0.7);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(out);
+    o.start(t); o.stop(t + dur + 0.02);
+  }
+
+  // A run of notes: [[freq, dur], ...], each after the last; 0 is a rest.
+  function tune(notes, opts = {}) {
+    let at = opts.at || 0;
+    for (const [f, d] of notes) {
+      if (f) note(f, d * 0.92, { ...opts, at });
+      at += d;
+    }
+  }
+
+  function noise(dur, { vol = 0.2, cutoff = 900, at = 0 } = {}) {
+    if (!ac) return;
+    const len = Math.floor(ac.sampleRate * dur);
+    const buf = ac.createBuffer(1, len, ac.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len) ** 2;
+    const s = ac.createBufferSource(); s.buffer = buf;
+    const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = cutoff;
+    const g = ac.createGain(); g.gain.value = vol;
+    s.connect(f); f.connect(g); g.connect(out);
+    s.start(ac.currentTime + at);
+  }
+
+  // A held sound (an engine): filtered noise that runs for the whole session
+  // and is gated by its gain. Starting a source every frame is what makes
+  // engine sound crackle. Returns set(on); safe to call before wake().
+  function drone({ cutoff = 420, vol = 0.16 } = {}) {
+    let gain = null;
+    return on => {
+      if (!ac) return;
+      if (!gain) {
+        const len = ac.sampleRate * 2;
+        const buf = ac.createBuffer(1, len, ac.sampleRate);
+        const d = buf.getChannelData(0);
+        for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+        const s = ac.createBufferSource(); s.buffer = buf; s.loop = true;
+        const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = cutoff;
+        gain = ac.createGain(); gain.gain.value = 0;
+        s.connect(f); f.connect(gain); gain.connect(out);
+        s.start();
+      }
+      gain.gain.setTargetAtTime(on ? vol : 0, ac.currentTime, 0.03);
+    };
+  }
+
+  function setMuted(on) {
+    muted = on;
+    if (out) out.gain.value = on ? 0 : 1;
+    try { localStorage.setItem(muteKey, on ? '1' : '0'); } catch {}
+  }
+
+  return {
+    wake, note, tune, noise, drone,
+    get muted() { return muted; },
+    toggleMute() { setMuted(!muted); return muted; },
+  };
+}
+
+// ---- engine/input.js
+// Keyboard and touch in one place. `held` is what a game polls each tick;
+// `onDir` fires once per press (menus, initials); `onAction` carries the
+// buttons: start, pause, back, crt, mute.
+//
+// A word game passes `onLetter`: then every letter key is a letter (WASD stop
+// being directions, P/C/M stop being shortcuts; those stay on the buttons) and
+// only the arrows move. `onKey(code)` gets any other key and returns true if
+// it used it. `onPoint(x, y)` receives taps on the screen in GAME
+// pixels; returning true means the game used the tap, otherwise it is START.
+function makeInput({ screen, onAction, onDir, onAny, onLetter = null, onPoint = null, onKey = null }) {
+  // `fire` is Space, Enter or the START button while held, for games that
+  // hold a trigger down; every other game ignores it.
+  const held = { up: false, down: false, left: false, right: false, fire: false };
+  const KEYS = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
+  const ACTIONS = { Space: 'start', Enter: 'start', Escape: 'back' };
+  if (!onLetter) {
+    Object.assign(KEYS, { KeyW: 'up', KeyS: 'down', KeyA: 'left', KeyD: 'right' });
+    Object.assign(ACTIONS, { KeyP: 'pause', KeyC: 'crt', KeyM: 'mute' });
+  }
+
+  let touch = matchMedia('(pointer: coarse)').matches;
+  const markTouch = on => {
+    touch = on;
+    document.body.classList.toggle('touch', on);
+  };
+  markTouch(touch);
+  addEventListener('touchstart', () => { if (!touch) markTouch(true); }, { passive: true });
+
+  addEventListener('keydown', e => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const dir = KEYS[e.code];
+    if (dir) {
+      e.preventDefault();
+      onAny();
+      if (!e.repeat) onDir(dir);
+      held[dir] = true;
+      return;
+    }
+    const action = ACTIONS[e.code];
+    if (action) {
+      if (action === 'start') held.fire = true;
+      // Space and Enter on a focused button or link belong to that control.
+      if ((e.code === 'Space' || e.code === 'Enter') && e.target.closest && e.target.closest('button, a')) return;
+      e.preventDefault();
+      onAny();
+      if (!e.repeat) onAction(action);
+      return;
+    }
+    // e.key, not e.code: the letter printed on the key, whatever the layout.
+    // Digits come through the same door, for games that number their keys.
+    if (onLetter && /^[a-z0-9]$/i.test(e.key)) {
+      e.preventDefault();
+      onAny();
+      if (!e.repeat) onLetter(e.key.toUpperCase());
+    }
+    // Anything else a game asked for by code (Z for undo, R for restart).
+    else if (onKey && !e.repeat && onKey(e.code)) { e.preventDefault(); onAny(); }
+  });
+  addEventListener('keyup', e => {
+    const dir = KEYS[e.code];
+    if (dir) held[dir] = false;
+    if (ACTIONS[e.code] === 'start') held.fire = false;
+  });
+  addEventListener('blur', () => { held.up = held.down = held.left = held.right = held.fire = false; });
+
+  for (const b of document.querySelectorAll('[data-dir]')) {
+    const dir = b.dataset.dir;
+    const down = e => {
+      e.preventDefault();
+      onAny();
+      held.up = held.down = held.left = held.right = false;
+      held[dir] = true;
+      onDir(dir);
+    };
+    const up = () => { held[dir] = false; };
+    b.addEventListener('pointerdown', down);
+    b.addEventListener('pointerup', up);
+    b.addEventListener('pointerleave', up);
+    b.addEventListener('pointercancel', up);
+    b.addEventListener('contextmenu', e => e.preventDefault());
+  }
+  // Buttons that send a letter (Sorted's left loop is A and D).
+  for (const b of document.querySelectorAll('[data-letter]')) {
+    b.addEventListener('pointerdown', e => { e.preventDefault(); onAny(); if (onLetter) onLetter(b.dataset.letter); });
+    b.addEventListener('contextmenu', e => e.preventDefault());
+  }
+  for (const b of document.querySelectorAll('[data-action]')) {
+    const action = b.dataset.action;
+    // pointerdown for the START button, so it answers as fast as the d-pad;
+    // click for the toggles, so keyboard users can press them too.
+    if (b.classList.contains('start')) {
+      b.addEventListener('pointerdown', e => { e.preventDefault(); onAny(); held.fire = true; onAction(action); });
+      for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(ev, () => { held.fire = false; });
+    } else {
+      b.addEventListener('click', () => { onAny(); onAction(action); });
+    }
+  }
+  screen.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    onAny();
+    if (onPoint) {
+      const r = screen.getBoundingClientRect();
+      const x = ((e.clientX - r.left) * screen.width) / r.width;
+      const y = ((e.clientY - r.top) * screen.height) / r.height;
+      if (onPoint(x, y)) return;
+    }
+    onAction('start');
+  });
+
+  return { held, get touch() { return touch; } };
+}
+
+// ---- engine/scores.js
+// The top-ten table, kept on this device only. A new browser starts with a
+// table of invented initials so the attract mode has something to show.
+const ENTRY_LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ.';
+
+function makeScores(key, defaults) {
+  let table = defaults.map(r => ({ ...r }));
+  try {
+    const saved = JSON.parse(localStorage.getItem(key) || 'null');
+    if (Array.isArray(saved) && saved.length === 10 && saved.every(r => typeof r.s === 'number' && typeof r.n === 'string')) table = saved;
+  } catch {}
+
+  return {
+    get table() { return table; },
+    get top() { return table[0].s; },
+    qualifies(score) { return score > 0 && score > table[9].s; },
+    // Returns the rank (0-9) the new row landed on.
+    add(n, s) {
+      let rank = table.findIndex(r => s > r.s);
+      if (rank === -1) return -1;
+      table.splice(rank, 0, { n, s });
+      table.length = 10;
+      try { localStorage.setItem(key, JSON.stringify(table)); } catch {}
+      return rank;
+    },
+  };
+}
+
+// ---- engine/entry.js
+// Three initials, drawn large, with tap targets for games that have no d-pad:
+// on a touch screen a tap above a letter's middle steps it up, below steps it
+// down, and a tap anywhere else accepts it. (Without this a phone player in a
+// tap-only game could only ever enter AAA.)
+function initialsLayout(w, y) {
+  return { x0: Math.round(w / 2 - 39), y, step: 30 };
+}
+
+function arrow(ctx, cx, y, up, ink) {
+  ctx.fillStyle = ink;
+  for (let r = 0; r < 4; r++) ctx.fillRect(cx - r, up ? y + r : y + 3 - r, r * 2 + 1, 1);
+}
+
+function drawInitials(ctx, entry, L, { blinkOn, touch, ink }) {
+  for (let i = 0; i < 3; i++) {
+    const x = L.x0 + i * L.step;
+    const current = i === entry.pos;
+    if (!current || blinkOn) text(ctx, ENTRY_LETTERS[entry.letters[i]], x, L.y, current ? ink.yellow : ink.white, { scale: 3 });
+    ctx.fillStyle = current ? ink.yellow : ink.dim;
+    ctx.fillRect(x - 2, L.y + 26, 18, 2);
+    if (touch && current) {
+      arrow(ctx, x + 7, L.y - 9, true, ink.yellow);
+      arrow(ctx, x + 7, L.y + 32, false, ink.yellow);
+    }
+  }
+}
+
+// 'up', 'down' or 'next' for a tap at (x, y) in game pixels.
+function tapInitials(entry, L, x, y) {
+  const left = L.x0 + entry.pos * L.step - 8, right = left + 32;
+  if (x < left || x > right) return 'next';
+  if (y >= L.y - 16 && y < L.y + 11) return 'up';
+  if (y >= L.y + 11 && y <= L.y + 40) return 'down';
+  return 'next';
+}
+
+// ---- games/tow-line/rules.js
+// Tow Line: a salvage station in the middle of the screen, and space junk
+// drifting in to hit it. Shoot the big pieces apart; the scrap they leave is
+// not shot but towed, up to three pieces on a line, and hauled home, where it
+// scores and repairs the hull. No drawing here, so the tests can play it.
+const W = 320, H = 240, TOP = 16;
+const STATION = { x: 160, y: 128, r: 14, dock: 26 };
+const SHIPS = 3, HULL = 100;
+const EXTRA_SHIP_EVERY = 15000;
+const MAX_TOW = 3;
+const SPAWN_CLEAR = 70;       // junk never appears closer than this to the ship
+
+// Hulks break into wreckage, wreckage into scrap. Scrap is towed, not shot.
+const KINDS = {
+  hulk: { r: 12, speed: [0.3, 0.5], hit: 30, pts: 5, into: 'wreck' },
+  wreck: { r: 7, speed: [0.5, 0.8], hit: 15, pts: 10, into: 'scrap' },
+  scrap: { r: 3, speed: [0.4, 0.7], hit: 8, pts: 0, into: null },
+};
+// Salvage is the living: shooting only clears the way. For 1, 2 or 3 pieces
+// landed together; a full line pays most.
+const DELIVERY = [0, 200, 500, 900];
+const REPAIR = 10;     // hull mended for each piece landed: salvage is also what keeps the station alive
+const WAVE_BONUS = 3; // points for each point of hull left when a wave is cleared
+const SHIP_R = 5, TURN = 0.075, THRUST = 0.055, BRAKE = 0.94, DRAG = 0.996, MAX_SPEED = 3;
+const TOW_DRAG = 0.0007;             // each piece on the line slows the ship
+const SHOT_SPEED = 4.6, SHOT_LIFE = 48, SHOT_GAP = 9, MAX_SHOTS = 4;
+
+function newGame(rand = Math.random) {
+  const s = {
+    rand, score: 0, ships: SHIPS, hull: HULL, wave: 0, extraAt: EXTRA_SHIP_EVERY,
+    ship: null, shots: [], junk: [], tow: [], queue: 0, nextSpawn: 0, gap: 0, ticks: 0, respawn: 0, over: false,
+  };
+  newShip(s);
+  nextWave(s);
+  return s;
+}
+
+function newShip(s) {
+  s.ship = { x: STATION.x, y: STATION.y - 40, vx: 0, vy: 0, a: -Math.PI / 2, cool: 0, safe: 120 };
+}
+
+// A wave is a number of hulks, sent in one at a time.
+function nextWave(s) {
+  s.wave++;
+  s.queue = 2 + s.wave;
+  s.nextSpawn = 60;
+}
+const spawnGap = wave => Math.max(70, 190 - wave * 15);
+
+// From outside the arena, aimed roughly at the station, and never close to the ship.
+function spawn(s, kind = 'hulk', clear = SPAWN_CLEAR) {
+  const k = KINDS[kind];
+  for (let tries = 0; tries < 40; tries++) {
+    const edge = Math.floor(s.rand() * 4);
+    const t = s.rand();
+    const x = edge === 0 ? -k.r : edge === 1 ? W + k.r : 20 + t * (W - 40);
+    const y = edge === 2 ? TOP - k.r : edge === 3 ? H + k.r : TOP + 20 + t * (H - TOP - 40);
+    if (s.ship && Math.hypot(x - s.ship.x, y - s.ship.y) < clear) continue;
+    const aim = Math.atan2(STATION.y - y, STATION.x - x) + (s.rand() - 0.5) * 0.5;
+    const sp = k.speed[0] + s.rand() * (k.speed[1] - k.speed[0]) + s.wave * 0.02;
+    const j = { kind, x, y, vx: Math.cos(aim) * sp, vy: Math.sin(aim) * sp, spin: (s.rand() - 0.5) * 0.06, a: s.rand() * 6.28, shape: Math.floor(s.rand() * 3), entered: false };
+    s.junk.push(j);
+    return j;
+  }
+  return null;
+}
+
+const inArena = (x, y, m = 0) => x > -m && x < W + m && y > TOP - m && y < H + m;
+
+// input: { left, right, thrust, brake, fire }. Returns what happened.
+function step(s, input = {}) {
+  const events = [];
+  const add = (type, x = 0, y = 0, pts = 0) => { events.push({ type, x, y, pts }); s.score += pts; };
+  s.ticks++;
+  if (s.over) return events;
+
+  // Junk arrives one hulk at a time.
+  if (s.queue > 0 && --s.nextSpawn <= 0) { if (spawn(s)) { s.queue--; add('arrive'); } s.nextSpawn = spawnGap(s.wave); }
+
+  // The ship: turns, thrusts, brakes; slower with every piece it tows.
+  const sh = s.ship;
+  if (sh) {
+    if (input.left) sh.a -= TURN;
+    if (input.right) sh.a += TURN;
+    const heavy = 1 - s.tow.length * 0.12;
+    if (input.thrust) { sh.vx += Math.cos(sh.a) * THRUST * heavy; sh.vy += Math.sin(sh.a) * THRUST * heavy; }
+    if (input.brake) { sh.vx *= BRAKE; sh.vy *= BRAKE; }
+    const drag = DRAG - s.tow.length * TOW_DRAG;
+    sh.vx *= drag; sh.vy *= drag;
+    const sp = Math.hypot(sh.vx, sh.vy), top = MAX_SPEED * heavy;
+    if (sp > top) { sh.vx *= top / sp; sh.vy *= top / sp; }
+    sh.x += sh.vx; sh.y += sh.vy;
+    // The arena is closed: the ship stops at its edges rather than wrapping round.
+    if (sh.x < SHIP_R) { sh.x = SHIP_R; sh.vx = Math.abs(sh.vx) * 0.3; }
+    if (sh.x > W - SHIP_R) { sh.x = W - SHIP_R; sh.vx = -Math.abs(sh.vx) * 0.3; }
+    if (sh.y < TOP + SHIP_R) { sh.y = TOP + SHIP_R; sh.vy = Math.abs(sh.vy) * 0.3; }
+    if (sh.y > H - SHIP_R) { sh.y = H - SHIP_R; sh.vy = -Math.abs(sh.vy) * 0.3; }
+    if (sh.safe > 0) sh.safe--;
+    if (sh.cool > 0) sh.cool--;
+    if (input.fire && sh.cool === 0 && s.shots.length < MAX_SHOTS) {
+      s.shots.push({ x: sh.x + Math.cos(sh.a) * 7, y: sh.y + Math.sin(sh.a) * 7, vx: Math.cos(sh.a) * SHOT_SPEED + sh.vx, vy: Math.sin(sh.a) * SHOT_SPEED + sh.vy, life: SHOT_LIFE });
+      sh.cool = SHOT_GAP;
+      add('fire');
+    }
+  } else if (--s.respawn <= 0 && s.ships > 0) {
+    newShip(s);
+  }
+
+  // The tow line: each piece follows the one in front, on a short line.
+  let lead = sh;
+  for (const p of s.tow) {
+    if (!lead) break;
+    const dx = p.x - lead.x, dy = p.y - lead.y, d = Math.hypot(dx, dy) || 1, len = 10;
+    p.x = lead.x + (dx / d) * Math.min(d, len); p.y = lead.y + (dy / d) * Math.min(d, len);
+    p.a += p.spin;
+    lead = p;
+  }
+
+  for (const b of s.shots) { b.x += b.vx; b.y += b.vy; b.life--; }
+  s.shots = s.shots.filter(b => b.life > 0 && inArena(b.x, b.y));
+
+  for (const j of s.junk) {
+    j.x += j.vx; j.y += j.vy; j.a += j.spin;
+    if (inArena(j.x, j.y, -KINDS[j.kind].r)) j.entered = true;
+  }
+
+  // Shots break hulks and wreckage. Scrap is not for shooting: a shot passes it.
+  for (const b of s.shots) {
+    for (const j of s.junk) {
+      if (j.gone || j.kind === 'scrap' || Math.hypot(b.x - j.x, b.y - j.y) > KINDS[j.kind].r + 1) continue;
+      b.life = 0; j.gone = true;
+      split(s, j, b);
+      add('break', j.x, j.y, KINDS[j.kind].pts);
+      break;
+    }
+  }
+
+  // The station takes whatever reaches it.
+  for (const j of s.junk) {
+    if (j.gone || Math.hypot(j.x - STATION.x, j.y - STATION.y) > STATION.r + KINDS[j.kind].r) continue;
+    j.gone = true;
+    s.hull = Math.max(0, s.hull - KINDS[j.kind].hit);
+    add('hullHit', j.x, j.y);
+  }
+
+  if (sh) {
+    // Scrap the ship flies over goes on the line.
+    for (const j of s.junk) {
+      if (j.gone || j.kind !== 'scrap' || s.tow.length >= MAX_TOW) continue;
+      if (Math.hypot(j.x - sh.x, j.y - sh.y) < SHIP_R + KINDS.scrap.r + 3) { j.gone = true; s.tow.push({ x: j.x, y: j.y, a: j.a, spin: j.spin, shape: j.shape }); add('hook', j.x, j.y); }
+    }
+    // Home: everything on the line is landed at once.
+    if (s.tow.length && Math.hypot(sh.x - STATION.x, sh.y - STATION.y) < STATION.dock) {
+      const n = s.tow.length, pts = DELIVERY[n];
+      s.hull = Math.min(HULL, s.hull + n * REPAIR);
+      s.tow = [];
+      add('deliver', sh.x, sh.y, pts);
+    }
+    // Hulks and wreckage wreck the ship; anything hitting the line knocks it loose.
+    for (const j of s.junk) {
+      if (j.gone || j.kind === 'scrap') continue;
+      if (sh.safe === 0 && Math.hypot(j.x - sh.x, j.y - sh.y) < KINDS[j.kind].r + SHIP_R - 1) { wreckShip(s, add); break; }
+      const hit = s.tow.findIndex(p => Math.hypot(j.x - p.x, j.y - p.y) < KINDS[j.kind].r + 3);
+      if (hit >= 0) { loose(s, hit); add('loose', j.x, j.y); }
+    }
+  }
+
+  s.junk = s.junk.filter(j => !j.gone && (!j.entered || inArena(j.x, j.y, 20)) && inArena(j.x, j.y, 40));
+
+  while (s.score >= s.extraAt) { s.ships++; s.extraAt += EXTRA_SHIP_EVERY; add('extraShip'); }
+  if (s.hull <= 0 || (s.ships <= 0 && !s.ship)) { s.over = true; add('over'); return events; }
+
+  // A wave is over when nothing is left to arrive and nothing is left drifting
+  // but scrap the player has not fetched yet.
+  if (s.queue === 0 && !s.junk.some(j => j.kind !== 'scrap')) {
+    if (++s.gap > 120) {
+      const bonus = s.hull * WAVE_BONUS;
+      add('waveClear', 0, 0, bonus);
+      s.junk = s.junk.filter(j => j.kind === 'scrap');
+      s.gap = 0;
+      nextWave(s);
+    }
+  } else s.gap = 0;
+  return events;
+}
+
+function split(s, j, shot) {
+  const into = KINDS[j.kind].into;
+  if (!into) return;
+  const base = Math.atan2(j.vy, j.vx), sp = Math.hypot(j.vx, j.vy) + 0.2;
+  for (const side of [-1, 1]) {
+    const a = base + side * (0.5 + s.rand() * 0.5);
+    const push = 0.08;
+    s.junk.push({
+      kind: into, x: j.x + Math.cos(a) * 3, y: j.y + Math.sin(a) * 3,
+      vx: Math.cos(a) * sp + shot.vx * push, vy: Math.sin(a) * sp + shot.vy * push,
+      spin: (s.rand() - 0.5) * 0.1, a: s.rand() * 6.28, shape: Math.floor(s.rand() * 3), entered: true,
+    });
+  }
+}
+
+// Everything from piece i back drops off the line and drifts away.
+function loose(s, i) {
+  for (const p of s.tow.splice(i)) s.junk.push({ kind: 'scrap', x: p.x, y: p.y, vx: (s.rand() - 0.5) * 1.2, vy: (s.rand() - 0.5) * 1.2, spin: p.spin, a: p.a, shape: p.shape, entered: true });
+}
+
+function wreckShip(s, add) {
+  const sh = s.ship;
+  add('wrecked', sh.x, sh.y);
+  if (s.tow.length) loose(s, 0);
+  s.ship = null; s.ships--; s.respawn = 120;
+}
+
+// The demo's pilot: shoot what threatens the station, fetch scrap when it is
+// safe, bring it home when the line is full or danger is near.
+function pilot(s, reach = 80) {
+  const sh = s.ship;
+  if (!sh) return {};
+  const threats = s.junk.filter(j => j.kind !== 'scrap' && j.entered);
+  const nearest = (list, from) => list.reduce((b, j) => (!b || Math.hypot(j.x - from.x, j.y - from.y) < Math.hypot(b.x - from.x, b.y - from.y) ? j : b), null);
+  const danger = threats.find(j => Math.hypot(j.x - sh.x, j.y - sh.y) < 34);
+  // A careful salvager: only scrap near home is worth leaving the station for.
+  const scrap = s.junk.filter(j => j.kind === 'scrap' && inArena(j.x, j.y, -6) && Math.hypot(j.x - STATION.x, j.y - STATION.y) < reach);
+  // Junk closing on the station comes first; scrap is fetched only when none is.
+  const closing = threats.filter(j => Math.hypot(j.x - STATION.x, j.y - STATION.y) < 110);
+  let goal = null, shoot = null;
+  if (danger) shoot = danger;
+  else if (closing.length) shoot = nearest(closing, STATION);
+  else if (s.tow.length && (s.tow.length >= MAX_TOW || !scrap.length)) goal = STATION;
+  else if (scrap.length) goal = nearest(scrap, sh);
+  else if (threats.length) shoot = nearest(threats, STATION);
+  const target = shoot || goal;
+  if (!target) return { brake: true };
+  // Lead a moving target a little.
+  const lead = shoot ? Math.hypot(target.x - sh.x, target.y - sh.y) / SHOT_SPEED : 0;
+  const tx = target.x + (target.vx || 0) * lead, ty = target.y + (target.vy || 0) * lead;
+  let off = Math.atan2(ty - sh.y, tx - sh.x) - sh.a;
+  off = Math.atan2(Math.sin(off), Math.cos(off));
+  const facing = Math.abs(off) < 0.15;
+  const far = Math.hypot(tx - sh.x, ty - sh.y);
+  return {
+    left: off < -0.05, right: off > 0.05,
+    fire: !!shoot && facing && far < 160,
+    thrust: !shoot && Math.abs(off) < 0.4 && Math.hypot(sh.vx, sh.vy) < 1.6,
+    brake: !shoot && far < 30 && Math.hypot(sh.vx, sh.vy) > 0.9,
+  };
+}
+
+// ---- games/tow-line/game.js
+const TICK_MS = 1000 / 60;
+const DEMO_TICKS = 60 * 45;
+const ENTRY_AT = initialsLayout(W, 100);
+
+const INK = {
+  red: '#ff3b3b', white: '#ffffff', yellow: '#ffd23f', orange: '#ff8a1e', green: '#3fd46b',
+  cyan: '#5eeaf5', pink: '#ff5fb8', grey: '#8f8fb0', dim: '#4a4a6a',
+};
+const ROW_INKS = ['#ff3b3b', '#ff8a1e', '#ffd23f', '#3fd46b', '#5eeaf5', '#8f7bff', '#ff5fb8', '#ff8a1e', '#ffd23f', '#3fd46b'];
+const LOGO_INK = ['#fff3c0', '#ffe080', '#ffd23f', '#ffb02e', '#ff8a1e', '#e0602a', '#a83c2a'];
+const RANKS = ['1ST', '2ND', '3RD', '4TH', '5TH', '6TH', '7TH', '8TH', '9TH', '10TH'];
+const JUNK_INK = { hulk: '#8f8fb0', wreck: '#c87a4a', scrap: '#ffd23f' };
+
+// Invented initials, so a first visit has a table to beat.
+const DEFAULT_SCORES = [
+  ['HAL', 8000], ['TUG', 6500], ['DOK', 5000], ['RIG', 4000], ['BAY', 3200],
+  ['NUT', 2500], ['GRP', 1800], ['ORB', 1200], ['HOK', 700], ['LUG', 300],
+].map(([n, s]) => ({ n, s }));
+
+const cabinet = cabinetMode(), dress = cabinetDressing();
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const canvas = document.getElementById('c');
+const screen = makeScreen({ canvas, stage: document.getElementById('stage'), frame: document.getElementById('screen'), w: W, h: H, crtKey: 'lk.arcade.crt' });
+const ctx = screen.ctx;
+const sound = makeSound('lk.arcade.mute');
+const engineHum = sound.drone({ cutoff: 360, vol: 0.08 });
+const scores = makeScores('lk.towline.scores', DEFAULT_SCORES);
+
+let s = newGame();
+let mode = 'attract', page = 'title', pageT = 0, clock = 0, timer = 0;
+let demo = false, demoT = 0, entry = null, highlight = -1, pausedFrom = null;
+let sparks = [], note = null, shake = 0, thrusting = false;
+
+const SFX = {
+  start: () => { sound.tune([[392, 0.1], [523, 0.1], [659, 0.1], [784, 0.25]], { vol: 0.045 }); sound.tune([[98, 0.3], [131, 0.4]], { type: 'triangle', vol: 0.12 }); },
+  fire: () => sound.note(1320, 0.06, { to: 660, vol: 0.025 }),
+  break: () => sound.noise(0.18, { vol: 0.16, cutoff: 1400 }),
+  hook: () => sound.note(660, 0.08, { to: 990, vol: 0.04 }),
+  deliver: () => sound.tune([[523, 0.08], [659, 0.08], [784, 0.08], [1047, 0.2]], { vol: 0.045 }),
+  hullHit: () => { sound.noise(0.3, { vol: 0.22, cutoff: 500 }); sound.note(110, 0.3, { to: 55, type: 'triangle', vol: 0.1 }); },
+  loose: () => sound.note(440, 0.15, { to: 220, vol: 0.04 }),
+  wrecked: () => { sound.noise(0.8, { vol: 0.3, cutoff: 800 }); sound.note(330, 0.7, { to: 40, vol: 0.05 }); },
+  extraShip: () => sound.tune([[784, 0.08], [988, 0.08], [1175, 0.08], [1568, 0.3]], { vol: 0.045 }),
+  waveClear: () => sound.tune([[523, 0.1], [784, 0.1], [1047, 0.3]], { type: 'triangle', vol: 0.12 }),
+  over: () => sound.tune([[392, 0.22], [349, 0.22], [311, 0.22], [262, 0.7]], { type: 'triangle', vol: 0.12 }),
+  blip: () => sound.note(988, 0.05, { vol: 0.04 }),
+};
+// The demo plays silently: nobody asked for noise from a screen they are not using.
+function play(name) { if (!demo && SFX[name]) SFX[name](); }
+
+// The junk's shapes: jagged outlines, three of each kind, made once.
+function outline(r, seed, jag) {
+  const pts = [], n = 9;
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2, k = 1 - jag * (((seed * 7 + i * 13) % 5) / 5);
+    pts.push([Math.cos(a) * r * k, Math.sin(a) * r * k]);
+  }
+  return pts;
+}
+const SHAPES = {
+  hulk: [0, 1, 2].map(i => outline(KINDS.hulk.r, i + 1, 0.4)),
+  wreck: [0, 1, 2].map(i => outline(KINDS.wreck.r, i + 4, 0.5)),
+  scrap: [0, 1, 2].map(i => outline(KINDS.scrap.r + 0.6, i + 7, 0.6)),
+};
+const STARS = [];
+for (let i = 0; i < 70; i++) STARS.push({ x: (i * 131) % W, y: TOP + ((i * 71) % (H - TOP)), c: i % 5 ? '#3a3a58' : '#8f8fb0' });
+
+// ---------------------------------------------------------------- the game
+
+function newRun(isDemo) {
+  demo = isDemo; demoT = 0; highlight = -1;
+  s = newGame();
+  sparks = []; note = null; shake = 0;
+  mode = 'ready'; timer = isDemo ? 60 : 120;
+  if (!isDemo) play('start');
+}
+
+function endDemo() { demo = false; engineHum(false); toAttract('scores'); }
+function toAttract(p) { mode = 'attract'; page = p; pageT = 0; demo = false; entry = null; engineHum(false); }
+
+function burst(x, y, n, ink) {
+  for (let i = 0; i < (reduceMotion ? Math.min(n, 6) : n); i++) {
+    const a = Math.random() * Math.PI * 2, sp = 0.4 + Math.random() * 2;
+    sparks.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 1, ink });
+  }
+}
+
+function playTick() {
+  if (demo && ++demoT > DEMO_TICKS) { endDemo(); return; }
+  const h = input.held;
+  const keys = demo ? pilot(s) : { left: h.left || touch.left, right: h.right || touch.right, thrust: h.up || touch.thrust, brake: h.down || touch.brake, fire: h.fire };
+  thrusting = !!(keys.thrust && s.ship);
+  if (!demo) engineHum(thrusting);
+  for (const e of step(s, keys)) {
+    play(e.type);
+    if (e.type === 'break') burst(e.x, e.y, 10, INK.orange);
+    if (e.type === 'hullHit') { burst(e.x, e.y, 14, INK.red); shake = reduceMotion ? 0 : 6; }
+    if (e.type === 'wrecked') { burst(e.x, e.y, 30, INK.white); shake = reduceMotion ? 0 : 10; }
+    if (e.type === 'deliver') { burst(e.x, e.y, 12, INK.yellow); note = { s: 'LANDED +' + e.pts, ink: INK.yellow, t: 90 }; }
+    if (e.type === 'hook' && s.tow.length === MAX_TOW) note = { s: 'LINE FULL. HAUL IT HOME', ink: INK.cyan, t: 90 };
+    if (e.type === 'extraShip') note = { s: 'EXTRA SHIP', ink: INK.green, t: 120 };
+    if (e.type === 'waveClear') note = { s: 'WAVE ' + (s.wave - 1) + ' CLEAR  +' + e.pts, ink: INK.green, t: 150 };
+    if (e.type === 'over') { engineHum(false); if (demo) { endDemo(); return; } mode = 'over'; timer = 200; play('over'); return; }
+  }
+}
+
+function afterOver() {
+  if (scores.qualifies(s.score)) { entry = { letters: [0, 0, 0], pos: 0, timer: 60 * 30 }; mode = 'entry'; }
+  else toAttract('scores');
+}
+
+function saveEntry() {
+  const name = entry.letters.map(i => ENTRY_LETTERS[i]).join('');
+  highlight = scores.add(name, s.score);
+  toAttract('scores');
+}
+
+// ---------------------------------------------------------------- input
+
+// On a touch screen each control is held on its own, so the ship can turn,
+// thrust and fire at once (the d-pad lets only one direction be held).
+const touch = { left: false, right: false, thrust: false, brake: false };
+for (const b of document.querySelectorAll('[data-hold]')) {
+  const what = b.dataset.hold;
+  b.addEventListener('pointerdown', e => {
+    e.preventDefault(); sound.wake(); touch[what] = true;
+    if (mode === 'attract' || demo) newRun(false);
+    else if (mode === 'entry') onDir({ left: 'left', right: 'right', thrust: 'up', brake: 'down' }[what]);
+  });
+  for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(ev, () => { touch[what] = false; });
+  b.addEventListener('contextmenu', e => e.preventDefault());
+}
+
+function onAction(action) {
+  if (action === 'crt') { screen.toggleCrt(); syncToggles(); return; }
+  if (action === 'mute') { sound.toggleMute(); syncToggles(); return; }
+  if (action === 'back') { toAttract('title'); return; }
+  if (action === 'pause') {
+    if (mode === 'paused') { mode = pausedFrom; return; }
+    if (!demo && ['ready', 'play'].includes(mode)) { pausedFrom = mode; mode = 'paused'; engineHum(false); }
+    return;
+  }
+  if (mode === 'attract' || demo) { newRun(false); return; }
+  if (mode === 'paused') { mode = pausedFrom; return; }
+  if (mode === 'over') { timer = 0; return; }
+  if (mode === 'entry') confirmLetter();
+  // in play, Space and START are the gun, read from input.held
+}
+
+function confirmLetter() {
+  play('blip');
+  entry.pos++;
+  if (entry.pos >= 3) saveEntry();
+}
+
+function onDir(dir) {
+  if (mode !== 'entry') return;
+  const n = ENTRY_LETTERS.length, i = entry.pos;
+  if (dir === 'up') { entry.letters[i] = (entry.letters[i] + 1) % n; play('blip'); }
+  else if (dir === 'down') { entry.letters[i] = (entry.letters[i] + n - 1) % n; play('blip'); }
+  else if (dir === 'right') confirmLetter();
+  else if (dir === 'left' && entry.pos > 0) { entry.pos--; play('blip'); }
+}
+
+function onPoint(x, y) {
+  if (mode !== 'entry' || !input.touch) return false;
+  const a = tapInitials(entry, ENTRY_AT, x, y);
+  if (a === 'next') confirmLetter(); else onDir(a);
+  return true;
+}
+
+const input = makeInput({ screen: canvas, onAction, onDir, onPoint, onAny: () => sound.wake() });
+
+const crtBtn = document.querySelector('[data-action="crt"]');
+const muteBtn = document.querySelector('[data-action="mute"]');
+function syncToggles() {
+  crtBtn.textContent = 'CRT ' + (screen.crt ? 'on' : 'off');
+  crtBtn.setAttribute('aria-pressed', String(screen.crt));
+  muteBtn.textContent = 'Sound ' + (sound.muted ? 'off' : 'on');
+  muteBtn.setAttribute('aria-pressed', String(!sound.muted));
+}
+syncToggles();
+
+// A phone that locks or switches app mid-wave comes back paused.
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && !demo && ['ready', 'play'].includes(mode)) { pausedFrom = mode; mode = 'paused'; engineHum(false); }
+});
+
+// ---------------------------------------------------------------- drawing
+
+const blinkOn = (rate = 32) => reduceMotion || ((clock / rate) | 0) % 2 === 0;
+const prompt = () => (cabinet ? 'INSERT COIN' : input.touch ? 'TAP START' : 'PRESS SPACE');
+
+// Lines a pixel at a time: canvas lines are anti-aliased, and the arcade's are not.
+function line(g, ax, ay, bx, by, ink) {
+  g.fillStyle = ink;
+  const n = Math.max(1, Math.ceil(Math.max(Math.abs(bx - ax), Math.abs(by - ay))));
+  for (let i = 0; i <= n; i++) g.fillRect(Math.round(ax + ((bx - ax) * i) / n), Math.round(ay + ((by - ay) * i) / n), 1, 1);
+}
+function shape(g, pts, x, y, a, ink) {
+  const c = Math.cos(a), sn = Math.sin(a);
+  const p = pts.map(([px, py]) => [x + px * c - py * sn, y + px * sn + py * c]);
+  for (let i = 0; i < p.length; i++) line(g, p[i][0], p[i][1], p[(i + 1) % p.length][0], p[(i + 1) % p.length][1], ink);
+}
+function ring(g, x, y, r, ink, dash = 0, turn = 0) {
+  g.fillStyle = ink;
+  const n = Math.ceil(r * 6.3);
+  for (let i = 0; i < n; i++) {
+    if (dash && Math.floor(i / dash) % 2) continue;
+    const a = (i / n) * Math.PI * 2 + turn;
+    g.fillRect(Math.round(x + Math.cos(a) * r), Math.round(y + Math.sin(a) * r), 1, 1);
+  }
+}
+
+function drawStation(g, hull, towing) {
+  const { x, y, r, dock } = STATION;
+  // the dock: a dotted ring, bright and turning when there is something to land
+  ring(g, x, y, dock, towing && blinkOn(10) ? INK.cyan : '#24405a', 3, clock / 200);
+  ring(g, x, y, r, INK.grey);
+  ring(g, x, y, r - 3, '#5a5a70');
+  for (let k = 0; k < 4; k++) {
+    const a = k * (Math.PI / 2) + clock / 120;
+    line(g, x + Math.cos(a) * 4, y + Math.sin(a) * 4, x + Math.cos(a) * (r - 1), y + Math.sin(a) * (r - 1), '#8f8fb0');
+  }
+  g.fillStyle = hull < 30 && blinkOn(8) ? INK.red : INK.cyan; g.fillRect(x - 2, y - 2, 5, 5);
+}
+
+const SHIP = [[7, 0], [-5, -4], [-3, 0], [-5, 4]];
+function drawShip(g, sh, flame) {
+  shape(g, SHIP, sh.x, sh.y, sh.a, sh.safe > 0 && !blinkOn(4) ? INK.dim : INK.white);
+  if (flame && blinkOn(3)) {
+    const bx = sh.x - Math.cos(sh.a) * 6, by = sh.y - Math.sin(sh.a) * 6;
+    line(g, bx, by, bx - Math.cos(sh.a) * (4 + (clock % 3)), by - Math.sin(sh.a) * (4 + (clock % 3)), INK.orange);
+  }
+}
+
+function drawField() {
+  ctx.save();
+  if (shake > 0.5) ctx.translate(Math.round((Math.random() - 0.5) * shake), Math.round((Math.random() - 0.5) * shake));
+  for (const st of STARS) { ctx.fillStyle = st.c; ctx.fillRect(st.x, st.y, 1, 1); }
+  drawStation(ctx, s.hull, s.tow.length > 0);
+  for (const j of s.junk) shape(ctx, SHAPES[j.kind][j.shape], j.x, j.y, j.a, JUNK_INK[j.kind]);
+  // the tow line, dotted, ship to each piece in turn
+  let lx = s.ship && s.ship.x, ly = s.ship && s.ship.y;
+  for (const p of s.tow) {
+    if (s.ship) for (let k = 1; k < 4; k++) { ctx.fillStyle = INK.cyan; ctx.fillRect(Math.round(lx + ((p.x - lx) * k) / 4), Math.round(ly + ((p.y - ly) * k) / 4), 1, 1); }
+    shape(ctx, SHAPES.scrap[p.shape], p.x, p.y, p.a, INK.yellow);
+    lx = p.x; ly = p.y;
+  }
+  for (const b of s.shots) { ctx.fillStyle = INK.cyan; ctx.fillRect(Math.round(b.x), Math.round(b.y), 2, 2); }
+  if (s.ship) drawShip(ctx, s.ship, thrusting);
+  for (const p of sparks) { ctx.fillStyle = p.life > 0.5 ? p.ink : INK.dim; ctx.fillRect(Math.round(p.x), Math.round(p.y), 1, 1); }
+  ctx.restore();
+}
+
+function banner(lines, y) {
+  const wide = Math.max(...lines.map(([s0]) => s0.length)) * 6 + 10;
+  ctx.fillStyle = '#000';
+  ctx.fillRect(Math.floor((W - wide) / 2), y - 5, wide, lines.length * 12 + 7);
+  lines.forEach(([s0, ink], i) => text(ctx, s0, W / 2, y + i * 12, ink, { align: 'center' }));
+}
+
+function drawHud() {
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, TOP);
+  const hi = Math.max(scores.top, demo ? 0 : s.score);
+  text(ctx, String(mode === 'attract' ? 0 : s.score).padStart(2, '0'), 46, 5, INK.white, { align: 'right' });
+  text(ctx, 'HI ' + hi, 128, 5, INK.red, { align: 'center' });
+  if (mode === 'attract' || mode === 'entry') return;
+  for (let i = 0; i < Math.min(5, s.ships - (s.ship ? 1 : 0)); i++) shape(ctx, SHIP, 56 + i * 10, 8, -Math.PI / 2, INK.grey);
+  text(ctx, 'WAVE ' + s.wave, 200, 5, INK.cyan, { align: 'center' });
+  text(ctx, 'HULL', 236, 5, INK.red);
+  ctx.fillStyle = '#24243a'; ctx.fillRect(262, 5, 52, 6);
+  ctx.fillStyle = s.hull < 30 ? (blinkOn(8) ? INK.red : '#7a1a1a') : INK.green;
+  ctx.fillRect(262, 5, Math.round((52 * s.hull) / HULL), 6);
+}
+
+function drawTitle() {
+  for (const st of STARS) { ctx.fillStyle = st.c; ctx.fillRect(st.x, st.y, 1, 1); }
+  text(ctx, 'TOW LINE', W / 2 + 2, 36, '#3a1c10', { align: 'center', scale: 4 });
+  text(ctx, 'TOW LINE', W / 2, 34, LOGO_INK, { align: 'center', scale: 4 });
+  text(ctx, 'SHOOT THE JUNK. HAUL THE SCRAP.', W / 2, 72, INK.grey, { align: 'center' });
+  // a tug circling the station with a full line
+  const a = reduceMotion ? 0.6 : clock / 90, x = STATION.x + Math.cos(a) * 48, y = 132 + Math.sin(a) * 30;
+  ctx.save(); ctx.translate(0, 132 - STATION.y); drawStation(ctx, 100, true); ctx.restore();
+  drawShip(ctx, { x, y, a: a + Math.PI / 2, safe: 0 }, true);
+  for (let k = 1; k <= 3; k++) shape(ctx, SHAPES.scrap[k % 3], STATION.x + Math.cos(a - k * 0.22) * 48, 132 + Math.sin(a - k * 0.22) * 30, clock / 30, INK.yellow);
+  if (blinkOn()) banner([[prompt(), INK.yellow]], 186);
+  if (!cabinet) text(ctx, input.touch ? 'BUTTONS STEER, START FIRES' : 'ARROWS STEER, SPACE FIRES', W / 2, 204, INK.grey, { align: 'center' });
+  text(ctx, 'LEON KARSTEN 2026', W / 2, 226, INK.dim, { align: 'center' });
+}
+
+function drawHowTo() {
+  text(ctx, 'HOW TO PLAY', W / 2, 24, INK.cyan, { align: 'center' });
+  const keys = input.touch
+    ? [['TURN', 'LEFT / RIGHT'], ['THRUST', 'HOLD THRUST'], ['BRAKE', 'HOLD BRAKE'], ['FIRE', 'HOLD START']]
+    : [['TURN', 'LEFT / RIGHT'], ['THRUST', 'UP'], ['BRAKE', 'DOWN'], ['FIRE', 'SPACE']];
+  keys.forEach(([k, v], i) => { text(ctx, k, 70, 40 + i * 10, INK.yellow); text(ctx, v, 140, 40 + i * 10, INK.white); });
+  const rows = [
+    ['JUNK DRIFTS IN TO HIT YOUR STATION.', INK.white],
+    ['SHOOT IT: HULKS BREAK INTO WRECKS,', INK.white],
+    ['WRECKS INTO SCRAP.', INK.white],
+    ['SCRAP IS NOT SHOT. FLY OVER IT TO', INK.yellow],
+    ['TOW IT, THREE ON A LINE, AND BRING', INK.yellow],
+    ['IT HOME TO THE DOCK.', INK.yellow],
+    ['', ''],
+    ['LANDED: 1 = ' + DELIVERY[1] + '   2 = ' + DELIVERY[2] + '   3 = ' + DELIVERY[3], INK.green],
+    ['EACH PIECE MENDS ' + REPAIR + ' HULL.', INK.green],
+    ['A FULL LINE IS SLOW, AND A WRECK', INK.grey],
+    ['ACROSS IT KNOCKS IT LOOSE.', INK.grey],
+    ['EXTRA SHIP EVERY ' + EXTRA_SHIP_EVERY + '.', INK.grey],
+  ];
+  rows.forEach(([l, ink], i) => text(ctx, l, W / 2, 88 + i * 10, ink, { align: 'center' }));
+  if (blinkOn()) text(ctx, prompt(), W / 2, 222, INK.yellow, { align: 'center' });
+}
+
+function drawScores() {
+  text(ctx, 'HIGH SCORES', W / 2, 26, INK.yellow, { align: 'center' });
+  text(ctx, 'RANK', 80, 42, INK.grey);
+  text(ctx, 'SCORE', 196, 42, INK.grey, { align: 'right' });
+  text(ctx, 'NAME', 220, 42, INK.grey);
+  scores.table.forEach((r, i) => {
+    if (i === highlight && !blinkOn(16)) return;
+    const y = 56 + i * 15, ink = i === highlight ? INK.white : ROW_INKS[i];
+    text(ctx, RANKS[i], 80, y, ink);
+    text(ctx, String(r.s), 196, y, ink, { align: 'right' });
+    text(ctx, r.n, 220, y, ink);
+  });
+  if (blinkOn()) text(ctx, prompt(), W / 2, 216, INK.yellow, { align: 'center' });
+}
+
+function drawEntry() {
+  text(ctx, 'YOU MADE THE TOP TEN', W / 2, 32, INK.cyan, { align: 'center' });
+  text(ctx, String(s.score), W / 2, 48, INK.yellow, { align: 'center', scale: 2 });
+  text(ctx, 'ENTER YOUR INITIALS', W / 2, 74, INK.white, { align: 'center' });
+  drawInitials(ctx, entry, ENTRY_AT, { blinkOn: blinkOn(16), touch: input.touch, ink: INK });
+  text(ctx, input.touch ? 'TAP ABOVE OR BELOW A LETTER' : 'UP / DOWN   CHANGE LETTER', W / 2, 160, INK.grey, { align: 'center' });
+  text(ctx, input.touch ? 'TAP ELSEWHERE FOR THE NEXT' : 'RIGHT OR SPACE   NEXT', W / 2, 172, INK.grey, { align: 'center' });
+  text(ctx, 'TIME ' + Math.ceil(entry.timer / 60), W / 2, 198, INK.orange, { align: 'center' });
+}
+
+function drawScreen() {
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, W, H);
+  if (mode === 'attract') {
+    if (page === 'title') drawTitle();
+    else if (page === 'howto') drawHowTo();
+    else drawScores();
+    drawHud();
+    return;
+  }
+  if (mode === 'entry') { drawHud(); drawEntry(); return; }
+  drawField();
+  drawHud();
+  const mid = 70;
+  if (mode === 'ready') banner(demo ? [[cabinet ? 'INSERT COIN' : 'DEMO PLAY', INK.yellow]] : [['WAVE ' + s.wave, INK.cyan], ['DEFEND THE STATION', INK.yellow]], mid);
+  else if (mode === 'paused') banner([['PAUSED', INK.white], [input.touch ? 'TAP START' : 'PRESS P', INK.grey]], mid);
+  else if (mode === 'over') banner([['GAME OVER', INK.red], [s.hull <= 0 ? 'THE STATION IS LOST' : 'NO SHIPS LEFT', INK.grey]], mid);
+  else if (note && note.t > 0 && (note.t > 30 || blinkOn(6))) banner([[note.s, note.ink]], 34);
+  else if (mode === 'play' && s.hull < 30 && !demo && blinkOn(14)) text(ctx, 'HULL FAILING', W / 2, 30, INK.red, { align: 'center' });
+  if (demo && mode === 'play' && blinkOn()) text(ctx, cabinet ? 'INSERT COIN' : 'DEMO PLAY', W / 2, H - 12, INK.yellow, { align: 'center' });
+}
+
+function draw() {
+  drawScreen();
+  if (cabinet) dress(ctx, demo);
+}
+
+// ---------------------------------------------------------------- card art
+
+// The picture on the site's Games page, 320x240: a tug hauling a full line
+// home past the junk, under the title.
+function drawCard() {
+  const c = document.createElement('canvas');
+  c.width = 320; c.height = 240;
+  const g = c.getContext('2d');
+  g.fillStyle = '#000'; g.fillRect(0, 0, 320, 240);
+  for (const st of STARS) { g.fillStyle = st.c; g.fillRect(st.x, st.y, 1, 1); }
+  const keep = clock; clock = 0;
+  drawStation(g, 100, true);
+  clock = keep;
+  shape(g, SHAPES.hulk[0], 60, 70, 0.4, JUNK_INK.hulk);
+  shape(g, SHAPES.hulk[2], 270, 200, 1.1, JUNK_INK.hulk);
+  shape(g, SHAPES.wreck[1], 250, 80, 0.2, JUNK_INK.wreck);
+  shape(g, SHAPES.wreck[0], 90, 200, 2.2, JUNK_INK.wreck);
+  const sh = { x: 214, y: 128, a: Math.PI * 0.95, safe: 0 };
+  drawShip(g, sh, true);
+  let lx = sh.x, ly = sh.y;
+  [[228, 132], [241, 138], [253, 146]].forEach(([x, y], i) => {
+    for (let k = 1; k < 4; k++) { g.fillStyle = INK.cyan; g.fillRect(Math.round(lx + ((x - lx) * k) / 4), Math.round(ly + ((y - ly) * k) / 4), 1, 1); }
+    shape(g, SHAPES.scrap[i], x, y, i, INK.yellow);
+    lx = x; ly = y;
+  });
+  g.fillStyle = INK.cyan; g.fillRect(150, 70, 2, 2); g.fillRect(118, 92, 2, 2);
+  text(g, 'TOW LINE', 162, 10, '#3a1c10', { align: 'center', scale: 4 });
+  text(g, 'TOW LINE', 160, 8, LOGO_INK, { align: 'center', scale: 4 });
+  return c;
+}
+
+// ---------------------------------------------------------------- loop
+
+const PAGES = { title: [cabinet ? 'demo' : 'howto', cabinet ? 300 : 420], howto: ['demo', 600], scores: ['title', 420] };
+function attractTick() {
+  pageT++;
+  const [next, length] = PAGES[page];
+  if (pageT < length) return;
+  if (next === 'demo') { newRun(true); return; }
+  if (next === 'title') highlight = -1;
+  toAttract(next);
+}
+
+function tick() {
+  clock++;
+  for (const p of sparks) { p.x += p.vx; p.y += p.vy; p.vx *= 0.97; p.vy *= 0.97; p.life -= 0.025; }
+  sparks = sparks.filter(p => p.life > 0);
+  if (shake > 0) shake *= 0.85;
+  if (note) note.t--;
+  switch (mode) {
+    case 'attract': attractTick(); break;
+    case 'ready': if (--timer <= 0) mode = 'play'; break;
+    case 'play': playTick(); break;
+    case 'over': if (--timer <= 0) afterOver(); break;
+    case 'entry': if (--entry.timer <= 0) saveEntry(); break;
+  }
+}
+
+// A fixed 60 ticks a second whatever the display's refresh rate.
+let acc = 0, lastT = 0;
+function frame(now) {
+  requestAnimationFrame(frame);
+  if (!lastT) lastT = now;
+  acc += Math.min(100, now - lastT);
+  lastT = now;
+  while (acc >= TICK_MS) { tick(); acc -= TICK_MS; }
+  draw();
+}
+requestAnimationFrame(frame);
+
+// Read-only view for the page checks, plus shortcuts so a check can reach the
+// later screens without playing a whole game.
+window.__towline = {
+  get cabinet() { return cabinet; },
+  get mode() { return mode; },
+  get page() { return page; },
+  get demo() { return demo; },
+  get score() { return s.score; },
+  get ships() { return s.ships; },
+  get hull() { return s.hull; },
+  get ship() { return s.ship && { x: s.ship.x, y: s.ship.y, a: s.ship.a }; },
+  get shots() { return s.shots.length; },
+  get tow() { return s.tow.length; },
+  attract(p) { toAttract(p); },
+  // Scrap under the ship, the ship at the dock, a hulk on the ship.
+  scrapHere() { s.junk.push({ kind: 'scrap', x: s.ship.x, y: s.ship.y, vx: 0, vy: 0, spin: 0, a: 0, shape: 0, entered: true }); },
+  toDock() { Object.assign(s.ship, { x: STATION.x, y: STATION.y - 12, vx: 0, vy: 0 }); },
+  // (out in open space: at the dock, the station would take the hit first)
+  hulkHere() { Object.assign(s.ship, { x: 60, y: 60, vx: 0, vy: 0, safe: 0 }); s.junk.push({ kind: 'hulk', x: 60, y: 60, vx: 0, vy: 0, spin: 0, a: 0, shape: 0, entered: true }); },
+  endGame(score) { demo = false; s.score = score; mode = 'over'; timer = 1; },
+};
+window.__arcade = { card: drawCard };
+})();
+</script>
+</body>
+</html>

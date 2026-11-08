@@ -128,6 +128,7 @@ the same path collide in Astro.
    - Play them on his iPhone with sound on; decide on the CRT switch. Nobody has heard the sound.
    - **Wings Level** real tilt can only be checked by a person; the checks cover the d-pad/keys path.
    - **Soft Focus** removed 7 Nov (Leon: it stands out, and is not something an 80s arcade would have). Its source, with the seven sculpted subjects, is at tag `soft-focus-final` in the arcade repo.
+   - **Tow Line** added 8 Nov: an original drift-and-shoot game (station, salvage, tow line) in place of the Qlaim cabinet's Rock Field, which copied Asteroids; balance tested in `test-tow.mjs`.
    - **Hollow Manor** added 8 Nov: an original haunted-house pinball table, the 17th game. Physics checked by `test-manor.mjs`; how it FEELS needs Leon's hands.
    - **Live cabinets** (7 Nov): a game with `"live": true` in its JSON runs itself on its cabinet on the Games page, through a tube effect, only while on screen and never under reduced motion. every game since 8 Nov; a game needs a `?cabinet` mode first (`cabinetMode()` in the arcade's engine).
    - **Near Miss** added 4 Nov: a road game on the Games page grid. Eight vehicles, each a different skill: motorbike, bus, skateboard, helicopter, go-kart, skates, spaceship, airplane.
