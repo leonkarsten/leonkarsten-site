@@ -1,0 +1,1499 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Hollow Manor</title>
+<meta name="description" content="A pinball table after dark. Drop the tombstones, open the crypt, and keep the ball alive.">
+<meta name="theme-color" content="#000000">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2016%2016'%20shape-rendering='crispEdges'%3E%3Crect%20width='16'%20height='16'%20fill='%23140c2a'/%3E%3Crect%20x='4'%20y='3'%20width='8'%20height='8'%20fill='%23e8e8f0'/%3E%3Crect%20x='5'%20y='5'%20width='2'%20height='2'%20fill='%23140c24'/%3E%3Crect%20x='9'%20y='5'%20width='2'%20height='2'%20fill='%23140c24'/%3E%3Crect%20x='2'%20y='13'%20width='5'%20height='2'%20fill='%23ffd23f'/%3E%3Crect%20x='9'%20y='13'%20width='5'%20height='2'%20fill='%23ffd23f'/%3E%3C/svg%3E">
+<style>
+:root {
+  --void: #000;
+  --chrome: #8f8fb0;
+  --chrome-hi: #5eeaf5;
+  --edge: #2a2a40;
+  --start: #e8302f;
+  --ui: ui-monospace, 'Cascadia Mono', Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; height: 100%; background: var(--void); color: var(--chrome); }
+body {
+  font-family: var(--ui);
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  height: 100dvh;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: 'bar' 'stage' 'pad';
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.bar {
+  grid-area: bar;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+}
+.bar a, .bar button {
+  font: 700 12px/1 var(--ui);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--chrome);
+  background: none;
+  border: 1px solid transparent;
+  padding: 9px 10px;
+  text-decoration: none;
+  cursor: pointer;
+  border-radius: 0;
+}
+.bar a:hover, .bar button:hover, .bar a:focus-visible, .bar button:focus-visible {
+  color: var(--chrome-hi);
+  border-color: var(--edge);
+  outline: none;
+}
+.bar button[aria-pressed='true'] { color: var(--chrome-hi); }
+.toggles { display: flex; gap: 2px; }
+
+.stage {
+  grid-area: stage;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  padding: 8px 16px;
+}
+/* A faint edge, so an unexplored black playfield still has a size. */
+.screen { position: relative; line-height: 0; touch-action: none; box-shadow: 0 0 0 1px #1c1c2c; }
+.screen canvas {
+  display: block;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+/* The CRT switch. Off by default: sharp pixels are the honest picture, the
+   tube is a costume. Scanlines are one per game pixel row (--px is set by
+   the screen fit), so they never beat against the art. */
+.screen.crt { border-radius: 3% / 4%; overflow: hidden; box-shadow: 0 0 0 4px #0b0b14, 0 0 36px rgba(94, 234, 245, 0.12); }
+.screen.crt canvas { filter: saturate(1.25) brightness(1.12) contrast(1.05) blur(calc(var(--px) * 0.18)); }
+.screen.crt::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background:
+    radial-gradient(ellipse at center, rgba(0, 0, 0, 0) 58%, rgba(0, 0, 0, 0.6) 100%),
+    repeating-linear-gradient(to bottom,
+      rgba(0, 0, 0, 0) 0, rgba(0, 0, 0, 0) calc(var(--px) * 0.55),
+      rgba(0, 0, 0, 0.38) calc(var(--px) * 0.55), rgba(0, 0, 0, 0.38) var(--px));
+  box-shadow: inset 0 0 48px rgba(0, 0, 0, 0.75);
+}
+
+/* Touch controls: shown on touch screens only. */
+.pad {
+  grid-area: pad;
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  max-width: 380px;
+  margin: 0 auto;
+  padding: 4px 20px 16px;
+}
+body.touch .pad { display: flex; }
+.dpad {
+  display: grid;
+  grid-template-columns: repeat(3, 54px);
+  grid-template-rows: repeat(3, 50px);
+  gap: 3px;
+}
+.dpad button, .start {
+  font: 700 18px/1 var(--ui);
+  color: var(--chrome);
+  background: #12121e;
+  border: 2px solid var(--edge);
+  border-radius: 6px;
+  padding: 0;
+  touch-action: none;
+  cursor: pointer;
+}
+.dpad button:active { background: #24243a; color: var(--chrome-hi); }
+.dpad .up { grid-area: 1 / 2; }
+.dpad .left { grid-area: 2 / 1; }
+.dpad .right { grid-area: 2 / 3; }
+.dpad .down { grid-area: 3 / 2; }
+.start {
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  background: var(--start);
+  border: 4px solid #7a1414;
+  color: #fff;
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  box-shadow: inset 0 -6px 0 rgba(0, 0, 0, 0.25);
+}
+.start:active { transform: translateY(2px); box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.25); }
+
+/* A phone on its side: d-pad left of the screen, START right of it. A game
+   with no d-pad (its keys are on the screen) moves the bar to a column
+   instead, so an upright screen gets the full height. */
+@media (orientation: landscape) and (max-height: 520px) {
+  body.no-pad {
+    grid-template-rows: minmax(0, 1fr);
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas: 'bar stage';
+  }
+  body.no-pad .bar { flex-direction: column; justify-content: flex-start; align-items: flex-start; }
+  body.no-pad .toggles { flex-direction: column; }
+  .stage { padding: 4px 8px; }
+  body.touch:not(.no-pad) {
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas: 'bar bar bar' 'dpad stage start';
+  }
+  body.touch:not(.no-pad) .pad { display: contents; }
+  body.touch .dpad { grid-area: dpad; align-self: center; margin-left: 12px; }
+  body.touch .start { grid-area: start; align-self: center; margin-right: 16px; }
+}
+
+/* Two-button pairs, for games with two things to turn (Sorted's loops). */
+.pair { display: grid; grid-template-columns: repeat(2, 54px); grid-template-rows: 54px auto; gap: 3px; justify-items: center; }
+.pair button {
+  width: 54px; height: 54px;
+  font: 700 18px/1 var(--ui); color: var(--chrome);
+  background: #12121e; border: 2px solid var(--edge); border-radius: 6px;
+  padding: 0; touch-action: none; cursor: pointer;
+}
+.pair button:active { background: #24243a; color: var(--chrome-hi); }
+.pair span { grid-column: 1 / 3; font: 700 10px/1 var(--ui); letter-spacing: 0.14em; color: var(--chrome); }
+@media (orientation: landscape) and (max-height: 520px) {
+  body.touch:not(.no-pad) .pad.loops { display: flex; flex-direction: column; gap: 12px; grid-area: start; align-self: center; margin-right: 12px; padding: 0; }
+  body.touch:not(.no-pad) .pad.loops .start { margin: 0; }
+}
+
+/* ?cabinet: the game as the screen of a cabinet on the Games page. */
+body.cabinet { display: block; background: #000; overflow: hidden; }
+body.cabinet .bar, body.cabinet .pad { display: none !important; }
+body.cabinet .stage { padding: 0; width: 100vw; height: 100vh; }
+body.cabinet .screen { width: 100%; height: 100%; box-shadow: none; }
+body.cabinet .screen canvas { width: 100% !important; height: 100% !important; object-fit: contain; image-rendering: auto; }
+/* Two flippers held at once, and the plunger between them. */
+.pad.flips { justify-content: space-between; }
+.pad.flips .flip { width: 96px; height: 64px; font: 700 13px/1 var(--ui); letter-spacing: 0.1em; color: var(--chrome); background: #14141f; border: 1px solid #2a2a3a; border-radius: 10px; touch-action: none; }
+.pad.flips .flip:active { background: #24243a; color: var(--chrome-hi); }
+.pad.flips .right-side { display: flex; align-items: center; gap: 16px; }
+/* On its side: a flipper either side of the table, LAUNCH over the right one. */
+@media (orientation: landscape) and (max-height: 520px) {
+  body.touch .pad.flips .flip[data-flip='left'] { grid-area: dpad; align-self: center; margin-left: 12px; }
+  body.touch .pad.flips .right-side { grid-area: start; flex-direction: column; gap: 12px; align-self: center; margin-right: 12px; }
+  body.touch .pad.flips .right-side .start { margin: 0; }
+}
+</style>
+</head>
+<body>
+
+<header class="bar">
+  <a href="/games/">&larr; Games</a>
+  <div class="toggles">
+    <button type="button" data-action="crt" aria-pressed="false">CRT off</button>
+    <button type="button" data-action="mute" aria-pressed="true">Sound on</button>
+  </div>
+</header>
+
+<main class="stage" id="stage">
+  <div class="screen" id="screen">
+    <canvas id="c" role="img" aria-label="Hollow Manor game screen. Left and right arrows flip, hold Space to pull the plunger, P to pause."></canvas>
+  </div>
+</main>
+
+<div class="pad flips">
+  <button type="button" class="flip" data-flip="left" aria-label="Left flipper">&#9664; FLIP</button>
+  <div class="right-side">
+    <button type="button" class="start" data-action="start">Launch</button>
+    <button type="button" class="flip" data-flip="right" aria-label="Right flipper">FLIP &#9654;</button>
+  </div>
+</div>
+
+<script>
+(() => {
+'use strict';
+// ---- engine/font.js
+// 5x7 bitmap font, one string per glyph, rows separated by spaces. Drawn with
+// fillRect so it stays on the pixel grid at any scale; there is no web font.
+const GLYPHS = {
+  A: '.###. #...# #...# ##### #...# #...# #...#',
+  B: '####. #...# #...# ####. #...# #...# ####.',
+  C: '.###. #...# #.... #.... #.... #...# .###.',
+  D: '####. #...# #...# #...# #...# #...# ####.',
+  E: '##### #.... #.... ####. #.... #.... #####',
+  F: '##### #.... #.... ####. #.... #.... #....',
+  G: '.###. #...# #.... #.### #...# #...# .####',
+  H: '#...# #...# #...# ##### #...# #...# #...#',
+  I: '.###. ..#.. ..#.. ..#.. ..#.. ..#.. .###.',
+  J: '..### ...#. ...#. ...#. ...#. #..#. .##..',
+  K: '#...# #..#. #.#.. ##... #.#.. #..#. #...#',
+  L: '#.... #.... #.... #.... #.... #.... #####',
+  M: '#...# ##.## #.#.# #.#.# #...# #...# #...#',
+  N: '#...# #...# ##..# #.#.# #..## #...# #...#',
+  O: '.###. #...# #...# #...# #...# #...# .###.',
+  P: '####. #...# #...# ####. #.... #.... #....',
+  Q: '.###. #...# #...# #...# #.#.# #..#. .##.#',
+  R: '####. #...# #...# ####. #.#.. #..#. #...#',
+  S: '.###. #...# #.... .###. ....# #...# .###.',
+  T: '##### ..#.. ..#.. ..#.. ..#.. ..#.. ..#..',
+  U: '#...# #...# #...# #...# #...# #...# .###.',
+  V: '#...# #...# #...# #...# #...# .#.#. ..#..',
+  W: '#...# #...# #...# #.#.# #.#.# #.#.# .#.#.',
+  X: '#...# #...# .#.#. ..#.. .#.#. #...# #...#',
+  Y: '#...# #...# .#.#. ..#.. ..#.. ..#.. ..#..',
+  Z: '##### ....# ...#. ..#.. .#... #.... #####',
+  0: '.###. #...# #..## #.#.# ##..# #...# .###.',
+  1: '..#.. .##.. ..#.. ..#.. ..#.. ..#.. .###.',
+  2: '.###. #...# ....# ...#. ..#.. .#... #####',
+  3: '##### ...#. ..#.. ...#. ....# #...# .###.',
+  4: '...#. ..##. .#.#. #..#. ##### ...#. ...#.',
+  5: '##### #.... ####. ....# ....# #...# .###.',
+  6: '..##. .#... #.... ####. #...# #...# .###.',
+  7: '##### ....# ...#. ..#.. .#... .#... .#...',
+  8: '.###. #...# #...# .###. #...# #...# .###.',
+  9: '.###. #...# #...# .#### ....# ...#. .##..',
+  ' ': '..... ..... ..... ..... ..... ..... .....',
+  '.': '..... ..... ..... ..... ..... .##.. .##..',
+  ',': '..... ..... ..... ..... .##.. ..#.. .#...',
+  '!': '..#.. ..#.. ..#.. ..#.. ..#.. ..... ..#..',
+  '?': '.###. #...# ....# ...#. ..#.. ..... ..#..',
+  '-': '..... ..... ..... .###. ..... ..... .....',
+  '+': '..... ..#.. ..#.. ##### ..#.. ..#.. .....',
+  '=': '..... ..... ##### ..... ##### ..... .....',
+  ':': '..... .##.. .##.. ..... .##.. .##.. .....',
+  '/': '....# ...#. ...#. ..#.. .#... .#... #....',
+  "'": '..#.. ..#.. .#... ..... ..... ..... .....',
+  '<': '...#. ..#.. .#... #.... .#... ..#.. ...#.',
+  '>': '.#... ..#.. ...#. ....# ...#. ..#.. .#...',
+  '*': '..... #...# .#.#. ..#.. .#.#. #...# .....',
+  '%': '##..# ##.#. ...#. ..#.. .#... .#.## #..##',
+};
+const FONT_CHARS = Object.keys(GLYPHS).join('');
+
+const FONT_BITS = {};
+for (const [ch, rows] of Object.entries(GLYPHS)) FONT_BITS[ch] = rows.split(' ');
+
+const GLYPH_W = 5, GLYPH_H = 7, ADVANCE = 6;
+
+function textWidth(str, scale = 1) {
+  return str.length ? (str.length * ADVANCE - 1) * scale : 0;
+}
+
+// `color` is one colour, or an array of seven (one per glyph row) for the
+// striped logos arcade title screens used.
+function text(ctx, str, x, y, color, opts = {}) {
+  const scale = opts.scale || 1;
+  const s = String(str).toUpperCase();
+  let left = x;
+  if (opts.align === 'center') left = x - Math.floor(textWidth(s, scale) / 2);
+  else if (opts.align === 'right') left = x - textWidth(s, scale);
+  for (let i = 0; i < s.length; i++) {
+    const rows = FONT_BITS[s[i]] || FONT_BITS['?'];
+    const gx = left + i * ADVANCE * scale;
+    for (let r = 0; r < GLYPH_H; r++) {
+      ctx.fillStyle = Array.isArray(color) ? color[r] : color;
+      const row = rows[r];
+      for (let c = 0; c < GLYPH_W; c++) {
+        if (row[c] === '#') ctx.fillRect(gx + c * scale, y + r * scale, scale, scale);
+      }
+    }
+  }
+}
+
+// ---- engine/screen.js
+// The arcade screen: a small fixed-resolution canvas, scaled up in whole
+// DEVICE pixels so every game pixel is the same size and stays sharp. A 336px
+// screen on a 3x phone is drawn at exactly 3 device pixels per game pixel,
+// never 3.35, which is what makes uneven, shimmering pixels.
+function makeScreen({ canvas, stage, frame, w, h, crtKey }) {
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+
+  function fit() {
+    const dpr = window.devicePixelRatio || 1;
+    // clientWidth/Height include the stage's padding; the screen gets only
+    // what is inside it.
+    const cs = getComputedStyle(stage);
+    const aw = stage.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    const ah = stage.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+    const s = Math.max(1, Math.floor(Math.min((aw * dpr) / w, (ah * dpr) / h)));
+    canvas.style.width = (s * w) / dpr + 'px';
+    canvas.style.height = (s * h) / dpr + 'px';
+    frame.style.setProperty('--px', s / dpr + 'px');
+  }
+  addEventListener('resize', fit);
+  if (window.visualViewport) visualViewport.addEventListener('resize', fit);
+  fit();
+
+  let crt = false;
+  try { crt = localStorage.getItem(crtKey) === '1'; } catch { crt = false; }
+  function setCrt(on) {
+    crt = on;
+    frame.classList.toggle('crt', on);
+    try { localStorage.setItem(crtKey, on ? '1' : '0'); } catch {}
+  }
+  setCrt(crt);
+
+  return {
+    ctx, w, h, fit,
+    get crt() { return crt; },
+    toggleCrt() { setCrt(!crt); return crt; },
+  };
+}
+
+// ?cabinet is a game running on the Games page as an unattended machine: only
+// its attract loop, no sound, nobody at the controls. The page goes; the screen
+// fills its frame, with black at the sides if it is squarer than the cabinet.
+function cabinetMode() {
+  const on = new URLSearchParams(location.search).has('cabinet');
+  if (on) {
+    document.body.classList.add('cabinet');
+    // A page of cabinets runs several games at once. Each draws every other
+    // frame; its game still runs 60 ticks a second, from the time it is given.
+    const raf = window.requestAnimationFrame.bind(window);
+    window.requestAnimationFrame = cb => raf(() => raf(cb));
+  }
+  return on;
+}
+
+// ---- engine/cabinet.js
+// What an unattended machine shows over its own screens (see cabinetMode in
+// screen.js): GAME OVER and INSERT COIN when a demo ends, and the credit it has,
+// none, in the corner. A game calls the result once a frame, after drawing.
+function cabinetDressing() {
+  let was = false, over = 0;
+  return (ctx, demo) => {
+    const w = ctx.canvas.width, h = ctx.canvas.height;
+    if (was && !demo) over = 150;
+    was = demo;
+    window.__cabinetOver = over; // for the page checks
+    if (over > 0) {
+      over--;
+      const x = Math.floor(w / 2 - 42), y = Math.floor(h / 2 - 15);
+      ctx.fillStyle = '#000'; ctx.fillRect(x, y, 84, 31);
+      text(ctx, 'GAME OVER', w / 2, y + 5, '#ff3b3b', { align: 'center' });
+      text(ctx, 'INSERT COIN', w / 2, y + 18, '#ffd23f', { align: 'center' });
+    }
+    ctx.fillStyle = '#000'; ctx.fillRect(w - 58, h - 12, 54, 10);
+    text(ctx, 'CREDIT 0', w - 6, h - 10, '#ffffff', { align: 'right' });
+  };
+}
+
+// ---- engine/sound.js
+// Chip sound: square, triangle and noise voices made in the browser. No audio
+// files. Browsers only allow sound after a tap or key, so `wake()` is called
+// from every input handler and does nothing until then.
+function makeSound(muteKey) {
+  let ac = null, out = null;
+  let muted = false;
+  try { muted = localStorage.getItem(muteKey) === '1'; } catch { muted = false; }
+
+  function wake() {
+    if (ac) { if (ac.state === 'suspended') ac.resume(); return; }
+    const Ctor = window.AudioContext || window.webkitAudioContext;
+    if (!Ctor) return;
+    ac = new Ctor();
+    out = ac.createGain();
+    out.gain.value = muted ? 0 : 1;
+    out.connect(ac.destination);
+  }
+
+  // One note. `at` is seconds from now, `to` slides the pitch.
+  function note(freq, dur, { type = 'square', vol = 0.05, at = 0, to = null } = {}) {
+    if (!ac) return;
+    const t = ac.currentTime + at;
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(freq, t);
+    if (to) o.frequency.exponentialRampToValueAtTime(to, t + dur);
+    g.gain.setValueAtTime(vol, t);
+    g.gain.setValueAtTime(vol, t + dur * 0.7);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(out);
+    o.start(t); o.stop(t + dur + 0.02);
+  }
+
+  // A run of notes: [[freq, dur], ...], each after the last; 0 is a rest.
+  function tune(notes, opts = {}) {
+    let at = opts.at || 0;
+    for (const [f, d] of notes) {
+      if (f) note(f, d * 0.92, { ...opts, at });
+      at += d;
+    }
+  }
+
+  function noise(dur, { vol = 0.2, cutoff = 900, at = 0 } = {}) {
+    if (!ac) return;
+    const len = Math.floor(ac.sampleRate * dur);
+    const buf = ac.createBuffer(1, len, ac.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len) ** 2;
+    const s = ac.createBufferSource(); s.buffer = buf;
+    const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = cutoff;
+    const g = ac.createGain(); g.gain.value = vol;
+    s.connect(f); f.connect(g); g.connect(out);
+    s.start(ac.currentTime + at);
+  }
+
+  // A held sound (an engine): filtered noise that runs for the whole session
+  // and is gated by its gain. Starting a source every frame is what makes
+  // engine sound crackle. Returns set(on); safe to call before wake().
+  function drone({ cutoff = 420, vol = 0.16 } = {}) {
+    let gain = null;
+    return on => {
+      if (!ac) return;
+      if (!gain) {
+        const len = ac.sampleRate * 2;
+        const buf = ac.createBuffer(1, len, ac.sampleRate);
+        const d = buf.getChannelData(0);
+        for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+        const s = ac.createBufferSource(); s.buffer = buf; s.loop = true;
+        const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = cutoff;
+        gain = ac.createGain(); gain.gain.value = 0;
+        s.connect(f); f.connect(gain); gain.connect(out);
+        s.start();
+      }
+      gain.gain.setTargetAtTime(on ? vol : 0, ac.currentTime, 0.03);
+    };
+  }
+
+  function setMuted(on) {
+    muted = on;
+    if (out) out.gain.value = on ? 0 : 1;
+    try { localStorage.setItem(muteKey, on ? '1' : '0'); } catch {}
+  }
+
+  return {
+    wake, note, tune, noise, drone,
+    get muted() { return muted; },
+    toggleMute() { setMuted(!muted); return muted; },
+  };
+}
+
+// ---- engine/input.js
+// Keyboard and touch in one place. `held` is what a game polls each tick;
+// `onDir` fires once per press (menus, initials); `onAction` carries the
+// buttons: start, pause, back, crt, mute.
+//
+// A word game passes `onLetter`: then every letter key is a letter (WASD stop
+// being directions, P/C/M stop being shortcuts; those stay on the buttons) and
+// only the arrows move. `onKey(code)` gets any other key and returns true if
+// it used it. `onPoint(x, y)` receives taps on the screen in GAME
+// pixels; returning true means the game used the tap, otherwise it is START.
+function makeInput({ screen, onAction, onDir, onAny, onLetter = null, onPoint = null, onKey = null }) {
+  // `fire` is Space, Enter or the START button while held, for games that
+  // hold a trigger down; every other game ignores it.
+  const held = { up: false, down: false, left: false, right: false, fire: false };
+  const KEYS = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
+  const ACTIONS = { Space: 'start', Enter: 'start', Escape: 'back' };
+  if (!onLetter) {
+    Object.assign(KEYS, { KeyW: 'up', KeyS: 'down', KeyA: 'left', KeyD: 'right' });
+    Object.assign(ACTIONS, { KeyP: 'pause', KeyC: 'crt', KeyM: 'mute' });
+  }
+
+  let touch = matchMedia('(pointer: coarse)').matches;
+  const markTouch = on => {
+    touch = on;
+    document.body.classList.toggle('touch', on);
+  };
+  markTouch(touch);
+  addEventListener('touchstart', () => { if (!touch) markTouch(true); }, { passive: true });
+
+  addEventListener('keydown', e => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const dir = KEYS[e.code];
+    if (dir) {
+      e.preventDefault();
+      onAny();
+      if (!e.repeat) onDir(dir);
+      held[dir] = true;
+      return;
+    }
+    const action = ACTIONS[e.code];
+    if (action) {
+      if (action === 'start') held.fire = true;
+      // Space and Enter on a focused button or link belong to that control.
+      if ((e.code === 'Space' || e.code === 'Enter') && e.target.closest && e.target.closest('button, a')) return;
+      e.preventDefault();
+      onAny();
+      if (!e.repeat) onAction(action);
+      return;
+    }
+    // e.key, not e.code: the letter printed on the key, whatever the layout.
+    // Digits come through the same door, for games that number their keys.
+    if (onLetter && /^[a-z0-9]$/i.test(e.key)) {
+      e.preventDefault();
+      onAny();
+      if (!e.repeat) onLetter(e.key.toUpperCase());
+    }
+    // Anything else a game asked for by code (Z for undo, R for restart).
+    else if (onKey && !e.repeat && onKey(e.code)) { e.preventDefault(); onAny(); }
+  });
+  addEventListener('keyup', e => {
+    const dir = KEYS[e.code];
+    if (dir) held[dir] = false;
+    if (ACTIONS[e.code] === 'start') held.fire = false;
+  });
+  addEventListener('blur', () => { held.up = held.down = held.left = held.right = held.fire = false; });
+
+  for (const b of document.querySelectorAll('[data-dir]')) {
+    const dir = b.dataset.dir;
+    const down = e => {
+      e.preventDefault();
+      onAny();
+      held.up = held.down = held.left = held.right = false;
+      held[dir] = true;
+      onDir(dir);
+    };
+    const up = () => { held[dir] = false; };
+    b.addEventListener('pointerdown', down);
+    b.addEventListener('pointerup', up);
+    b.addEventListener('pointerleave', up);
+    b.addEventListener('pointercancel', up);
+    b.addEventListener('contextmenu', e => e.preventDefault());
+  }
+  // Buttons that send a letter (Sorted's left loop is A and D).
+  for (const b of document.querySelectorAll('[data-letter]')) {
+    b.addEventListener('pointerdown', e => { e.preventDefault(); onAny(); if (onLetter) onLetter(b.dataset.letter); });
+    b.addEventListener('contextmenu', e => e.preventDefault());
+  }
+  for (const b of document.querySelectorAll('[data-action]')) {
+    const action = b.dataset.action;
+    // pointerdown for the START button, so it answers as fast as the d-pad;
+    // click for the toggles, so keyboard users can press them too.
+    if (b.classList.contains('start')) {
+      b.addEventListener('pointerdown', e => { e.preventDefault(); onAny(); held.fire = true; onAction(action); });
+      for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(ev, () => { held.fire = false; });
+    } else {
+      b.addEventListener('click', () => { onAny(); onAction(action); });
+    }
+  }
+  screen.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    onAny();
+    if (onPoint) {
+      const r = screen.getBoundingClientRect();
+      const x = ((e.clientX - r.left) * screen.width) / r.width;
+      const y = ((e.clientY - r.top) * screen.height) / r.height;
+      if (onPoint(x, y)) return;
+    }
+    onAction('start');
+  });
+
+  return { held, get touch() { return touch; } };
+}
+
+// ---- engine/scores.js
+// The top-ten table, kept on this device only. A new browser starts with a
+// table of invented initials so the attract mode has something to show.
+const ENTRY_LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ.';
+
+function makeScores(key, defaults) {
+  let table = defaults.map(r => ({ ...r }));
+  try {
+    const saved = JSON.parse(localStorage.getItem(key) || 'null');
+    if (Array.isArray(saved) && saved.length === 10 && saved.every(r => typeof r.s === 'number' && typeof r.n === 'string')) table = saved;
+  } catch {}
+
+  return {
+    get table() { return table; },
+    get top() { return table[0].s; },
+    qualifies(score) { return score > 0 && score > table[9].s; },
+    // Returns the rank (0-9) the new row landed on.
+    add(n, s) {
+      let rank = table.findIndex(r => s > r.s);
+      if (rank === -1) return -1;
+      table.splice(rank, 0, { n, s });
+      table.length = 10;
+      try { localStorage.setItem(key, JSON.stringify(table)); } catch {}
+      return rank;
+    },
+  };
+}
+
+// ---- engine/entry.js
+// Three initials, drawn large, with tap targets for games that have no d-pad:
+// on a touch screen a tap above a letter's middle steps it up, below steps it
+// down, and a tap anywhere else accepts it. (Without this a phone player in a
+// tap-only game could only ever enter AAA.)
+function initialsLayout(w, y) {
+  return { x0: Math.round(w / 2 - 39), y, step: 30 };
+}
+
+function arrow(ctx, cx, y, up, ink) {
+  ctx.fillStyle = ink;
+  for (let r = 0; r < 4; r++) ctx.fillRect(cx - r, up ? y + r : y + 3 - r, r * 2 + 1, 1);
+}
+
+function drawInitials(ctx, entry, L, { blinkOn, touch, ink }) {
+  for (let i = 0; i < 3; i++) {
+    const x = L.x0 + i * L.step;
+    const current = i === entry.pos;
+    if (!current || blinkOn) text(ctx, ENTRY_LETTERS[entry.letters[i]], x, L.y, current ? ink.yellow : ink.white, { scale: 3 });
+    ctx.fillStyle = current ? ink.yellow : ink.dim;
+    ctx.fillRect(x - 2, L.y + 26, 18, 2);
+    if (touch && current) {
+      arrow(ctx, x + 7, L.y - 9, true, ink.yellow);
+      arrow(ctx, x + 7, L.y + 32, false, ink.yellow);
+    }
+  }
+}
+
+// 'up', 'down' or 'next' for a tap at (x, y) in game pixels.
+function tapInitials(entry, L, x, y) {
+  const left = L.x0 + entry.pos * L.step - 8, right = left + 32;
+  if (x < left || x > right) return 'next';
+  if (y >= L.y - 16 && y < L.y + 11) return 'up';
+  if (y >= L.y + 11 && y <= L.y + 40) return 'down';
+  return 'next';
+}
+
+// ---- games/hollow-manor/rules.js
+// Hollow Manor: the table and its physics, with no drawing, so the tests can
+// play it. Everything is in screen pixels on a 240x400 upright screen, and the
+// ball moves in small sub-steps so that even at its fastest it never travels
+// far enough in one step to pass through a wall or a flipper.
+const W = 240, H = 360, TOP = 20;
+// The table was laid out 400 high; it is drawn 360 high so that a laptop's
+// screen fits it at twice size, not once. Every height goes through Y.
+const Y = y => TOP + ((y - TOP) * (H - TOP)) / (400 - TOP);
+const BALL_R = 4.5;
+const G = 0.12;              // the table's tilt, in pixels per tick per tick
+const MAX_SPEED = 14;        // pixels per tick
+const SUBSTEPS = 10;         // 1.4 pixels a step at most, against a 4.5 pixel ball
+const FLIP_LEN = 33, FLIP_R = 3.5;
+const FLIP_DOWN = 0.5, FLIP_UP = -0.45; // radians below the horizontal, at rest and raised
+const FLIP_SPEED = 0.5;      // radians per tick going up: a flipper snaps
+const PLUNGE_AT = { x: 224, y: Y(396) - 7 };
+const BALL_SAVE = 60 * 8;
+const BALLS = 3;
+
+const PTS = { bumper: 100, sling: 10, lane: 500, target: 250, spinner: 20, crypt: 1000, jackpot: 10000, inlane: 100 };
+const BOUNCE = { wall: 0.45, flipper: 0.25, bumper: 0.5 };
+
+// ---------------------------------------------------------------- the table
+
+// Lines are [ax, ay, bx, by, how]; `how` says what it is and how it bounces.
+function makeTable() {
+  const walls = [];
+  const wall = (ax, ay, bx, by, tag = 'wall', kick = 0) => walls.push({ ax, ay: Y(ay), bx, by: Y(by), tag, kick });
+
+  // The cabinet: a rounded top, the outer walls, and the shooter lane on the right.
+  const arc = [];
+  for (let i = 0; i <= 28; i++) {
+    const a = Math.PI + (i / 28) * Math.PI;
+    arc.push([121 + 115 * Math.cos(a), 110 + 86 * Math.sin(a)]); // wall() squashes it, once
+  }
+  for (let i = 0; i < arc.length - 1; i++) wall(arc[i][0], arc[i][1], arc[i + 1][0], arc[i + 1][1]);
+  wall(6, 110, 6, 420);
+  wall(236, 110, 236, 420);
+  wall(212, 420, 212, 140);
+  wall(212, 396, 236, 396, 'plunger');
+  // A gate at the top of the shooter lane: the ball goes up through it, never back down.
+  walls.push({ ax: 212, ay: Y(140), bx: 236, by: Y(124), tag: 'gate', kick: 0 });
+
+  // The lower field, mirrored about x = 109: inlane guides down to the flippers,
+  // and the slingshots above them. A guide ends on the flipper's top surface,
+  // not at its pivot: a thin line meeting a fat flipper leaves a step the ball
+  // wedges against.
+  const mirror = x => 218 - x;
+  for (const m of [x => x, mirror]) {
+    wall(m(28), 280, m(28), 328);
+    wall(m(28), 328, m(72), 357.2);
+    wall(m(40), 290, m(40), 322);
+    wall(m(40), 322, m(60), 336);
+    wall(m(40), 290, m(60), 336, 'sling', 3.5);
+  }
+
+  // The top lanes, B O O, between posts.
+  for (const x of [66, 96, 126, 156]) wall(x, 48, x, 70);
+
+  // The tombstones: three drop targets on the left, in a pocket.
+  wall(6, 176, 20, 176);
+  wall(6, 234, 20, 234);
+  const targets = [180, 198, 216].map(y => ({ x: 20, y0: Y(y), y1: Y(y + 14), down: false }));
+
+  // The spinner's lane down the right side.
+  wall(184, 180, 184, 250);
+
+  const bumpers = [{ x: 88, y: Y(128), r: 10 }, { x: 136, y: Y(124), r: 10 }, { x: 112, y: Y(166), r: 10 }];
+  const crypt = { x: 50, y: Y(150), r: 7 };
+  const lanes = [81, 111, 141];
+  const spinner = { x0: 184, x1: 212, y: Y(215) };
+  return { walls, targets, bumpers, crypt, lanes, spinner };
+}
+
+// ---------------------------------------------------------------- state
+
+// `opts` lets the tests break the physics on purpose.
+function newState(rand = Math.random, opts = {}) {
+  return {
+    rand, opts: { substeps: SUBSTEPS, flipperPush: true, bounce: 1, ...opts },
+    table: makeTable(),
+    balls: [], held: null, // held: the ball in the crypt, and for how long
+    flippers: [
+      { side: 1, px: 70, py: Y(360), a: FLIP_DOWN, w: 0 },
+      { side: -1, px: 148, py: Y(360), a: FLIP_DOWN, w: 0 },
+    ],
+    lanes: [false, false, false], mult: 1, bonus: 0, score: 0,
+    multiball: false, plunge: 0, wasPlunging: false, ballSave: 0, ticks: 0,
+  };
+}
+
+const newBall = (x = PLUNGE_AT.x, y = PLUNGE_AT.y, vx = 0, vy = 0) => ({ x, y, vx, vy, still: 0, gone: false });
+
+// A new ball on the plunger, with the ball save running.
+function serve(s) {
+  s.balls = [newBall()];
+  s.ballSave = BALL_SAVE;
+}
+
+function flipperTip(f, a = f.a) {
+  return [f.px + f.side * FLIP_LEN * Math.cos(a), f.py + FLIP_LEN * Math.sin(a)];
+}
+
+const onPlunger = b => b.x > 212 && b.y > PLUNGE_AT.y - 8 && b.vy > -2; // sitting on it, or settling
+
+// ---------------------------------------------------------------- one tick
+
+// input: { left, right, plunge } held. Returns what happened, for sound and the
+// tests: [{ type, x, y, pts }].
+function step(s, input = {}) {
+  const events = [];
+  const add = (type, b, pts = 0) => { events.push({ type, x: b ? b.x : 0, y: b ? b.y : 0, pts }); s.score += pts; };
+  s.ticks++;
+  if (s.ballSave > 0) s.ballSave--;
+
+  // The flippers swing up fast and fall back slower.
+  for (const f of s.flippers) {
+    const up = f.side > 0 ? input.left : input.right;
+    const target = up ? FLIP_UP : FLIP_DOWN;
+    const speed = up ? FLIP_SPEED : FLIP_SPEED * 0.6;
+    const da = Math.max(-speed, Math.min(speed, target - f.a));
+    f.w = da; // radians this tick
+    if (up && !f.wasUp) { add(f.side > 0 ? 'flipLeft' : 'flipRight', null); rotateLanes(s, f.side > 0 ? -1 : 1); }
+    f.wasUp = up;
+  }
+
+  // The plunger: hold to pull it back, let go to fire whatever is sitting on it.
+  if (input.plunge) s.plunge = Math.min(1, s.plunge + 1 / 50);
+  else if (s.wasPlunging) {
+    for (const b of s.balls) if (onPlunger(b)) { b.vy = -(6 + 9 * s.plunge); add('launch', b); }
+    s.plunge = 0;
+  }
+  s.wasPlunging = !!input.plunge;
+
+  // The crypt holds its ball, then throws it back out.
+  if (s.held && --s.held.t <= 0) {
+    const b = s.held.ball;
+    b.vx = 3 + s.rand(); b.vy = 2.5;
+    b.x = s.table.crypt.x + 9; b.y = s.table.crypt.y + 4; b.gone = false;
+    s.balls.push(b);
+    s.held = null;
+    add('kickout', b);
+  }
+
+  const n = s.opts.substeps;
+  for (let i = 0; i < n; i++) {
+    for (const f of s.flippers) f.a += f.w / n;
+    for (const b of s.balls) moveBall(s, b, n, add);
+    collideBalls(s.balls);
+  }
+  for (const f of s.flippers) f.w = 0;
+
+  // A ball that has come to rest anywhere but the plunger gets a nudge.
+  for (const b of s.balls) {
+    // (not one cradled on a raised flipper: that is the player's choice)
+    b.still = Math.hypot(b.vx, b.vy) < 0.08 && !onPlunger(b) && b.y < Y(340) ? b.still + 1 : 0;
+    if (b.still > 120) { b.vx += (s.rand() - 0.5) * 2; b.vy -= 1; b.still = 0; }
+  }
+
+  // Lost balls, and the ball save.
+  const lost = s.balls.filter(b => b.gone === true);
+  s.balls = s.balls.filter(b => !b.gone); // a ball in the crypt is held, not lost
+  if (lost.length) {
+    s.balls = s.balls.filter(b => !b.gone);
+    for (const b of lost) {
+      if (s.ballSave > 0) { const nb = newBall(); nb.vy = -14; s.balls.push(nb); add('saved', b); }
+      else add('lost', b);
+    }
+    if (!s.balls.length && !s.held) {
+      s.multiball = false;
+      add('drain', null);
+    } else if (s.balls.length + (s.held ? 1 : 0) === 1) s.multiball = false;
+  }
+  return events;
+}
+
+function moveBall(s, b, n, add) {
+  const t = s.table;
+  b.vy += G / n;
+  const sp = Math.hypot(b.vx, b.vy);
+  if (sp > MAX_SPEED) { b.vx *= MAX_SPEED / sp; b.vy *= MAX_SPEED / sp; }
+  const px = b.x, py = b.y;
+  b.x += b.vx / n; b.y += b.vy / n;
+
+  for (const w of t.walls) {
+    if (w.tag === 'gate' && b.vy < 0) continue; // the gate only stops a ball coming back down
+    const hit = bounceOffSegment(b, w.ax, w.ay, w.bx, w.by, BALL_R, BOUNCE.wall * s.opts.bounce, w.kick, 0, 0, 0);
+    if (hit && w.tag === 'sling' && hit > 0.6) add('sling', b, PTS.sling);
+  }
+  for (const tg of t.targets) {
+    if (tg.down) continue;
+    const hit = bounceOffSegment(b, tg.x, tg.y0, tg.x, tg.y1, BALL_R + 1, BOUNCE.wall * s.opts.bounce, 0, 0, 0, 0);
+    if (hit > 0.8) { tg.down = true; s.bonus += 1; add('target', b, PTS.target); if (t.targets.every(x => x.down)) add('cryptLit', b); }
+  }
+  for (const k of t.bumpers) {
+    const dx = b.x - k.x, dy = b.y - k.y, d = Math.hypot(dx, dy), R = k.r + BALL_R;
+    if (d >= R || d === 0) continue;
+    const nx = dx / d, ny = dy / d;
+    b.x = k.x + nx * R; b.y = k.y + ny * R;
+    const vn = b.vx * nx + b.vy * ny;
+    if (vn < 0) { b.vx -= (1 + BOUNCE.bumper * s.opts.bounce) * vn * nx; b.vy -= (1 + BOUNCE.bumper * s.opts.bounce) * vn * ny; }
+    b.vx += nx * 4.5; b.vy += ny * 4.5;
+    add('bumper', b, PTS.bumper);
+  }
+  for (const f of s.flippers) {
+    const [tx, ty] = flipperTip(f);
+    // The flipper's line turns at f.w for the left one and -f.w for the right,
+    // and its surface carries the ball with it where they touch.
+    bounceOffSegment(b, f.px, f.py, tx, ty, BALL_R + FLIP_R, BOUNCE.flipper * s.opts.bounce, 0, f.px, f.py, s.opts.flipperPush ? f.w * f.side : 0);
+  }
+
+  // What the ball rolls over or through.
+  if (py < Y(64) && b.y >= Y(64)) t.lanes.forEach((x, i) => { if (Math.abs(b.x - x) < 15) lane(s, i, b, add); });
+  if (b.x > t.spinner.x0 && b.x < t.spinner.x1 && (py - t.spinner.y) * (b.y - t.spinner.y) <= 0 && py !== b.y) add('spin', b, PTS.spinner * Math.max(1, Math.round(Math.abs(b.vy) * 0.7)));
+  // Past the slingshots: the inlanes lead back to a flipper, the outlanes drain.
+  if (py < Y(300) && b.y >= Y(300)) {
+    if (b.x < 28 || (b.x > 190 && b.x < 212)) add('outlane', b);
+    else if (b.x < 40 || (b.x > 178 && b.x < 190)) add('inlane', b, PTS.inlane);
+  }
+  const c = t.crypt;
+  if (!s.held && Math.hypot(b.x - c.x, b.y - c.y) < c.r && Math.hypot(b.vx, b.vy) < 7) {
+    s.held = { ball: b, t: 70 };
+    b.gone = 'held';
+    if (t.targets.every(x => x.down)) {
+      if (s.multiball) add('jackpot', b, PTS.jackpot);
+      else {
+        s.multiball = true;
+        const nb = newBall(); nb.vy = -14; s.balls.push(nb);
+        add('multiball', b, PTS.crypt);
+      }
+      t.targets.forEach(x => { x.down = false; });
+    } else add('crypt', b, PTS.crypt);
+  }
+  if (b.y > H + 8) b.gone = true;
+}
+
+function lane(s, i, b, add) {
+  if (s.lanes[i]) { add('laneAgain', b, 100); return; }
+  s.lanes[i] = true; s.bonus += 1;
+  add('lane', b, PTS.lane);
+  if (s.lanes.every(Boolean)) {
+    s.lanes = [false, false, false];
+    s.mult = Math.min(5, s.mult + 1);
+    add('multiplier', b);
+  }
+}
+
+// The flippers move the lit lanes along, as on a real table.
+function rotateLanes(s, dir) {
+  const l = s.lanes;
+  s.lanes = dir > 0 ? [l[2], l[0], l[1]] : [l[1], l[2], l[0]];
+}
+
+// Push the ball out of a line (with radius R) and bounce it. A moving line
+// (a flipper) turns about (ox, oy) at `spin` radians per tick, and gives the
+// ball its own speed where they touch. Returns how hard it hit, or 0.
+function bounceOffSegment(b, ax, ay, bx, by, R, e, kick, ox, oy, spin) {
+  const dx = bx - ax, dy = by - ay, len2 = dx * dx + dy * dy;
+  const t = Math.max(0, Math.min(1, ((b.x - ax) * dx + (b.y - ay) * dy) / len2));
+  const qx = ax + dx * t, qy = ay + dy * t;
+  let nx = b.x - qx, ny = b.y - qy;
+  const d = Math.hypot(nx, ny);
+  if (d >= R) return 0;
+  if (d < 1e-6) { nx = -dy; ny = dx; } // dead on the line: push out sideways
+  const l = Math.hypot(nx, ny);
+  nx /= l; ny /= l;
+  b.x = qx + nx * R; b.y = qy + ny * R;
+  // the surface's own speed at the contact point
+  const sx = spin ? -spin * (qy - oy) : 0, sy = spin ? spin * (qx - ox) : 0;
+  const rvx = b.vx - sx, rvy = b.vy - sy, vn = rvx * nx + rvy * ny;
+  if (vn >= 0) return 0;
+  b.vx = rvx - (1 + e) * vn * nx + sx;
+  b.vy = rvy - (1 + e) * vn * ny + sy;
+  if (kick) { b.vx += nx * kick; b.vy += ny * kick; }
+  return -vn;
+}
+
+function collideBalls(balls) {
+  for (let i = 0; i < balls.length; i++) for (let j = i + 1; j < balls.length; j++) {
+    const a = balls[i], c = balls[j];
+    const dx = c.x - a.x, dy = c.y - a.y, d = Math.hypot(dx, dy);
+    if (d >= BALL_R * 2 || d === 0) continue;
+    const nx = dx / d, ny = dy / d, push = (BALL_R * 2 - d) / 2;
+    a.x -= nx * push; a.y -= ny * push; c.x += nx * push; c.y += ny * push;
+    const vn = (c.vx - a.vx) * nx + (c.vy - a.vy) * ny;
+    if (vn < 0) { const j2 = -vn * 0.95; a.vx -= j2 * nx; a.vy -= j2 * ny; c.vx += j2 * nx; c.vy += j2 * ny; }
+  }
+}
+
+// End of ball: what the bonus pays.
+const endBonus = s => s.bonus * 1000 * s.mult;
+
+// The demo's player: flip whichever flipper a falling ball is about to reach.
+function autopilot(s) {
+  const out = { left: false, right: false, plunge: false };
+  for (const b of s.balls) {
+    if (onPlunger(b)) { out.plunge = s.plunge < 1; continue; }
+    // only at a ball on its way down: flipping at one at rest would cradle it forever
+    if (b.vy < 0.3 || b.y < Y(330) || b.y > Y(380)) continue;
+    if (b.x < 109) out.left = true; else out.right = true;
+  }
+  return out;
+}
+
+// ---- games/hollow-manor/game.js
+const TICK_MS = 1000 / 60;
+const DEMO_TICKS = 60 * 40;
+const ENTRY_AT = initialsLayout(W, 140);
+
+const INK = {
+  red: '#ff3b3b', white: '#ffffff', yellow: '#ffd23f', orange: '#ff8a1e', green: '#3fd46b',
+  cyan: '#5eeaf5', pink: '#ff5fb8', purple: '#8f7bff', grey: '#8f8fb0', dim: '#4a4a6a', bone: '#e8e0c8',
+};
+const ROW_INKS = ['#ff3b3b', '#ff8a1e', '#ffd23f', '#3fd46b', '#5eeaf5', '#8f7bff', '#ff5fb8', '#ff8a1e', '#ffd23f', '#3fd46b'];
+const LOGO_INK = ['#e8f8d0', '#c8f0a0', '#9fe070', '#6fd04a', '#3fb050', '#2a8a50', '#1c5a48'];
+const RANKS = ['1ST', '2ND', '3RD', '4TH', '5TH', '6TH', '7TH', '8TH', '9TH', '10TH'];
+
+// Invented initials, so a first visit has a table to beat.
+const DEFAULT_SCORES = [
+  ['BOO', 60000], ['RIP', 50000], ['BAT', 40000], ['OWL', 32000], ['FOG', 25000],
+  ['MOO', 20000], ['ELM', 15000], ['CAT', 10000], ['KEY', 6000], ['ASH', 3000],
+].map(([n, s]) => ({ n, s }));
+
+const cabinet = cabinetMode(), dress = cabinetDressing();
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const canvas = document.getElementById('c');
+const screen = makeScreen({ canvas, stage: document.getElementById('stage'), frame: document.getElementById('screen'), w: W, h: H, crtKey: 'lk.arcade.crt' });
+const ctx = screen.ctx;
+const sound = makeSound('lk.arcade.mute');
+const scores = makeScores('lk.hollowmanor.scores', DEFAULT_SCORES);
+
+let s = newState();
+let mode = 'attract', page = 'title', pageT = 0, clock = 0, timer = 0;
+let ball = 1, demo = false, demoT = 0, entry = null, highlight = -1, pausedFrom = null;
+let tally = null, note = null, flashes = [], glow = { bumper: [0, 0, 0] };
+// The press that starts a game must not also pull the plunger: it only counts
+// once it has been let go.
+let plungeArmed = false;
+
+const SFX = {
+  start: () => { sound.tune([[196, 0.16], [233, 0.16], [262, 0.16], [311, 0.32], [0, 0.08], [294, 0.16], [262, 0.5]], { type: 'triangle', vol: 0.12 }); },
+  flipLeft: () => sound.noise(0.04, { vol: 0.08, cutoff: 1800 }),
+  flipRight: () => sound.noise(0.04, { vol: 0.08, cutoff: 1800 }),
+  bumper: () => sound.note(330, 0.08, { to: 165, vol: 0.05 }),
+  sling: () => sound.noise(0.05, { vol: 0.1, cutoff: 3000 }),
+  target: () => sound.note(110, 0.18, { type: 'triangle', vol: 0.14 }),
+  lane: () => sound.tune([[784, 0.06], [988, 0.1]], { vol: 0.04 }),
+  laneAgain: () => sound.note(523, 0.05, { vol: 0.03 }),
+  spin: () => sound.note(1568, 0.02, { vol: 0.02 }),
+  crypt: () => sound.note(98, 0.6, { to: 49, type: 'triangle', vol: 0.15 }),
+  cryptLit: () => sound.tune([[392, 0.1], [370, 0.1], [349, 0.1], [523, 0.3]], { vol: 0.04 }),
+  multiball: () => { sound.tune([[262, 0.12], [311, 0.12], [370, 0.12], [523, 0.4]], { vol: 0.05 }); sound.noise(0.6, { vol: 0.18, cutoff: 600 }); },
+  jackpot: () => sound.tune([[523, 0.08], [659, 0.08], [784, 0.08], [1047, 0.08], [1319, 0.3]], { vol: 0.05 }),
+  multiplier: () => sound.tune([[659, 0.08], [880, 0.08], [1175, 0.2]], { vol: 0.045 }),
+  launch: () => sound.noise(0.18, { vol: 0.14, cutoff: 900 }),
+  kickout: () => sound.noise(0.12, { vol: 0.12, cutoff: 700 }),
+  inlane: () => sound.note(659, 0.05, { vol: 0.03 }),
+  saved: () => sound.tune([[523, 0.1], [784, 0.2]], { vol: 0.045 }),
+  lost: () => sound.note(220, 0.5, { to: 55, vol: 0.05 }),
+  drain: () => sound.note(196, 0.7, { to: 49, type: 'triangle', vol: 0.12 }),
+  tick: () => sound.note(1760, 0.03, { vol: 0.025 }),
+  blip: () => sound.note(988, 0.05, { vol: 0.04 }),
+  over: () => sound.tune([[294, 0.25], [277, 0.25], [262, 0.25], [196, 0.9]], { type: 'triangle', vol: 0.12 }),
+};
+// The demo plays silently: nobody asked for noise from a screen they are not using.
+function play(name) { if (!demo && SFX[name]) SFX[name](); }
+
+// ---------------------------------------------------------------- the game
+
+function newGame() {
+  demo = false; highlight = -1;
+  s = newState(); ball = 1;
+  serve(s);
+  mode = 'play'; note = { s: 'PULL THE PLUNGER', t: 200 }; plungeArmed = false;
+  play('start');
+}
+
+function startDemo() {
+  demo = true; demoT = 0;
+  s = newState(); ball = 1;
+  serve(s);
+  mode = 'play'; note = null;
+}
+
+function endDemo() { demo = false; toAttract('scores'); }
+
+function toAttract(p) { mode = 'attract'; page = p; pageT = 0; demo = false; entry = null; tally = null; }
+
+const NOTES = {
+  multiball: ['MULTIBALL', INK.green], jackpot: ['JACKPOT ' + PTS.jackpot, INK.yellow], cryptLit: ['THE CRYPT IS OPEN', INK.green],
+  multiplier: ['BONUS X', INK.cyan], saved: ['BALL SAVED', INK.cyan], crypt: ['THE CRYPT ' + PTS.crypt, INK.purple],
+};
+
+function playTick() {
+  if (demo && ++demoT > DEMO_TICKS) { endDemo(); return; }
+  const h = input.held;
+  if (!h.fire) plungeArmed = true;
+  const keys = demo ? autopilot(s) : { left: h.left || touch.left, right: h.right || touch.right, plunge: plungeArmed && h.fire };
+  for (const e of step(s, keys)) {
+    play(e.type);
+    if (e.type === 'bumper') glow.bumper[nearestBumper(e.x, e.y)] = 8;
+    if (e.pts >= 100) flashes.push({ x: e.x, y: e.y, s: String(e.pts), t: 30 });
+    if (NOTES[e.type]) note = { s: e.type === 'multiplier' ? 'BONUS X' + s.mult : NOTES[e.type][0], ink: NOTES[e.type][1], t: 120 };
+    if (e.type === 'drain') { endOfBall(); return; }
+  }
+}
+
+function nearestBumper(x, y) {
+  let best = 0, d = Infinity;
+  s.table.bumpers.forEach((b, i) => { const k = Math.hypot(b.x - x, b.y - y); if (k < d) { d = k; best = i; } });
+  return best;
+}
+
+// The bonus counts up, then the next ball, or the end.
+function endOfBall() {
+  tally = { bonus: s.bonus, mult: s.mult, pts: endBonus(s), from: s.score, t: 0 };
+  s.score += tally.pts;
+  mode = 'bonus';
+}
+
+function afterBonus() {
+  if (demo && ball >= 1) { endDemo(); return; }
+  if (ball >= BALLS) { mode = 'over'; timer = 200; play('over'); return; }
+  ball++;
+  s.bonus = 0; s.mult = 1; s.lanes = [false, false, false];
+  serve(s);
+  tally = null;
+  mode = 'play';
+}
+
+function afterOver() {
+  if (scores.qualifies(s.score)) { entry = { letters: [0, 0, 0], pos: 0, timer: 60 * 30 }; mode = 'entry'; }
+  else toAttract('scores');
+}
+
+function saveEntry() {
+  const name = entry.letters.map(i => ENTRY_LETTERS[i]).join('');
+  highlight = scores.add(name, s.score);
+  toAttract('scores');
+}
+
+// ---------------------------------------------------------------- input
+
+// Flippers on a touch screen: each button is held on its own, so both can be up
+// at once (the d-pad lets only one direction be held).
+const touch = { left: false, right: false };
+for (const b of document.querySelectorAll('[data-flip]')) {
+  const side = b.dataset.flip;
+  b.addEventListener('pointerdown', e => {
+    e.preventDefault(); sound.wake(); touch[side] = true;
+    if (mode === 'attract' || demo) newGame();
+    else if (mode === 'entry') onDir(side);
+  });
+  for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(ev, () => { touch[side] = false; });
+  b.addEventListener('contextmenu', e => e.preventDefault());
+}
+
+function onAction(action) {
+  if (action === 'crt') { screen.toggleCrt(); syncToggles(); return; }
+  if (action === 'mute') { sound.toggleMute(); syncToggles(); return; }
+  if (action === 'back') { toAttract('title'); return; }
+  if (action === 'pause') {
+    if (mode === 'paused') { mode = pausedFrom; return; }
+    if (!demo && ['play', 'bonus'].includes(mode)) { pausedFrom = mode; mode = 'paused'; }
+    return;
+  }
+  if (mode === 'attract' || demo) { newGame(); return; }
+  if (mode === 'paused') { mode = pausedFrom; return; }
+  if (mode === 'over') { timer = 0; return; }
+  if (mode === 'entry') confirmLetter();
+  // in play, START and Space are the plunger, read from input.held
+}
+
+function confirmLetter() {
+  play('blip');
+  entry.pos++;
+  if (entry.pos >= 3) saveEntry();
+}
+
+function onDir(dir) {
+  if (mode !== 'entry') return;
+  const n = ENTRY_LETTERS.length, i = entry.pos;
+  if (dir === 'up') { entry.letters[i] = (entry.letters[i] + 1) % n; play('blip'); }
+  else if (dir === 'down') { entry.letters[i] = (entry.letters[i] + n - 1) % n; play('blip'); }
+  else if (dir === 'right') confirmLetter();
+  else if (dir === 'left' && entry.pos > 0) { entry.pos--; play('blip'); }
+}
+
+function onPoint(x, y) {
+  if (mode !== 'entry' || !input.touch) return false;
+  const a = tapInitials(entry, ENTRY_AT, x, y);
+  if (a === 'next') confirmLetter(); else onDir(a);
+  return true;
+}
+
+const input = makeInput({ screen: canvas, onAction, onDir, onPoint, onAny: () => sound.wake() });
+
+const crtBtn = document.querySelector('[data-action="crt"]');
+const muteBtn = document.querySelector('[data-action="mute"]');
+function syncToggles() {
+  crtBtn.textContent = 'CRT ' + (screen.crt ? 'on' : 'off');
+  crtBtn.setAttribute('aria-pressed', String(screen.crt));
+  muteBtn.textContent = 'Sound ' + (sound.muted ? 'off' : 'on');
+  muteBtn.setAttribute('aria-pressed', String(!sound.muted));
+}
+syncToggles();
+
+// A phone that locks or switches app mid-ball comes back paused.
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && !demo && mode === 'play') { pausedFrom = mode; mode = 'paused'; }
+});
+
+// ---------------------------------------------------------------- drawing
+
+const blinkOn = (rate = 32) => reduceMotion || ((clock / rate) | 0) % 2 === 0;
+const prompt = () => (cabinet ? 'INSERT COIN' : input.touch ? 'TAP START' : 'PRESS SPACE');
+
+// Lines a pixel at a time: canvas lines are anti-aliased, and the arcade's are not.
+function line(g, ax, ay, bx, by, ink, wide = 1) {
+  g.fillStyle = ink;
+  const n = Math.max(1, Math.ceil(Math.max(Math.abs(bx - ax), Math.abs(by - ay))));
+  for (let i = 0; i <= n; i++) g.fillRect(Math.round(ax + ((bx - ax) * i) / n - wide / 2), Math.round(ay + ((by - ay) * i) / n - wide / 2), wide, wide);
+}
+function disc(g, cx, cy, r, ink) {
+  g.fillStyle = ink;
+  for (let y = -r; y <= r; y++) { const w = Math.round(Math.sqrt(r * r - y * y)); g.fillRect(Math.round(cx - w), Math.round(cy + y), w * 2 + 1, 1); }
+}
+
+// The table's painted surface and its fixed parts, drawn once.
+let tableLayer = null;
+function paintTable(t) {
+  const c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  const g = c.getContext('2d');
+  g.fillStyle = '#05030a'; g.fillRect(0, 0, W, H);
+  // the playfield: night falling down the table, in bands
+  for (let y = TOP; y < H; y++) {
+    const k = (y - TOP) / (H - TOP);
+    g.fillStyle = k < 0.33 ? '#140c2a' : k < 0.66 ? '#1a1034' : '#20123c';
+    for (let x = 0; x < W; x++) {
+      const ex = (x - 121) / 115, ey = (y - Y(110)) / (Y(110) - Y(24));
+      if (x < 6 || x > 236 || (y < Y(110) && ex * ex + ey * ey > 1)) continue;
+      g.fillRect(x, y, 1, 1);
+    }
+  }
+  // stars, and a moon over the manor
+  for (let i = 0; i < 40; i++) { const x = 14 + ((i * 97) % 190), y = Y(40 + ((i * 53) % 120)); g.fillStyle = i % 3 ? '#4a4070' : '#a098c8'; g.fillRect(x, y, 1, 1); }
+  disc(g, 168, Y(64), 9, '#e8e0c8'); disc(g, 172, Y(61), 7, '#140c2a');
+  // the manor, painted on the playfield under the bumpers
+  const manor = '#2c1c4c', lit = '#ffd23f';
+  g.fillStyle = manor;
+  // (painted at the 400-high layout's heights, through Y, like everything else)
+  const at = y => Math.round(Y(y));
+  g.fillRect(60, at(216), 100, at(266) - at(216));
+  for (const [x0, w, h] of [[60, 22, 30], [138, 22, 34], [96, 28, 22]]) g.fillRect(x0, at(216 - h), w, at(216) - at(216 - h));
+  for (let i = 0; i < 12; i++) { g.fillRect(60 + i, at(186) - i, 22 - i * 2 > 0 ? 22 - i * 2 : 1, 1); g.fillRect(138 + i, at(182) - i, 22 - i * 2 > 0 ? 22 - i * 2 : 1, 1); g.fillRect(96 + i, at(194) - i, 28 - i * 2 > 0 ? 28 - i * 2 : 1, 1); }
+  g.fillStyle = lit;
+  for (const [x, y] of [[66, 196], [146, 192], [70, 232], [92, 232], [124, 232], [146, 232], [106, 200]]) g.fillRect(x, at(y), 4, 5);
+  g.fillStyle = '#140c24'; g.fillRect(104, at(246), 12, at(266) - at(246));
+  // gravestones between the flippers, and the word for what happens there
+  for (const [x, h] of [[96, 10], [106, 13], [118, 9]]) { g.fillStyle = '#3a3050'; g.fillRect(x, H - 6 - h, 8, h); g.fillRect(x + 1, H - 7 - h, 6, 1); }
+  // the walls
+  for (const w of t.walls) {
+    if (w.tag === 'gate') continue;
+    line(g, w.ax, w.ay, w.bx, w.by, w.tag === 'sling' ? INK.white : w.tag === 'plunger' ? '#5a5a70' : '#9f8fd0', w.tag === 'sling' ? 2 : 2);
+  }
+  // the slingshots, filled
+  for (const m of [x => x, x => 218 - x]) for (let y = Math.ceil(Y(292)); y < Y(334); y++) {
+    const xa = 41, xb = 41 + ((y - Y(290)) / (Y(336) - Y(290))) * 19;
+    const a = Math.min(m(xa), m(xb)), b = Math.max(m(xa), m(xb));
+    g.fillStyle = '#6a2a7a'; g.fillRect(Math.round(a), y, Math.max(0, Math.round(b - a)), 1);
+  }
+  // lane letters' sockets and the crypt's mouth
+  disc(g, t.crypt.x, t.crypt.y, 7, '#000');
+  line(g, t.crypt.x - 8, t.crypt.y - 9, t.crypt.x + 8, t.crypt.y - 9, '#5a5a70', 2);
+  text(g, 'CRYPT', t.crypt.x, t.crypt.y + 11, '#5a4a7a', { align: 'center' });
+  // shooter lane
+  g.fillStyle = '#0c0818'; g.fillRect(213, Math.round(Y(141)), 22, Math.round(Y(395) - Y(141)));
+  return c;
+}
+
+function drawFlipper(g, f) {
+  const [tx, ty] = flipperTip(f);
+  for (let r = FLIP_R; r >= 0; r -= 1) {
+    const ink = r > FLIP_R - 1 ? '#c8a020' : '#ffd23f';
+    g.fillStyle = ink;
+    const n = Math.ceil(Math.hypot(tx - f.px, ty - f.py));
+    for (let i = 0; i <= n; i++) {
+      const k = i / n, x = f.px + (tx - f.px) * k, y = f.py + (ty - f.py) * k, rr = FLIP_R * (1 - k * 0.35);
+      if (r > rr) continue;
+      g.fillRect(Math.round(x - r), Math.round(y - r), Math.round(r * 2), Math.round(r * 2));
+    }
+  }
+}
+
+// A ghost for a bumper: a white dome with eyes, lit up when struck.
+function drawBumper(g, b, hot) {
+  disc(g, b.x, b.y, b.r, hot ? INK.yellow : '#3a2a5a');
+  disc(g, b.x, b.y, b.r - 2, hot ? '#fff8d0' : '#e8e8f0');
+  g.fillStyle = '#140c24';
+  g.fillRect(b.x - 4, b.y - 3, 3, 4); g.fillRect(b.x + 1, b.y - 3, 3, 4);
+  g.fillRect(b.x - 2, b.y + 3, 4, 2);
+}
+
+function drawTable() {
+  if (!tableLayer) tableLayer = paintTable(s.table);
+  ctx.drawImage(tableLayer, 0, 0);
+  const t = s.table;
+  // B O O over the lanes, lit as they are rolled
+  t.lanes.forEach((x, i) => text(ctx, 'BOO'[i], x, Math.round(Y(76)), s.lanes[i] ? INK.green : '#3a3050', { align: 'center' }));
+  // the bonus multiplier lights
+  [2, 3, 4, 5].forEach((m, i) => text(ctx, m + 'X', 82 + i * 18, Math.round(Y(290)), s.mult >= m ? INK.cyan : '#2c2448'));
+  // tombstones: standing, or flat
+  t.targets.forEach((tg, i) => {
+    if (tg.down) { ctx.fillStyle = '#2c2448'; ctx.fillRect(tg.x - 2, tg.y0 + 2, 3, 10); return; }
+    ctx.fillStyle = INK.bone; ctx.fillRect(tg.x - 3, tg.y0, 6, 14);
+    ctx.fillStyle = '#8a8070'; ctx.fillRect(tg.x - 3, tg.y0, 1, 14);
+    text(ctx, 'RIP'[i], tg.x + 6, tg.y0 + 4, '#5a4a7a');
+  });
+  // the crypt, its arrow flashing when it is open
+  const lit = t.targets.every(x => x.down);
+  if (lit && blinkOn(10)) { text(ctx, 'OPEN', t.crypt.x, t.crypt.y - 18, INK.green, { align: 'center' }); }
+  if (s.held && blinkOn(6)) disc(ctx, t.crypt.x, t.crypt.y, 5, INK.purple);
+  // the spinner, turning as it is passed
+  const spin = (clock >> 1) % 4;
+  ctx.fillStyle = INK.white; ctx.fillRect(188, 214, 20, 1 + (spin === 1 || spin === 3 ? 2 : 0));
+  t.bumpers.forEach((b, i) => drawBumper(ctx, b, glow.bumper[i] > 0));
+  for (const f of s.flippers) drawFlipper(ctx, f);
+  // the plunger, pulled back
+  const pull = Math.round(s.plunge * 10), rest = Math.round(Y(396));
+  ctx.fillStyle = '#8f8fb0';
+  for (let y = rest + pull; y < H; y += 3) ctx.fillRect(218, y, 12, 1);
+  ctx.fillStyle = INK.red; ctx.fillRect(218, rest + pull - 1, 12, 3);
+  // the balls
+  for (const b of s.balls) {
+    disc(ctx, b.x, b.y, BALL_R, '#c8c8d8');
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(Math.round(b.x - 2), Math.round(b.y - 3), 2, 2);
+    ctx.fillStyle = '#5a5a70'; ctx.fillRect(Math.round(b.x + 1), Math.round(b.y + 2), 2, 1);
+  }
+  for (const f of flashes) text(ctx, f.s, f.x, f.y - 10 - (30 - f.t) / 3, f.t > 10 || blinkOn(4) ? INK.yellow : INK.orange, { align: 'center' });
+}
+
+function banner(lines, y) {
+  const wide = Math.max(...lines.map(([s0]) => s0.length)) * 6 + 10;
+  ctx.fillStyle = '#000';
+  ctx.fillRect(Math.floor((W - wide) / 2), y - 5, wide, lines.length * 12 + 7);
+  lines.forEach(([s0, ink], i) => text(ctx, s0, W / 2, y + i * 12, ink, { align: 'center' }));
+}
+
+function drawHud() {
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, TOP);
+  const hi = Math.max(scores.top, demo ? 0 : s.score);
+  const shown = tally ? tally.from + Math.round(tally.pts * Math.min(1, Math.max(0, (tally.t - 40) / 60))) : s.score;
+  text(ctx, String(mode === 'attract' ? 0 : shown).padStart(2, '0'), 54, 7, INK.white, { align: 'right' });
+  text(ctx, 'HI ' + hi, W / 2 + 6, 7, INK.red, { align: 'center' });
+  if (mode !== 'attract' && mode !== 'entry') text(ctx, 'BALL ' + ball, W - 6, 7, INK.cyan, { align: 'right' });
+}
+
+function drawTitle() {
+  drawTable();
+  ctx.fillStyle = '#000'; ctx.fillRect(18, 90, 204, 70);
+  text(ctx, 'HOLLOW', W / 2 + 2, 98, '#1c1430', { align: 'center', scale: 3 });
+  text(ctx, 'HOLLOW', W / 2, 96, LOGO_INK, { align: 'center', scale: 3 });
+  text(ctx, 'MANOR', W / 2 + 2, 124, '#1c1430', { align: 'center', scale: 3 });
+  text(ctx, 'MANOR', W / 2, 122, LOGO_INK, { align: 'center', scale: 3 });
+  text(ctx, 'A PINBALL TABLE AFTER DARK', W / 2, 148, INK.grey, { align: 'center' });
+  if (blinkOn()) banner([[prompt(), INK.yellow]], 282);
+  if (!cabinet) banner([[input.touch ? 'BUTTONS FLIP, START LAUNCHES' : 'ARROWS FLIP, HOLD SPACE TO LAUNCH', INK.grey]], 300);
+  banner([['LEON KARSTEN 2026', INK.dim]], 344);
+}
+
+function drawHowTo() {
+  text(ctx, 'HOW TO PLAY', W / 2, 32, INK.cyan, { align: 'center' });
+  const rows = input.touch
+    ? [['LEFT / RIGHT', 'FLIPPERS'], ['HOLD START', 'PULL THE PLUNGER']]
+    : [['LEFT / RIGHT', 'FLIPPERS'], ['HOLD SPACE', 'PULL THE PLUNGER']];
+  rows.forEach(([k, v], i) => { text(ctx, k, 20, 52 + i * 12, INK.yellow); text(ctx, v, 104, 52 + i * 12, INK.white); });
+  const lines = [
+    ['ROLL THE THREE B O O LANES', INK.green], ['FOR A BIGGER END-OF-BALL BONUS.', INK.white], ['A FLIP MOVES THE LIT LANES.', INK.grey], ['', ''],
+    ['DROP THE THREE TOMBSTONES', INK.bone], ['TO OPEN THE CRYPT.', INK.white], ['THE OPEN CRYPT STARTS MULTIBALL,', INK.white], ['AND IN MULTIBALL IT PAYS', INK.white], ['A ' + PTS.jackpot + ' JACKPOT.', INK.yellow], ['', ''],
+    ['GHOSTS ' + PTS.bumper + '   LANES ' + PTS.lane + '   STONES ' + PTS.target, INK.grey],
+    ['A BALL LOST IN THE FIRST', INK.white], ['8 SECONDS COMES BACK.', INK.white],
+  ];
+  lines.forEach(([l, ink], i) => text(ctx, l, W / 2, 86 + i * 12, ink, { align: 'center' }));
+  if (blinkOn()) text(ctx, prompt(), W / 2, 270, INK.yellow, { align: 'center' });
+}
+
+function drawScores() {
+  text(ctx, 'HIGH SCORES', W / 2, 40, INK.yellow, { align: 'center' });
+  text(ctx, 'RANK', 34, 60, INK.grey);
+  text(ctx, 'SCORE', 156, 60, INK.grey, { align: 'right' });
+  text(ctx, 'NAME', 176, 60, INK.grey);
+  scores.table.forEach((r, i) => {
+    if (i === highlight && !blinkOn(16)) return;
+    const y = 76 + i * 16, ink = i === highlight ? INK.white : ROW_INKS[i];
+    text(ctx, RANKS[i], 34, y, ink);
+    text(ctx, String(r.s), 156, y, ink, { align: 'right' });
+    text(ctx, r.n, 176, y, ink);
+  });
+  if (blinkOn()) text(ctx, prompt(), W / 2, 260, INK.yellow, { align: 'center' });
+}
+
+function drawEntry() {
+  text(ctx, 'YOU MADE THE TOP TEN', W / 2, 60, INK.cyan, { align: 'center' });
+  text(ctx, String(s.score), W / 2, 80, INK.yellow, { align: 'center', scale: 2 });
+  text(ctx, 'ENTER YOUR INITIALS', W / 2, 116, INK.white, { align: 'center' });
+  drawInitials(ctx, entry, ENTRY_AT, { blinkOn: blinkOn(16), touch: input.touch, ink: INK });
+  text(ctx, input.touch ? 'TAP ABOVE OR BELOW A LETTER' : 'UP / DOWN   CHANGE LETTER', W / 2, 206, INK.grey, { align: 'center' });
+  text(ctx, input.touch ? 'TAP ELSEWHERE FOR THE NEXT' : 'RIGHT OR SPACE   NEXT', W / 2, 218, INK.grey, { align: 'center' });
+  text(ctx, 'TIME ' + Math.ceil(entry.timer / 60), W / 2, 240, INK.orange, { align: 'center' });
+}
+
+function drawBonus() {
+  const x0 = 40, y0 = 150, w = 160, h = 66, t = tally.t;
+  ctx.fillStyle = '#000'; ctx.fillRect(x0, y0, w, h);
+  ctx.fillStyle = INK.purple; ctx.fillRect(x0, y0, w, 1); ctx.fillRect(x0, y0 + h - 1, w, 1); ctx.fillRect(x0, y0, 1, h); ctx.fillRect(x0 + w - 1, y0, 1, h);
+  text(ctx, 'END OF BALL ' + ball, W / 2, y0 + 8, INK.yellow, { align: 'center' });
+  if (t >= 20) { text(ctx, 'BONUS ' + tally.bonus + ' X 1000', x0 + 10, y0 + 26, INK.grey); }
+  if (t >= 30) { text(ctx, 'MULTIPLIER X' + tally.mult, x0 + 10, y0 + 38, INK.grey); }
+  if (t >= 40) text(ctx, String(tally.pts), x0 + w - 10, y0 + 52, INK.white, { align: 'right' });
+}
+
+function drawScreen() {
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, W, H);
+  if (mode === 'attract') {
+    if (page === 'title') drawTitle();
+    else if (page === 'howto') drawHowTo();
+    else drawScores();
+    drawHud();
+    return;
+  }
+  if (mode === 'entry') { drawHud(); drawEntry(); return; }
+  drawTable();
+  drawHud();
+  if (mode === 'bonus') drawBonus();
+  else if (mode === 'over') banner([['GAME OVER', INK.red]], 170);
+  else if (mode === 'paused') banner([['PAUSED', INK.white], [input.touch ? 'TAP START' : 'PRESS P', INK.grey]], 170);
+  else if (note && note.t > 0 && (note.t > 30 || blinkOn(6))) banner([[note.s, note.ink || INK.yellow]], 170);
+  if (s.ballSave > 0 && mode === 'play' && blinkOn(8)) text(ctx, 'BALL SAVE', W / 2, Math.round(Y(306)), INK.cyan, { align: 'center' });
+  if (demo && blinkOn()) text(ctx, cabinet ? 'INSERT COIN' : 'DEMO PLAY', W / 2, 28, INK.yellow, { align: 'center' });
+}
+
+function draw() {
+  drawScreen();
+  if (cabinet) dress(ctx, demo);
+}
+
+// ---------------------------------------------------------------- card art
+
+// The picture on the site's Games page, 320x240: the top of the table, at the
+// game's own scale, with the title over it.
+function drawCard() {
+  const c = document.createElement('canvas');
+  c.width = 320; c.height = 240;
+  const g = c.getContext('2d');
+  g.fillStyle = '#05030a'; g.fillRect(0, 0, 320, 240);
+  const t = newState().table, layer = paintTable(t);
+  g.drawImage(layer, 0, 20, W, 220, 40, 20, W, 220);
+  t.bumpers.forEach((b, i) => drawBumper(g, { x: b.x + 40, y: b.y, r: b.r }, i === 1));
+  disc(g, 150, 100, BALL_R, '#c8c8d8');
+  text(g, 'HOLLOW MANOR', 162, 6, '#1c1430', { align: 'center', scale: 2 });
+  text(g, 'HOLLOW MANOR', 160, 4, LOGO_INK, { align: 'center', scale: 2 });
+  return c;
+}
+
+// ---------------------------------------------------------------- loop
+
+const PAGES = { title: [cabinet ? 'demo' : 'howto', cabinet ? 300 : 420], howto: ['demo', 600], scores: ['title', 420] };
+function attractTick() {
+  pageT++;
+  const [next, length] = PAGES[page];
+  if (pageT < length) return;
+  if (next === 'demo') { startDemo(); return; }
+  if (next === 'title') highlight = -1;
+  toAttract(next);
+}
+
+function tick() {
+  clock++;
+  for (const f of flashes) f.t--;
+  flashes = flashes.filter(f => f.t > 0);
+  glow.bumper = glow.bumper.map(v => Math.max(0, v - 1));
+  if (note) note.t--;
+  switch (mode) {
+    case 'attract': attractTick(); break;
+    case 'play': playTick(); break;
+    case 'bonus':
+      tally.t++;
+      if (tally.t > 40 && tally.t <= 100 && tally.t % 4 === 0) play('tick');
+      if (tally.t >= (demo ? 120 : 180)) afterBonus();
+      break;
+    case 'over': if (--timer <= 0) afterOver(); break;
+    case 'entry': if (--entry.timer <= 0) saveEntry(); break;
+  }
+}
+
+// A fixed 60 ticks a second whatever the display's refresh rate.
+let acc = 0, lastT = 0;
+function frame(now) {
+  requestAnimationFrame(frame);
+  if (!lastT) lastT = now;
+  acc += Math.min(100, now - lastT);
+  lastT = now;
+  while (acc >= TICK_MS) { tick(); acc -= TICK_MS; }
+  draw();
+}
+requestAnimationFrame(frame);
+
+// Read-only view for the page checks, plus shortcuts so a check can reach the
+// later screens without playing a whole game.
+window.__hollowmanor = {
+  get cabinet() { return cabinet; },
+  get mode() { return mode; },
+  get page() { return page; },
+  get demo() { return demo; },
+  get score() { return s.score; },
+  get ball() { return ball; },
+  get balls() { return s.balls.map(b => ({ x: b.x, y: b.y, vx: b.vx, vy: b.vy })); },
+  get flippers() { return s.flippers.map(f => f.a); },
+  get plunge() { return s.plunge; },
+  attract(p) { toAttract(p); },
+  // Lose every ball in play, with the ball save spent.
+  drain() { s.ballSave = 0; s.balls.forEach(b => { b.x = 109; b.y = H + 20; b.vy = 4; }); },
+  endGame(score) { demo = false; s.score = score; mode = 'over'; timer = 1; },
+};
+window.__arcade = { card: drawCard };
+void PLUNGE_AT;
+})();
+</script>
+</body>
+</html>

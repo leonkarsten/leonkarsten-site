@@ -1,0 +1,9 @@
+{
+  "name": "Hollow Manor",
+  "slug": "hollow-manor",
+  "summary": "A pinball table after dark. Light the BOO lanes, drop the three tombstones to open the crypt, and wake two balls at once.",
+  "app": "/play/hollow-manor/",
+  "image": "/play/hollow-manor/card.png",
+  "live": true,
+  "tags": ["pinball", "keyboard or touch"]
+}
