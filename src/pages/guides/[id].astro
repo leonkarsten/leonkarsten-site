@@ -12,7 +12,7 @@ const { Content } = await render(guide);
 const fmt = (d: Date) => d.toLocaleDateString('en-ZA', { year: 'numeric', month: 'long', day: 'numeric' });
 ---
 
-<Base title={guide.data.title} section="guides" description={guide.data.summary}>
+<Base title={guide.data.title} section="guides" description={guide.data.summary} icon={guide.data.tags.includes('sankey-studio') ? 'sankey-studio' : undefined}>
   <article class="wrap guide">
     <header class="guide-head">
       <p class="eyebrow" style="color: var(--mustard-ink)">Guide</p>

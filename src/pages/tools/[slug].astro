@@ -12,7 +12,7 @@ const { tool } = Astro.props;
 const guides = (await getCollection('guides', ({ data }) => !data.draft && data.tags.includes(tool.data.slug)));
 ---
 
-<Base title={tool.data.name} section="tools" description={tool.data.summary}>
+<Base title={tool.data.name} section="tools" description={tool.data.summary} icon={tool.data.slug === 'sankey-studio' ? 'sankey-studio' : undefined}>
   <PageHead eyebrow="Tool" color="var(--c-tools)" title={tool.data.name}>{tool.data.summary}</PageHead>
 
   <section class="wrap body">

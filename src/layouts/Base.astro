@@ -10,6 +10,8 @@ interface Props {
   theme?: 'print' | 'night';
   /** which nav item is current */
   section?: 'tools' | 'games' | 'writing' | 'guides' | 'about';
+  /** a tool's own tab icon, by name under /icons ('sankey-studio'); the site's otherwise */
+  icon?: string;
 }
 
 const {
@@ -17,6 +19,7 @@ const {
   description = 'Browser tools, retro games, notes and how-tos. A personal workshop by Leon Karsten.',
   theme = 'print',
   section,
+  icon,
 } = Astro.props;
 
 const siteName = 'leon karsten';
@@ -32,7 +35,14 @@ const canonical = new URL(Astro.url.pathname, Astro.site);
     <title>{fullTitle}</title>
     <meta name="description" content={description} />
     <link rel="canonical" href={canonical} />
-    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    {icon ? (
+      <>
+        <link rel="icon" href={`/icons/${icon}.svg`} type="image/svg+xml" />
+        <link rel="icon" href={`/icons/${icon}-32.png`} type="image/png" sizes="32x32" />
+      </>
+    ) : (
+      <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    )}
     <meta property="og:title" content={fullTitle} />
     <meta property="og:description" content={description} />
     <meta property="og:type" content="website" />
