@@ -62,6 +62,11 @@ Nothing personal: interests, facts, instructions, coaching, experiences only.
   Astro drops a space between text and a link that starts a new line: keep such links on one line.
 - **Content:** one draft post and one draft guide, both `draft: true` placeholders. About page
   has a bracketed contact placeholder.
+- **Livia Karsten on About (8 Nov, spacing fixed 14 Nov):** `/about/#livia-karsten` links to
+  liviakarsten.com (`rel="me"`) and liviakarsten.co.za; footer links to liviakarsten.com. The two
+  inline links sit on one source line with the text before them, per the Astro spacing note above.
+  Planned later: hub page at `/projects/livia-karsten/` and a writing series with one guide per
+  learning; waiting on Leon's raw timeline.
 - **Post LIVE 3 Nov 2026:** `writing/what-happened-to-westwood.md`, linked from the fan page's
   "Play them today" list. Leon: the post must NOT mention the MBA or that it was an assignment
   (it is his own work, his to publish). It began as his 2025 assignment on EA, rewritten for gamers. Every fact was checked against a source,
