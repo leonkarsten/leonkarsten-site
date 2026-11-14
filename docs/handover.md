@@ -76,6 +76,18 @@ Nothing personal: interests, facts, instructions, coaching, experiences only.
   (2009) came before Mass Effect 3; and Activision was bought, not shut down. No EA images, and no
   cover page or student number. Published on Leon's go; linked from
   the fan page (done).
+- **Guide LIVE 14 Nov 2026:** `guides/safe-run.md`. Leon's own SAFE-RUN framework (structure + agility in
+  consulting projects), rewritten from his 2025 paper the same way as the EA posts and the design
+  thinking guide: plain first person, no mention of the MBA, the assignment or Kinara, APA 7 in-text
+  citations and a `## References` list. The client example is anonymised (no name, no sector). It
+  corrects the paper in two places: Boyd developed the OODA loop in briefings from 1976, not in the
+  1950s; and Chalutz Ben-Gal & Tzafrir found trust raises the *consultant's* commitment, not both
+  parties'. Two references still need Leon's eyes: the Olsavsky canvas link (not opened) and Minto
+  (2009) (cited for SCR without checking the book). The figure is an inline SVG redrawn from Leon's
+  draw.io drawing in the site palette, in stripe order: navy, light teal, mustard, orange, red.
+  Published on Leon's go from a cloud session, so his local folder needs a `git pull`; it holds an
+  earlier draft copy of the guide, an edited `docs/handover.md` and an unused
+  `public/figures/safe-run/safe-run.svg`, all three safe to discard.
 
 ## Architecture
 
