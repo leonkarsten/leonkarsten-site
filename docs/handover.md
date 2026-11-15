@@ -88,6 +88,20 @@ Nothing personal: interests, facts, instructions, coaching, experiences only.
   Published on Leon's go from a cloud session, so his local folder needs a `git pull`; it holds an
   earlier draft copy of the guide, an edited `docs/handover.md` and an unused
   `public/figures/safe-run/safe-run.svg`, all three safe to discard.
+- **Post LIVE 15 Nov 2026:** `writing/bukele-future-back.md`, "Future-back thinking, and what I left out
+  about Nayib Bukele". Rewritten from Leon's December 2024 case study in the Westwood shape: what he
+  argued, what has happened since, what he got wrong or left out, what he would say now. It states
+  both the results (homicides, approval) and the costs (state of exception, term limits) with sources
+  and gives no verdict of its own; keep that balance in any edit. APA 7, no Wikipedia, no mention of
+  the MBA or his employer. The personal action plan from the paper is deliberately NOT on the site
+  (it names his employer and private plans). Two inline SVG figures, both Leon's own draw.io drawings
+  converted to the site palette (actors diagram; life/politics/murder-rate timeline). Not used: the
+  ESCAPED framework figure (course material, not his to publish) and the geopolitical table (stale
+  figures). Soft spots Leon was told about: the Obermet/Yamaha labels in the timeline rest on his
+  original Wikipedia sourcing; the AS/COA explainer has a year only; the 2025 El Salvador in English
+  title was taken from its URL; the Macrotrends retrieval date is assumed; the crime index rankings
+  were checked through press coverage; the CRS report is cited from a mirror site. Figure text is
+  small at phone width. Published from a cloud session, so Leon's local folder needs a `git pull`.
 
 ## Architecture
 
