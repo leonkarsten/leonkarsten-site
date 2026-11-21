@@ -592,7 +592,15 @@ function makeInput({ screen, onAction, onDir, onAny, onLetter = null, onPoint = 
       b.addEventListener('pointerdown', e => { e.preventDefault(); onAny(); held.fire = true; onAction(action); });
       for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(ev, () => { held.fire = false; });
     } else {
-      b.addEventListener('click', () => { onAny(); onAction(action); });
+      b.addEventListener('click', e => {
+        onAny();
+        onAction(action);
+        // A mouse or finger click hands the keys back to the game: left with
+        // focus, the button would take every Space meant for the game (Leon,
+        // in Launch Window: Space switched the CRT instead of the next word).
+        // A keyboard press (detail 0) keeps its focus, so tabbing still works.
+        if (e.detail > 0) b.blur();
+      });
     }
   }
   screen.addEventListener('pointerdown', e => {
