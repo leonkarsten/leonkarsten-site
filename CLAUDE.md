@@ -19,6 +19,11 @@ Read `docs/handover.md` first for current state, decisions and the task list.
   data inside bundled apps. Check what a tool loads by default before copying it in.
 - Do not mention Claude, Claude Code or AI tooling in any visitor-facing copy (pages, posts,
   guides, footer, metadata). Repo-internal files like this one are fine.
+- Editorial rule: the site is for practical things, business things, things Leon has learnt that
+  may help others, and his interests. Anything too close for comfort stays off. Test before
+  drafting: would the piece still be useful with every personal detail removed? If the personal
+  part is the point, do not draft it. When rewriting his papers, keep the method, the framework
+  and the lesson; leave out self-assessment, workplace incidents, colleagues and employer detail.
 - Posts and guides default to `draft: true` until Leon says they are ready.
 - Keep `package-lock.json` committed; the deploy uses `npm ci`.
 - Windows machine. Scripts are PowerShell. Line endings: LF in the repo (`core.autocrlf false`).

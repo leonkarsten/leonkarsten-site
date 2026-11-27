@@ -102,6 +102,9 @@ Nothing personal: interests, facts, instructions, coaching, experiences only.
   title was taken from its URL; the Macrotrends retrieval date is assumed; the crime index rankings
   were checked through press coverage; the CRS report is cited from a mirror site. Figure text is
   small at phone width. Published from a cloud session, so Leon's local folder needs a `git pull`.
+- **Editorial rule added 21 Nov 2026** (see `CLAUDE.md` ground rules): practical, business, lessons and
+  interests only; anything too close for comfort stays off. Apply the test there before drafting any
+  new post or guide. Do not commit stray drafts from `src/content/` without Leon's say-so.
 
 ## Architecture
 
