@@ -115,7 +115,12 @@ Nothing personal: interests, facts, instructions, coaching, experiences only.
   reference was checked on openstax.org on 27 Nov (Dahlquist & Knight, 2022); the book's licence is
   CC BY-NC-SA 4.0, not CC BY 4.0 as the brief said, which is why the app writes its own explanations
   and reproduces no text from it. A guide, `guides/getting-started-with-finance-studio.md`, is a draft.
-  No tab icon of its own yet (the site's); a mark can come later.
+  No tab icon of its own yet (the site's); a mark can come later. Same day, Leon asked for it to
+  look like Sankey Studio: its four themes and colours (theme picker in the top bar), the answers in
+  a card on the left, a 320px panel on the right with the calculator picker and every input, and on
+  a phone the panel first. Two Sankey pairings were too faint for text, so the text there takes a
+  deeper blue: noted in the app's `src/palette.js`. Sankey Studio itself still has them (its chosen
+  chips are white on `#2a78d6`, 4.42:1).
 - **Commit identity (27 Nov 2026):** this repo now commits as `Leon Karsten
   <351024562+leonkarsten@users.noreply.github.com>` (local git config). Before that, 131 commits were
   authored as the business address, because only the global config was set; they stay as they are.
