@@ -10,9 +10,13 @@ export async function getStaticPaths() {
 
 const { tool } = Astro.props;
 const guides = (await getCollection('guides', ({ data }) => !data.draft && data.tags.includes(tool.data.slug)));
+// A tool's own tab icon, when its brand script has written one into
+// public/icons (npm run brand -- --site <public/icons> in the tool's repo).
+const TOOL_ICONS = ['sankey-studio', 'finance-studio'];
+const icon = TOOL_ICONS.includes(tool.data.slug) ? tool.data.slug : undefined;
 ---
 
-<Base title={tool.data.name} section="tools" description={tool.data.summary} icon={tool.data.slug === 'sankey-studio' ? 'sankey-studio' : undefined}>
+<Base title={tool.data.name} section="tools" description={tool.data.summary} icon={icon}>
   <PageHead eyebrow="Tool" color="var(--c-tools)" title={tool.data.name}>{tool.data.summary}</PageHead>
 
   <section class="wrap body">
