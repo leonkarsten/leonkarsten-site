@@ -1,6 +1,6 @@
 # leonkarsten.com — handover
 
-Last updated: 2026-11-03. Keep this file current: it is the shared state between
+Last updated: 2026-11-27. Keep this file current: it is the shared state between
 Claude (chat), Claude Code and Leon.
 
 ## What it is
@@ -102,6 +102,23 @@ Nothing personal: interests, facts, instructions, coaching, experiences only.
   title was taken from its URL; the Macrotrends retrieval date is assumed; the crime index rankings
   were checked through press coverage; the CRS report is cited from a mirror site. Figure text is
   small at phone width. Published from a cloud session, so Leon's local folder needs a `git pull`.
+- **Finance Studio (27 Nov 2026)** is imported at `public/apps/finance-studio/index.html` (single-file
+  Vite build, ~355 KB). Source repo: `C:\Users\leon\Documents\finance-studio` (personal identity,
+  remote `leonkarsten/finance-studio`, private, Leon creates it; the brief is in that repo's `docs/`).
+  Fourteen calculators in three groups (time value of money, stocks and returns, capital budgeting),
+  built from Leon's course workbook, which stays on his machine and is in neither repo. Every answer
+  shows its working and, on a switch, the Excel formula with the visitor's numbers. Import with
+  `.\scripts\import-finance-studio.ps1 -Build`. The tool page shows "What's inside" (one card per
+  group), its own Privacy paragraph, a disclaimer line and an APA References section, from the
+  optional `modules`, `privacy`, `disclaimer` and `references` fields added to `appSchema`. The module
+  names there are copied from the app's `src/modules/index.js`: change both together. The OpenStax
+  reference was checked on openstax.org on 27 Nov (Dahlquist & Knight, 2022); the book's licence is
+  CC BY-NC-SA 4.0, not CC BY 4.0 as the brief said, which is why the app writes its own explanations
+  and reproduces no text from it. A guide, `guides/getting-started-with-finance-studio.md`, is a draft.
+  No tab icon of its own yet (the site's); a mark can come later.
+- **Commit identity (27 Nov 2026):** this repo now commits as `Leon Karsten
+  <351024562+leonkarsten@users.noreply.github.com>` (local git config). Before that, 131 commits were
+  authored as the business address, because only the global config was set; they stay as they are.
 - **Editorial rule added 21 Nov 2026** (see `CLAUDE.md` ground rules): practical, business, lessons and
   interests only; anything too close for comfort stays off. Apply the test there before drafting any
   new post or guide. Do not commit stray drafts from `src/content/` without Leon's say-so.
@@ -117,7 +134,8 @@ src/
   content/
     writing/*.md   title, summary, date, tags, draft
     guides/*.md    title, summary, updated, tags, draft
-    tools/*.json   name, slug, summary, app (path under /public), repo?, version?, updated?, tags
+    tools/*.json   name, slug, summary, app (path under /public), repo?, version?, updated?, tags,
+                   steps?, charts?, coming?, modules?, references?, disclaimer?, privacy?
     games/*.json   same schema
   content.config.ts
   styles/global.css           all design tokens; print theme on :root, night on [data-theme='night']
@@ -126,6 +144,7 @@ public/
   play/<slug>/     built games
   CNAME            leonkarsten.com
 scripts/import-sankey-studio.ps1   copies sankey-studio/dist/index.html in; -Build rebuilds first
+scripts/import-finance-studio.ps1  the same for finance-studio
 ```
 
 Routes: `/tools/<slug>/` describes a tool, `/apps/<slug>/` runs it. Same split for games

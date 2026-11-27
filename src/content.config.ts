@@ -64,6 +64,26 @@ const appSchema = z.object({
     .optional(),
   /** on the way, named so nobody goes looking for them yet */
   coming: z.array(z.string()).optional(),
+  /**
+   * what a multi-calculator tool holds, by group, one line each.
+   * Finance Studio's names come from its own src/modules/index.js; change both together.
+   */
+  modules: z
+    .array(
+      z.object({
+        group: z.string(),
+        items: z.array(z.object({ name: z.string(), line: z.string() })),
+      })
+    )
+    .optional(),
+  /** sources the tool follows, APA 7th: the title is set in italics */
+  references: z
+    .array(z.object({ authors: z.string(), title: z.string(), publisher: z.string(), url: z.string().url() }))
+    .optional(),
+  /** one plain line, shown on the tool page, e.g. "not financial advice" */
+  disclaimer: z.string().optional(),
+  /** the tool's own privacy paragraph, when the default (files you open) does not fit */
+  privacy: z.string().optional(),
 });
 
 const tools = defineCollection({

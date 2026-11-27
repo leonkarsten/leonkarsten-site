@@ -45,6 +45,26 @@ const guides = (await getCollection('guides', ({ data }) => !data.draft && data.
       )
     }
 
+    {
+      tool.data.modules && (
+        <div class="charts">
+          <h2 class="charts-head">What's inside</h2>
+          <div class="module-grid">
+            {tool.data.modules.map((g) => (
+              <article class="card module">
+                <h3>{g.group}</h3>
+                <ul>
+                  {g.items.map((m) => (
+                    <li><strong>{m.name}</strong><span>{m.line}</span></li>
+                  ))}
+                </ul>
+              </article>
+            ))}
+          </div>
+        </div>
+      )
+    }
+
     <div class="prose">
       {
         tool.data.steps && (
@@ -58,10 +78,31 @@ const guides = (await getCollection('guides', ({ data }) => !data.draft && data.
       }
 
       <h2>Privacy</h2>
-      <p>
-        {tool.data.name} runs entirely in your browser. Files you open are read by your own machine
-        and are never uploaded anywhere. Close the tab and nothing is left behind.
-      </p>
+      {
+        tool.data.privacy ? (
+          <p>{tool.data.privacy}</p>
+        ) : (
+          <p>
+            {tool.data.name} runs entirely in your browser. Files you open are read by your own machine
+            and are never uploaded anywhere. Close the tab and nothing is left behind.
+          </p>
+        )
+      }
+
+      {tool.data.disclaimer && <p class="disclaimer">{tool.data.disclaimer}</p>}
+
+      {
+        tool.data.references && (
+          <>
+            <h2>References</h2>
+            <div class="refs">
+              {tool.data.references.map((r) => (
+                <p>{r.authors} <i>{r.title}</i>. {r.publisher} <a href={r.url}>{r.url}</a></p>
+              ))}
+            </div>
+          </>
+        )
+      }
 
       <h2>Guides</h2>
       {
@@ -127,4 +168,19 @@ const guides = (await getCollection('guides', ({ data }) => !data.draft && data.
     dd { margin-bottom: 8px; }
   }
   .coming { margin: 14px 0 0; color: var(--ink-muted); }
+
+  .module-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 20px;
+  }
+  @media (max-width: 1000px) { .module-grid { grid-template-columns: 1fr; } }
+  .module { padding: 20px 24px 22px; gap: 10px; border-top: 6px solid var(--c-tools); }
+  .module:hover { transform: none; }
+  .module h3 { font-size: 22px; margin: 0; }
+  .module ul { margin: 0; padding-left: 1.1em; display: flex; flex-direction: column; gap: 8px; font-size: 15px; color: var(--ink-soft); }
+  .module strong { display: block; color: var(--ink); font-weight: 600; }
+  .disclaimer { font-weight: 600; }
+  /* APA references hang their second line, as in posts. */
+  .refs p { padding-left: 2em; text-indent: -2em; overflow-wrap: anywhere; }
 </style>

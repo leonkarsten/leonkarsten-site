@@ -1,0 +1,59 @@
+{
+  "name": "Finance Studio",
+  "slug": "finance-studio",
+  "summary": "Finance calculators that show their working: loans, savings, annuities, share values, the cost of capital and project decisions. Every answer comes with the Excel formula that gives the same number. Everything runs in your browser.",
+  "app": "/apps/finance-studio/",
+  "updated": "2026-11-27",
+  "tags": [
+    "finance",
+    "excel",
+    "calculators"
+  ],
+  "steps": [
+    "Open the tool and pick a calculator from the menu: time value of money, stocks and returns, or capital budgeting.",
+    "Type amounts as plain positive numbers and say which way the money goes. A rate typed as 10 means 10%.",
+    "Read the answer, then open the working to see how it is built, year by year.",
+    "Tick \"Show the Excel formula\" for a formula with your numbers in it, ready to paste into Excel."
+  ],
+  "modules": [
+    {
+      "group": "Time value of money",
+      "items": [
+        { "name": "Interest & compounding", "line": "Simple against compound interest, and nominal against effective rates." },
+        { "name": "TVM solver", "line": "Know four of present value, future value, payment, rate and periods, and it finds the fifth." },
+        { "name": "Perpetuities", "line": "A payment for ever, level or growing." },
+        { "name": "Annuities", "line": "Paid at the end or the start of each period, side by side." },
+        { "name": "Loan amortisation", "line": "The full schedule, and what extra payments save." },
+        { "name": "Uneven cash flows", "line": "Amounts that differ by year, valued today and at the end." }
+      ]
+    },
+    {
+      "group": "Stocks & returns",
+      "items": [
+        { "name": "Dividend discount models", "line": "No growth, steady growth, fast then steady, or dividends then a sale." },
+        { "name": "Discounted cash flow", "line": "Forecast cash flows plus a value for the years after." },
+        { "name": "Preferred stock", "line": "Value at a required return, and yield at a price." },
+        { "name": "Returns & cost of capital", "line": "Return on equity and its DuPont split, and the WACC after tax." }
+      ]
+    },
+    {
+      "group": "Capital budgeting",
+      "items": [
+        { "name": "Project evaluator", "line": "NPV, IRR, MIRR, profitability index, payback and the NPV profile." },
+        { "name": "Compare projects", "line": "When only one can be done, or when they last different lengths of time." },
+        { "name": "Capital rationing", "line": "The best projects for a fixed budget." },
+        { "name": "Project cash-flow builder", "line": "Yearly cash flows after tax, from the assumptions, sent straight to the evaluator." }
+      ]
+    }
+  ],
+  "privacy": "Finance Studio runs entirely in your browser. Nothing you type is sent anywhere, and your last inputs are kept in your own browser only. The address bar carries the inputs too, so a copied link opens them: share it only where they may be seen.",
+  "disclaimer": "Calculators for learning and estimates, not financial advice.",
+  "references": [
+    {
+      "authors": "Dahlquist, J., & Knight, R. (2022).",
+      "title": "Principles of finance",
+      "publisher": "OpenStax.",
+      "url": "https://openstax.org/details/books/principles-finance"
+    }
+  ]
+}
