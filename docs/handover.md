@@ -115,8 +115,9 @@ Nothing personal: interests, facts, instructions, coaching, experiences only.
   reference was checked on openstax.org on 27 Nov (Dahlquist & Knight, 2022); the book's licence is
   CC BY-NC-SA 4.0, not CC BY 4.0 as the brief said, which is why the app writes its own explanations
   and reproduces no text from it. A guide, `guides/getting-started-with-finance-studio.md`, is a draft.
-  Its logo (v1, the ring with three compounding bars, a sibling of Sankey Studio's) came the same
-  evening: the app header and tab, and `public/icons/finance-studio.svg` + `-32.png` for the tool page,
+  Its logo came the same evening (v1, the ring with three compounding bars) and was replaced on
+  28 Nov by v2 (three bars on a purple timeline, no ring: the ring belongs to Sankey Studio). It
+  is used in the app header and tab, and `public/icons/finance-studio.svg` + `-32.png` for the tool page,
   all made by the app repo's `npm run brand -- --site <this repo>/public/icons`. The pack's files carry
   C2PA content-credential manifests that name the tool that made them; the brand script drops them
   (and titles, descriptions, PNG text chunks) so nothing published names an AI tool. The tool page
